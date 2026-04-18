@@ -11,6 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     curl \
     gettext \
+    binutils \
+    gdal-bin \
+    libgdal-dev \
+    libgeos-dev \
+    libproj-dev \
     libcairo2 \
     libcairo2-dev \
     libpango-1.0-0 \
