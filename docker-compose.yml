@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: devflowweb
     command: >
-      gunicorn devflow.wsgi:application
+       gunicorn ProjectFlow.wsgi:application
       --bind 0.0.0.0:8000
       --workers 3
       --threads 2
@@ -25,7 +25,7 @@ services:
     environment:
       # Django
       - DEBUG=${DEBUG:-False}
-      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-devflow.settings}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-ProjectFlow.settings}
       - SECRET_KEY=${SECRET_KEY}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
       - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS}
@@ -124,7 +124,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: devflowcelery
-    command: celery -A devflow.celery:app worker -l info --concurrency=4
+    command: celery -A ProjectFlow.celery:app worker -l info --concurrency=4
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
@@ -132,7 +132,7 @@ services:
       - logs_volume:/app/logs
     environment:
       - DEBUG=${DEBUG:-False}
-      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-devflow.settings}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-ProjectFlow.settings}
       - SECRET_KEY=${SECRET_KEY}
       - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
 
@@ -173,7 +173,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: devflowbeat
-    command: celery -A devflow.celery:app beat -l info
+    command: celery -A ProjectFlow.celery:app beat -l info
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
@@ -181,7 +181,7 @@ services:
       - logs_volume:/app/logs
     environment:
       - DEBUG=${DEBUG:-False}
-      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-devflow.settings}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-ProjectFlow.settings}
       - SECRET_KEY=${SECRET_KEY}
       - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
 
@@ -217,12 +217,12 @@ services:
       dockerfile: Dockerfile
     container_name: devflowflower
     command: >
-      celery -A devflow.celery:app flower
+      celery -A ProjectFlow.celery:app flower
       --port=5555
       --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin123}
     environment:
       - DEBUG=${DEBUG:-False}
-      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-devflow.settings}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-ProjectFlow.settings}
       - SECRET_KEY=${SECRET_KEY}
       - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
       - REDIS_URL=redis://redis:6379/0
