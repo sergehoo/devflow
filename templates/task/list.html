@@ -1,10 +1,44 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends 'devflow/layout/base.html' %}
 
-</body>
-</html>
+{% block title %}DevFlow — Tâches{% endblock %}
+{% block page_title %}Tâches{% endblock %}
+{% block breadcrumb %}Exécution · Liste des tâches{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-head">
+        <div>
+            <div class="card-title">Liste des tâches</div>
+            <div class="card-sub">Suivi opérationnel</div>
+        </div>
+        <a href="{% url 'devflow:task_create' %}" class="btn-main">+ Nouvelle tâche</a>
+    </div>
+
+    <table class="tbl">
+        <thead>
+            <tr>
+                <th>Titre</th>
+                <th>Projet</th>
+                <th>Assigné</th>
+                <th>Statut</th>
+                <th>Priorité</th>
+                <th>Échéance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in items %}
+            <tr>
+                <td><a href="{% url 'devflow:task_detail' task.pk %}">{{ task.title }}</a></td>
+                <td>{{ task.project }}</td>
+                <td>{{ task.assignee|default:'—' }}</td>
+                <td><span class="badge b-purple">{{ task.get_status_display }}</span></td>
+                <td><span class="badge b-amber">{{ task.get_priority_display }}</span></td>
+                <td>{{ task.due_date|default:'—' }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6">Aucune tâche disponible.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

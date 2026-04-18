@@ -1,10 +1,88 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+  {% load  static %}
+<div class="topbar">
+ {% if request.user.is_authenticated and request.user.profile.workspace.logo %}
+    <img src="{{ request.user.profile.workspace.logo.url }}" width="120">
+{% else %}
+    <img src="{% static 'img/logo_datarium-black.png' %}" width="120">
+{% endif %}
+    <div>
+      <div class="page-title">Tableau de bord</div>
+      <div class="breadcrumb">Vue d'ensemble · Q2 2026</div>
+    </div>
+    <div class="search">
+      <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" placeholder="Rechercher… ou ⌘K" onclick="openPalette()" readonly style="cursor:pointer">
+      <span class="kbd">⌘K</span>
+    </div>
+    <div class="topbar-btns">
+      <div style="position:relative">
+        <div class="ico-btn" id="notifBtn" onclick="toggleNotif()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          <div class="notif-dot" id="notifDot"><a href="{% url 'notification_list' %}" class="relative inline-flex items-center">
+        <i class="fa-regular fa-bell"></i>
+        {% if unread_notifications_count %}
+        <span class="absolute -right-2 -top-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            {{ unread_notifications_count }}
+        </span>
+        {% endif %}
+    </a></div>
+        </div>
+        <div class="notif-panel" id="notifPanel">
+    <div class="notif-head">
+        <span style="font-size:13px;font-weight:600;color:var(--text1)">Notifications</span>
+        <span style="font-size:11px;color:var(--accent);cursor:pointer" onclick="markAllRead()">Tout lire</span>
+    </div>
 
-</body>
-</html>
+    {% for notif in recent_notifications %}
+    <div class="notif-item {% if not notif.is_read %}unread{% endif %}">
+        <div class="notif-ico" style="background:var(--red-bg)">
+            {% if notif.notification_type == "TASK" %}
+                ✅
+            {% elif notif.notification_type == "RISK" %}
+                ⚠️
+            {% elif notif.notification_type == "MESSAGE" %}
+                💬
+            {% elif notif.notification_type == "SPRINT" %}
+                🚀
+            {% elif notif.notification_type == "AI" %}
+                🤖
+            {% else %}
+                🔔
+            {% endif %}
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:600;color:var(--text1)">
+                {{ notif.title }}
+            </div>
+            <div style="font-size:11px;color:var(--text3)">
+                {{ notif.body|truncatechars:60 }} · {{ notif.created_at|timesince }}
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="notif-item">
+        <div>
+            <div style="font-size:12px;color:var(--text3)">Aucune notification</div>
+        </div>
+    </div>
+    {% endfor %}
+
+    <a href="{% url 'notification_list' %}" class="relative inline-flex items-center">
+        <i class="fa-regular fa-bell"></i>
+        {% if unread_notifications_count %}
+        <span class="absolute -right-2 -top-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            {{ unread_notifications_count }}
+        </span>
+        {% endif %}
+    </a>
+</div>
+      </div>
+      <div class="ico-btn" onclick="openAI()" title="DevFlow AI">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 012 2v1a2 2 0 002 2h1a2 2 0 010 4h-1a2 2 0 00-2 2v1a2 2 0 01-4 0v-1a2 2 0 00-2-2H6a2 2 0 010-4h1a2 2 0 002-2V4a2 2 0 012-2z"/></svg>
+      </div>
+      <button class="btn-main" onclick="openModal()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nouveau projet
+      </button>
+    </div>
+  </div>

@@ -1,10 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "layout/base.html" %}
 
-</body>
-</html>
+{% block content %}
+<div class="max-w-2xl mx-auto rounded-3xl border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+    <h1 class="text-2xl font-semibold text-[var(--text1)]">Import projet par IA</h1>
+    <p class="mt-2 text-sm text-[var(--text3)]">
+        Dépose un PDF ou un DOCX, l’IA analysera la structure projet et créera les éléments dans DevFlow.
+    </p>
+
+    <form method="post" enctype="multipart/form-data" class="mt-6 space-y-4">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit"
+                class="inline-flex items-center rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
+            Lancer l’analyse
+        </button>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,411 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}DevFlow — Sprints{% endblock %}
+{% block page_title %}Sprints{% endblock %}
+{% block breadcrumb %}Projet · Sprints{% endblock %}
+
+{% block content %}
+<div
+    x-data="sprintKanban()"
+    x-init="init()"
+    class="space-y-6"
+>
+    <!-- HERO -->
+    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+        <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.06)_45%,transparent_100%)]"></div>
+        <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+        <div class="absolute -bottom-20 left-10 h-40 w-40 rounded-full bg-[var(--cyan-bg)] blur-3xl"></div>
+
+        <div class="relative p-6 lg:p-7">
+            <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--accent),var(--accent2))] text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)]">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7h8M8 12h8M8 17h5M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"/>
+                            </svg>
+                        </div>
+
+                        <div>
+                            <h1 class="font-serif text-3xl font-medium tracking-[-0.03em] text-[var(--text1)] lg:text-4xl">
+                                Board des sprints
+                            </h1>
+                            <p class="mt-2 max-w-3xl text-sm leading-6 text-[var(--text2)]">
+                                Visualisez, organisez et faites évoluer les sprints par glisser-déposer entre les colonnes de statut.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <a href="{% url 'sprint_create' %}"
+                       class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(124,111,247,0.34)]">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 5v14m7-7H5"/>
+                        </svg>
+                        Nouveau sprint
+                    </a>
+
+                    <button type="button"
+                            @click="expandAll = !expandAll"
+                            class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 8h16M4 16h16"/>
+                        </svg>
+                        Basculer détails
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI -->
+            <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Total</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">{{ object_list|length }}</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Planifiés</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]" id="count-PLANNED">
+                        {{ object_list|dictsort:"status"|length }}
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">En cours</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]" id="count-ACTIVE">0</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Review</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]" id="count-REVIEW">0</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Terminés</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]" id="count-DONE">0</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- BOARD -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Kanban des sprints</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Glissez un sprint d’une colonne à une autre pour changer son statut.</p>
+            </div>
+
+            <div class="flex items-center gap-2 text-xs text-[var(--text3)]">
+                <span class="inline-flex h-2 w-2 rounded-full bg-[var(--green)]"></span>
+                Synchronisation instantanée
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <div class="grid min-w-[1320px] grid-cols-5 gap-4">
+
+                <!-- PLANNED -->
+                <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg3)]/70 p-3"
+                     data-column="PLANNED"
+                     @dragover.prevent="onDragOver($event)"
+                     @drop="onDrop($event, 'PLANNED')"
+                     @dragleave="onDragLeave($event)">
+                    <div class="mb-3 flex items-center justify-between">
+                        <div class="text-sm font-semibold text-[var(--text2)]">Planifié</div>
+                        <span class="inline-flex min-w-[28px] items-center justify-center rounded-full bg-[var(--bg2)] px-2 py-1 text-[11px] font-semibold text-[var(--text2)] column-count">
+                            0
+                        </span>
+                    </div>
+
+                    <div class="space-y-3 column-body">
+                        {% for sprint in object_list %}
+                            {% if sprint.status == "PLANNED" %}
+                                {% include "project/sprint/partials/_sprint_kanban_card.html" with sprint=sprint %}
+                            {% endif %}
+                        {% empty %}
+                            <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg2)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                                Aucun sprint.
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- ACTIVE -->
+                <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg3)]/70 p-3"
+                     data-column="ACTIVE"
+                     @dragover.prevent="onDragOver($event)"
+                     @drop="onDrop($event, 'ACTIVE')"
+                     @dragleave="onDragLeave($event)">
+                    <div class="mb-3 flex items-center justify-between">
+                        <div class="text-sm font-semibold text-[var(--accent)]">En cours</div>
+                        <span class="inline-flex min-w-[28px] items-center justify-center rounded-full bg-[var(--accent-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--accent)] column-count">
+                            0
+                        </span>
+                    </div>
+
+                    <div class="space-y-3 column-body">
+                        {% for sprint in object_list %}
+                            {% if sprint.status == "ACTIVE" %}
+                                {% include "project/sprint/partials/_sprint_kanban_card.html" with sprint=sprint %}
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- REVIEW -->
+                <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg3)]/70 p-3"
+                     data-column="REVIEW"
+                     @dragover.prevent="onDragOver($event)"
+                     @drop="onDrop($event, 'REVIEW')"
+                     @dragleave="onDragLeave($event)">
+                    <div class="mb-3 flex items-center justify-between">
+                        <div class="text-sm font-semibold text-[var(--amber)]">Review</div>
+                        <span class="inline-flex min-w-[28px] items-center justify-center rounded-full bg-[var(--amber-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--amber)] column-count">
+                            0
+                        </span>
+                    </div>
+
+                    <div class="space-y-3 column-body">
+                        {% for sprint in object_list %}
+                            {% if sprint.status == "REVIEW" %}
+                                {% include "project/sprint/partials/_sprint_kanban_card.html" with sprint=sprint %}
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- DONE -->
+                <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg3)]/70 p-3"
+                     data-column="DONE"
+                     @dragover.prevent="onDragOver($event)"
+                     @drop="onDrop($event, 'DONE')"
+                     @dragleave="onDragLeave($event)">
+                    <div class="mb-3 flex items-center justify-between">
+                        <div class="text-sm font-semibold text-[var(--green)]">Terminé</div>
+                        <span class="inline-flex min-w-[28px] items-center justify-center rounded-full bg-[var(--green-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--green)] column-count">
+                            0
+                        </span>
+                    </div>
+
+                    <div class="space-y-3 column-body">
+                        {% for sprint in object_list %}
+                            {% if sprint.status == "DONE" %}
+                                {% include "project/sprint/partials/_sprint_kanban_card.html" with sprint=sprint %}
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- CANCELLED -->
+                <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg3)]/70 p-3"
+                     data-column="CANCELLED"
+                     @dragover.prevent="onDragOver($event)"
+                     @drop="onDrop($event, 'CANCELLED')"
+                     @dragleave="onDragLeave($event)">
+                    <div class="mb-3 flex items-center justify-between">
+                        <div class="text-sm font-semibold text-[var(--red)]">Annulé</div>
+                        <span class="inline-flex min-w-[28px] items-center justify-center rounded-full bg-[var(--red-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--red)] column-count">
+                            0
+                        </span>
+                    </div>
+
+                    <div class="space-y-3 column-body">
+                        {% for sprint in object_list %}
+                            {% if sprint.status == "CANCELLED" %}
+                                {% include "project/sprint/partials/_sprint_kanban_card.html" with sprint=sprint %}
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+function sprintKanban() {
+    return {
+        draggedId: null,
+        draggedEl: null,
+        expandAll: false,
+
+        init() {
+            this.refreshCounts();
+        },
+
+        onDragStart(event, sprintId) {
+            this.draggedId = sprintId;
+            this.draggedEl = event.currentTarget;
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", sprintId);
+            this.draggedEl.classList.add("opacity-50", "scale-[0.98]");
+        },
+
+        onDragEnd() {
+            if (this.draggedEl) {
+                this.draggedEl.classList.remove("opacity-50", "scale-[0.98]");
+            }
+            this.clearHighlights();
+            this.draggedId = null;
+            this.draggedEl = null;
+        },
+
+        onDragOver(event) {
+            const col = event.currentTarget;
+            col.classList.add("ring-2", "ring-[var(--accent)]", "ring-offset-2");
+        },
+
+        onDragLeave(event) {
+            event.currentTarget.classList.remove("ring-2", "ring-[var(--accent)]", "ring-offset-2");
+        },
+
+        clearHighlights() {
+            document.querySelectorAll("[data-column]").forEach(col => {
+                col.classList.remove("ring-2", "ring-[var(--accent)]", "ring-offset-2");
+            });
+        },
+
+        async onDrop(event, newStatus) {
+            const column = event.currentTarget;
+            column.classList.remove("ring-2", "ring-[var(--accent)]", "ring-offset-2");
+
+            const sprintId = event.dataTransfer.getData("text/plain") || this.draggedId;
+            if (!sprintId) return;
+
+            const card = document.querySelector(`[data-sprint-id="${sprintId}"]`);
+            if (!card) return;
+
+            const oldStatus = card.dataset.status;
+            if (oldStatus === newStatus) return;
+
+            const body = column.querySelector(".column-body");
+            body.appendChild(card);
+
+            card.dataset.status = newStatus;
+            this.updateCardStatus(card, newStatus);
+            this.refreshCounts();
+
+            try {
+                const response = await fetch("{% url 'sprint_status_update' %}", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": this.getCsrfToken(),
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: JSON.stringify({
+                        sprint_id: sprintId,
+                        status: newStatus
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error("Erreur serveur");
+                }
+
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.message || "Mise à jour refusée");
+                }
+            } catch (error) {
+                const oldColumn = document.querySelector(`[data-column="${oldStatus}"] .column-body`);
+                if (oldColumn) {
+                    oldColumn.appendChild(card);
+                    card.dataset.status = oldStatus;
+                    this.updateCardStatus(card, oldStatus);
+                    this.refreshCounts();
+                }
+                console.error(error);
+            }
+        },
+
+        updateCardStatus(card, status) {
+            const badge = card.querySelector("[data-role='status-badge']");
+            const title = card.querySelector(".sprint-card-title");
+            const goal = card.querySelector(".sprint-card-goal");
+            const mutedTexts = card.querySelectorAll(".sprint-card-maintext");
+            const number = card.querySelector(".sprint-card-number");
+
+            const styles = {
+                PLANNED: {
+                    label: "Planifié",
+                    cls: "bg-[var(--bg3)] text-[var(--text2)]"
+                },
+                ACTIVE: {
+                    label: "En cours",
+                    cls: "bg-[var(--accent-bg)] text-[var(--accent)]"
+                },
+                REVIEW: {
+                    label: "Review",
+                    cls: "bg-[var(--amber-bg)] text-[var(--amber)]"
+                },
+                DONE: {
+                    label: "Terminé",
+                    cls: "bg-[var(--green-bg)] text-[var(--green)]"
+                },
+                CANCELLED: {
+                    label: "Annulé",
+                    cls: "bg-[var(--red-bg)] text-[var(--red)]"
+                }
+            };
+
+            if (badge) {
+                badge.className = "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold " + (styles[status]?.cls || "bg-[var(--bg3)] text-[var(--text2)]");
+                badge.textContent = styles[status]?.label || status;
+            }
+
+            const isMuted = status === "DONE" || status === "CANCELLED";
+
+            if (isMuted) {
+                card.classList.add("opacity-70");
+            } else {
+                card.classList.remove("opacity-70");
+            }
+
+            if (title) {
+                title.classList.toggle("line-through", isMuted);
+                title.classList.toggle("text-[var(--text3)]", isMuted);
+                title.classList.toggle("text-[var(--text1)]", !isMuted);
+            }
+
+            if (goal) {
+                goal.classList.toggle("line-through", isMuted);
+                goal.classList.toggle("text-[var(--text3)]", true);
+            }
+
+            if (number) {
+                number.classList.toggle("line-through", isMuted);
+            }
+
+            mutedTexts.forEach(el => {
+                el.classList.toggle("text-[var(--text3)]", isMuted);
+                el.classList.toggle("text-[var(--text1)]", !isMuted);
+            });
+        },
+
+        refreshCounts() {
+            document.querySelectorAll("[data-column]").forEach(col => {
+                const status = col.dataset.column;
+                const cards = col.querySelectorAll("[data-sprint-id]");
+                const countNode = col.querySelector(".column-count");
+                if (countNode) countNode.textContent = cards.length;
+
+                const kpi = document.getElementById(`count-${status}`);
+                if (kpi) kpi.textContent = cards.length;
+            });
+        },
+
+        getCsrfToken() {
+            const cookie = document.cookie
+                .split("; ")
+                .find(row => row.startsWith("csrftoken="));
+            return cookie ? cookie.split("=")[1] : "";
+        }
+    }
+}
+</script>
+{% endblock %}

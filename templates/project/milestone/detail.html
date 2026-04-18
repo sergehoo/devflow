@@ -1,0 +1,136 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Jalon — {{ item.name }}{% endblock %}
+{% block page_title %}{{ item.name }}{% endblock %}
+{% block breadcrumb %}Projet · Jalon{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <h1 class="font-serif text-3xl text-[var(--text1)]">{{ item.name }}</h1>
+
+                    {% if item.status == "PLANNED" %}
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">Planifié</span>
+                    {% elif item.status == "IN_PROGRESS" %}
+                    <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">En cours</span>
+                    {% elif item.status == "AT_RISK" %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">À risque</span>
+                    {% elif item.status == "DONE" %}
+                    <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">Atteint</span>
+                    {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">Manqué</span>
+                    {% endif %}
+
+                    {% if is_overdue %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">En retard</span>
+                    {% endif %}
+                </div>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--text3)]">
+                    <span>{{ item.project.name }}</span>
+                    {% if item.owner %}<span>• {{ item.owner }}</span>{% endif %}
+                    <span>• Échéance {{ item.due_date|date:"d/m/Y" }}</span>
+                </div>
+
+                {% if item.description %}
+                <p class="mt-4 max-w-4xl text-sm leading-6 text-[var(--text2)]">
+                    {{ item.description }}
+                </p>
+                {% endif %}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'milestone_task_create' %}?milestone={{ item.pk }}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                    Associer une tâche
+                </a>
+                <a href="{% url 'milestone_update' item.pk %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)]">
+                    Modifier
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Échéance</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.due_date|date:"d/m/Y" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Progression</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.progress_percent }}%</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Tâches</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ task_stats.total|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">En cours</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--accent)]">{{ task_stats.in_progress|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Bloquées</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--red)]">{{ task_stats.blocked|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Terminées</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--green)]">{{ task_stats.done|default:0 }}</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="mb-5 flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Tâches rattachées</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Vue opérationnelle du jalon.</p>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-[var(--border)] text-left text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                        <th class="py-3">Tâche</th>
+                        <th class="py-3">Statut</th>
+                        <th class="py-3">Assigné à</th>
+                        <th class="py-3">Sprint</th>
+                        <th class="py-3">Échéance</th>
+                        <th class="py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mt in milestone_tasks %}
+                    <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/30">
+                        <td class="py-3">
+                            <div class="font-medium text-[var(--text1)]">{{ mt.task.title }}</div>
+                            {% if mt.task.code %}
+                            <div class="text-[11px] text-[var(--text3)]">{{ mt.task.code }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 text-[var(--text2)]">{{ mt.task.get_status_display }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ mt.task.assignee|default:"—" }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ mt.task.sprint|default:"—" }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ mt.task.due_date|date:"d/m/Y"|default:"—" }}</td>
+                        <td class="py-3 text-right">
+                            <div class="flex justify-end gap-2">
+                                <a href="{% url 'task_detail' mt.task.pk %}" class="text-xs font-semibold text-[var(--accent)] hover:underline">Tâche</a>
+                                <a href="{% url 'milestone_task_detail' mt.pk %}" class="text-xs font-semibold text-[var(--text2)] hover:text-[var(--text1)] hover:underline">Association</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="py-8 text-center text-[var(--text3)]">Aucune tâche liée à ce jalon.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

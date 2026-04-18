@@ -1,0 +1,549 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Roadmap — {{ item.name }}{% endblock %}
+{% block page_title %}{{ item.name }}{% endblock %}
+{% block breadcrumb %}Projet · Roadmap{% endblock %}
+
+{% block content %}
+<div x-data="roadmapGantt({
+        timelineDays: {{ timeline_days|default:1 }},
+        shiftUrl: '{% url "roadmap_item_shift_dates" %}',
+        csrfToken: '{{ csrf_token }}'
+    })"
+     x-init="init()"
+     class="space-y-6">
+
+    <!-- HEADER -->
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <h1 class="font-serif text-3xl text-[var(--text1)]">{{ item.name }}</h1>
+                    {% if item.is_public %}
+                    <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">Publique</span>
+                    {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">Privée</span>
+                    {% endif %}
+                </div>
+
+                {% if item.description %}
+                <p class="mt-4 max-w-4xl text-sm leading-6 text-[var(--text2)]">
+                    {{ item.description }}
+                </p>
+                {% endif %}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'roadmap_item_create' %}?roadmap={{ item.pk }}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                    Ajouter un élément
+                </a>
+                <a href="{% url 'roadmap_update' item.pk %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)]">
+                    Modifier
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Début</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.start_date|date:"d/m/Y" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Fin</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.end_date|date:"d/m/Y" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Owner</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.owner|default:"—" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Éléments</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ stats.total|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">En cours</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--accent)]">{{ stats.in_progress|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Terminés</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--green)]">{{ stats.done|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">À risque</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--red)]">{{ stats.at_risk|default:0 }}</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- GANTT -->
+    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,78,0,0.04)_0%,rgba(14,165,201,0.03)_45%,transparent_100%)]"></div>
+        <div class="absolute -right-16 top-0 h-40 w-40 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+
+        <div class="relative">
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                    <div class="mb-2 inline-flex items-center gap-2 rounded-full bg-[var(--accent-bg)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent)]">
+                        <span class="h-1.5 w-1.5 rounded-full bg-[var(--accent)]"></span>
+                        Gantt interactif
+                    </div>
+                    <h2 class="text-xl font-semibold text-[var(--text1)]">Timeline horizontale</h2>
+                    <p class="mt-1 text-sm text-[var(--text3)]">
+                        Fenêtre active : {{ timeline_start|date:"d/m/Y" }} → {{ timeline_end|date:"d/m/Y" }}
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button"
+                            @click="zoom='month'"
+                            :class="zoom === 'month' ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'bg-[var(--bg3)] text-[var(--text2)] border-[var(--border)]'"
+                            class="inline-flex items-center rounded-xl border px-3 py-2 text-xs font-semibold transition">
+                        Zoom mensuel
+                    </button>
+                    <button type="button"
+                            @click="zoom='quarter'"
+                            :class="zoom === 'quarter' ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'bg-[var(--bg3)] text-[var(--text2)] border-[var(--border)]'"
+                            class="inline-flex items-center rounded-xl border px-3 py-2 text-xs font-semibold transition">
+                        Zoom trimestriel
+                    </button>
+                    <button type="button"
+                            @click="compact = !compact"
+                            :class="compact ? 'bg-[var(--text1)] text-white border-[var(--text1)]' : 'bg-[var(--bg3)] text-[var(--text2)] border-[var(--border)]'"
+                            class="inline-flex items-center rounded-xl border px-3 py-2 text-xs font-semibold transition">
+                        Vue compacte
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-8 overflow-x-auto">
+                <div :class="zoom === 'month' ? 'min-w-[1400px]' : 'min-w-[1100px]'">
+                    <!-- HEADER -->
+                    <div class="grid grid-cols-[260px_minmax(820px,1fr)] gap-4">
+                        <div></div>
+
+                        <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)]/60 p-3">
+                            <div x-show="zoom === 'month'" x-cloak class="flex overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg2)]">
+                                {% for month in month_markers %}
+                                <div class="border-r border-[var(--border)] px-3 py-2 text-center last:border-r-0"
+                                     style="width: {{ month.width_pct }}%;">
+                                    <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">
+                                        {{ month.label }}
+                                    </div>
+                                    <div class="mt-1 text-xs font-semibold text-[var(--text1)]">
+                                        {{ month.days }} j
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+
+                            <div x-show="zoom === 'quarter'" x-cloak class="flex overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg2)]">
+                                {% for quarter in quarter_markers %}
+                                <div class="border-r border-[var(--border)] px-3 py-3 text-center last:border-r-0"
+                                     style="width: {{ quarter.width_pct }}%;">
+                                    <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">
+                                        {{ quarter.label }}
+                                    </div>
+                                    <div class="mt-1 text-xs font-semibold text-[var(--text1)]">
+                                        {{ quarter.days }} j
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ROWS -->
+                    <div class="mt-4 space-y-4">
+                        {% for row, row_items in items_by_row.items %}
+                        <div class="grid grid-cols-[260px_minmax(820px,1fr)] gap-4">
+                            <!-- LEFT -->
+                            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)]/70 p-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--accent-bg)] text-sm font-bold text-[var(--accent)]">
+                                        {{ row }}
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-semibold text-[var(--text1)]">Ligne {{ row }}</div>
+                                        <div class="text-[11px] text-[var(--text3)]">{{ row_items|length }} élément(s)</div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 space-y-2">
+                                    {% for roadmap_item in row_items %}
+                                    <div class="rounded-xl border border-[var(--border)] bg-[var(--bg2)] px-3 py-2">
+                                        <div class="truncate text-xs font-semibold text-[var(--text1)]">
+                                            {{ roadmap_item.title }}
+                                        </div>
+                                        <div class="mt-1 text-[11px] text-[var(--text3)] roadmap-item-dates-{{ roadmap_item.pk }}">
+                                            {{ roadmap_item.start_date|date:"d/m" }} → {{ roadmap_item.end_date|date:"d/m" }}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+
+                            <!-- RIGHT -->
+                           <!-- RIGHT -->
+<div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)]/60 p-4">
+    <div class="relative space-y-4">
+        {% for roadmap_item in row_items %}
+        <div :class="compact ? 'h-[58px]' : 'h-[84px]'" class="gantt-lane relative rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/85 px-3 py-3 transition-all">
+            <div class="absolute inset-x-3 top-1/2 h-2 -translate-y-1/2 rounded-full bg-[var(--bg3)]"></div>
+
+            {% if today_left_pct is not None %}
+            <div class="absolute bottom-2 top-2 z-[1] w-px bg-[var(--red)]/70"
+                 style="left: {{ today_left_pct|floatformat:2 }}%;"></div>
+            {% endif %}
+
+            <div
+                class="roadmap-bar absolute top-1/2 z-[2] -translate-y-1/2 overflow-hidden rounded-xl shadow-sm transition duration-200 hover:scale-[1.01] hover:shadow-md cursor-grab active:cursor-grabbing"
+                data-item-id="{{ roadmap_item.pk }}"
+                data-left="{{ roadmap_item.gantt_left_pct|floatformat:2 }}"
+                data-width="{{ roadmap_item.gantt_width_pct|floatformat:2 }}"
+                data-original-left="{{ roadmap_item.gantt_left_pct|floatformat:2 }}"
+                data-start-display="{{ roadmap_item.start_date|date:'d/m/Y' }}"
+                data-end-display="{{ roadmap_item.end_date|date:'d/m/Y' }}"
+                data-short-start="{{ roadmap_item.start_date|date:'d/m' }}"
+                data-short-end="{{ roadmap_item.end_date|date:'d/m' }}"
+                data-tooltip
+                data-tippy-content="
+                    <div style='text-align:left'>
+                        <div style='font-weight:700;margin-bottom:4px;'>{{ roadmap_item.title|escape }}</div>
+                        <div>Statut : {{ roadmap_item.get_status_display|escape }}</div>
+                        <div>Période : {{ roadmap_item.start_date|date:'d/m/Y' }} → {{ roadmap_item.end_date|date:'d/m/Y' }}</div>
+                        <div>Durée : {{ roadmap_item.gantt_duration_days }} jour(s)</div>
+                        {% if roadmap_item.project %}<div>Projet : {{ roadmap_item.project.name|escape }}</div>{% endif %}
+                        {% if roadmap_item.milestone %}<div>Jalon : {{ roadmap_item.milestone.name|escape }}</div>{% endif %}
+                        {% if roadmap_item.is_overdue %}<div style='color:#E8453C;font-weight:700'>En retard</div>{% endif %}
+                        <div style='margin-top:6px;font-style:italic'>Glisser horizontalement pour déplacer</div>
+                    </div>
+                "
+                @mousedown="startDrag($event)"
+                @touchstart.prevent="startDrag($event)"
+                style="
+                    left: {{ roadmap_item.gantt_left_pct|floatformat:2 }}%;
+                    width: {{ roadmap_item.gantt_width_pct|floatformat:2 }}%;
+                    background: {{ roadmap_item.color }};
+                    min-width: 96px;
+                    height: 42px;
+                "
+            >
+                <div class="flex h-full items-center justify-between gap-3 bg-[linear-gradient(135deg,rgba(255,255,255,0.18),rgba(255,255,255,0.04))] px-3 text-white">
+                    <div class="min-w-0">
+                        <div class="truncate text-xs font-semibold">
+                            {{ roadmap_item.title }}
+                        </div>
+                        <div class="truncate text-[10px] text-white/80">
+                            {{ roadmap_item.gantt_duration_days }} jour(s)
+                        </div>
+                    </div>
+
+                    {% if roadmap_item.status == "DONE" %}
+                    <span class="shrink-0 rounded-full bg-white/15 px-2 py-1 text-[9px] font-semibold text-white">DONE</span>
+                    {% elif roadmap_item.status == "IN_PROGRESS" %}
+                    <span class="shrink-0 rounded-full bg-white/15 px-2 py-1 text-[9px] font-semibold text-white">RUN</span>
+                    {% elif roadmap_item.status == "AT_RISK" %}
+                    <span class="shrink-0 rounded-full bg-white/15 px-2 py-1 text-[9px] font-semibold text-white">RISK</span>
+                    {% else %}
+                    <span class="shrink-0 rounded-full bg-white/15 px-2 py-1 text-[9px] font-semibold text-white">PLAN</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="relative z-[3] flex h-full items-end justify-between gap-3">
+                <div x-show="!compact" x-cloak class="truncate text-[11px] text-[var(--text3)]">
+                    {% if roadmap_item.project %}{{ roadmap_item.project.name }}{% else %}—{% endif %}
+                    {% if roadmap_item.milestone %} · {{ roadmap_item.milestone.name }}{% endif %}
+                </div>
+
+                <div class="ml-auto flex items-center gap-2">
+                    {% if roadmap_item.status == "PLANNED" %}
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text2)]">Planifié</span>
+                    {% elif roadmap_item.status == "IN_PROGRESS" %}
+                    <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--accent)]">En cours</span>
+                    {% elif roadmap_item.status == "DONE" %}
+                    <span class="inline-flex rounded-full bg-[var(--green-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--green)]">Terminé</span>
+                    {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--red)]">À risque</span>
+                    {% endif %}
+
+                    {% if roadmap_item.is_overdue %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--red)]">Retard</span>
+                    {% endif %}
+
+                    <a href="{% url 'roadmap_item_detail' roadmap_item.pk %}"
+                       class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg2)] px-3 py-1.5 text-[10px] font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                        Détail
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+                        </div>
+                        {% empty %}
+                        <div class="rounded-[24px] border border-dashed border-[var(--border)] bg-[var(--bg3)] px-6 py-14 text-center">
+                            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg2)] text-[var(--text3)] shadow-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7h8M8 12h8M8 17h5"/>
+                                </svg>
+                            </div>
+                            <h3 class="mt-4 text-lg font-semibold text-[var(--text1)]">Aucun élément dans cette roadmap</h3>
+                            <p class="mt-2 text-sm text-[var(--text3)]">
+                                Ajoute des éléments pour commencer à structurer la timeline.
+                            </p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- TABLE -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="mb-5 flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Table de pilotage</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Tous les éléments structurés pour suivi détaillé.</p>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-[var(--border)] text-left text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                        <th class="py-3">Titre</th>
+                        <th class="py-3">Projet</th>
+                        <th class="py-3">Jalon</th>
+                        <th class="py-3">Statut</th>
+                        <th class="py-3">Période</th>
+                        <th class="py-3 text-right">Ligne</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for roadmap_item in items %}
+                    <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/30">
+                        <td class="py-3 font-medium text-[var(--text1)]">{{ roadmap_item.title }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ roadmap_item.project|default:"—" }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ roadmap_item.milestone|default:"—" }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ roadmap_item.get_status_display }}</td>
+                        <td class="py-3 text-[var(--text2)] roadmap-item-table-dates-{{ roadmap_item.pk }}">{{ roadmap_item.start_date|date:"d/m/Y" }} → {{ roadmap_item.end_date|date:"d/m/Y" }}</td>
+                        <td class="py-3 text-right text-[var(--text2)]">{{ roadmap_item.row }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="py-8 text-center text-[var(--text3)]">Aucun élément trouvé.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+function roadmapGantt(config) {
+    return {
+        zoom: 'month',
+        compact: false,
+        timelineDays: config.timelineDays || 1,
+        shiftUrl: config.shiftUrl,
+        dragging: null,
+
+        init() {
+            this.$nextTick(() => this.initTooltips());
+
+            this._mouseMoveHandler = (e) => this.onDragMove(e);
+            this._mouseUpHandler = () => this.endDrag();
+            this._touchMoveHandler = (e) => this.onDragMove(e);
+            this._touchEndHandler = () => this.endDrag();
+
+            window.addEventListener('mousemove', this._mouseMoveHandler);
+            window.addEventListener('mouseup', this._mouseUpHandler);
+            window.addEventListener('touchmove', this._touchMoveHandler, { passive: false });
+            window.addEventListener('touchend', this._touchEndHandler);
+        },
+
+        initTooltips() {
+            if (typeof tippy !== "undefined") {
+                document.querySelectorAll('[data-tooltip]').forEach((el) => {
+                    if (!el._tippy) {
+                        tippy(el, {
+                            allowHTML: true,
+                            theme: 'light-border',
+                            animation: 'shift-away',
+                            delay: [80, 30],
+                            maxWidth: 320,
+                        });
+                    }
+                });
+            }
+        },
+
+        getCsrfToken() {
+            const cookie = document.cookie.split('; ').find(row => row.startsWith('csrftoken='));
+            return cookie ? cookie.split('=')[1] : '';
+        },
+
+        startDrag(event) {
+            const target = event.target;
+
+            if (target.closest('a, button')) {
+                return;
+            }
+
+            const el = event.currentTarget;
+            const lane = el.closest('.gantt-lane');
+            if (!el || !lane) return;
+
+            const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+            const laneRect = lane.getBoundingClientRect();
+
+            this.dragging = {
+                el: el,
+                itemId: el.dataset.itemId,
+                startX: clientX,
+                laneWidth: laneRect.width - 24,
+                originalLeftPct: parseFloat(el.dataset.originalLeft || el.dataset.left || 0),
+                currentLeftPct: parseFloat(el.dataset.left || 0),
+                widthPct: parseFloat(el.dataset.width || 0),
+                moved: false,
+            };
+
+            if (el._tippy) {
+                el._tippy.hide();
+            }
+
+            el.classList.add('ring-2', 'ring-[var(--accent)]', 'scale-[1.01]', 'z-[5]');
+            document.body.style.userSelect = 'none';
+        },
+
+        onDragMove(event) {
+            if (!this.dragging) return;
+
+            if (event.cancelable) event.preventDefault();
+
+            const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+            const deltaPx = clientX - this.dragging.startX;
+
+            if (Math.abs(deltaPx) > 4) {
+                this.dragging.moved = true;
+            }
+
+            const deltaPct = (deltaPx / this.dragging.laneWidth) * 100;
+            let newLeftPct = this.dragging.originalLeftPct + deltaPct;
+            const maxLeft = 100 - this.dragging.widthPct;
+
+            if (newLeftPct < 0) newLeftPct = 0;
+            if (newLeftPct > maxLeft) newLeftPct = maxLeft;
+
+            this.dragging.currentLeftPct = newLeftPct;
+            this.dragging.el.style.left = `${newLeftPct}%`;
+        },
+
+        async endDrag() {
+            if (!this.dragging) return;
+
+            const drag = this.dragging;
+            drag.el.classList.remove('ring-2', 'ring-[var(--accent)]', 'scale-[1.01]', 'z-[5]');
+            document.body.style.userSelect = '';
+
+            if (!drag.moved) {
+                drag.el.style.left = `${drag.originalLeftPct}%`;
+                this.dragging = null;
+                return;
+            }
+
+            const deltaPct = drag.currentLeftPct - drag.originalLeftPct;
+            const deltaDays = Math.round((deltaPct / 100) * this.timelineDays);
+
+            if (deltaDays === 0) {
+                drag.el.style.left = `${drag.originalLeftPct}%`;
+                this.dragging = null;
+                return;
+            }
+
+            try {
+                const response = await fetch(this.shiftUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": this.getCsrfToken(),
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: JSON.stringify({
+                        item_id: drag.itemId,
+                        delta_days: deltaDays
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || "Impossible de déplacer cet élément.");
+                }
+
+                drag.el.dataset.originalLeft = drag.currentLeftPct.toFixed(2);
+                drag.el.dataset.left = drag.currentLeftPct.toFixed(2);
+
+                const sideDate = document.querySelector(`.roadmap-item-dates-${drag.itemId}`);
+                if (sideDate) {
+                    sideDate.textContent = `${data.start_date_display.slice(0,5)} → ${data.end_date_display.slice(0,5)}`;
+                }
+
+                const tableDate = document.querySelector(`.roadmap-item-table-dates-${drag.itemId}`);
+                if (tableDate) {
+                    tableDate.textContent = `${data.start_date_display} → ${data.end_date_display}`;
+                }
+
+                drag.el.dataset.startDisplay = data.start_date_display;
+                drag.el.dataset.endDisplay = data.end_date_display;
+
+                const tooltipHtml = `
+                    <div style="text-align:left">
+                        <div style="font-weight:700;margin-bottom:4px;">${this.escapeHtml(drag.el.querySelector('.truncate.text-xs.font-semibold')?.textContent || '')}</div>
+                        <div>Période : ${data.start_date_display} → ${data.end_date_display}</div>
+                        <div style="margin-top:6px;font-style:italic">Glisser horizontalement pour déplacer</div>
+                    </div>
+                `;
+                drag.el.setAttribute('data-tippy-content', tooltipHtml);
+
+                if (drag.el._tippy) {
+                    drag.el._tippy.setContent(tooltipHtml);
+                }
+
+                if (typeof showToastAdvanced === "function") {
+                    showToastAdvanced("Période roadmap mise à jour", "#34A853", "✓");
+                } else if (typeof showToast === "function") {
+                    showToast("Période roadmap mise à jour", "#34A853");
+                }
+
+            } catch (error) {
+                drag.el.style.left = `${drag.originalLeftPct}%`;
+
+                if (typeof showToastAdvanced === "function") {
+                    showToastAdvanced(error.message || "Erreur lors du déplacement", "#E8453C", "✕");
+                } else if (typeof showToast === "function") {
+                    showToast(error.message || "Erreur lors du déplacement", "#E8453C");
+                }
+            }
+
+            this.dragging = null;
+        },
+
+        escapeHtml(value) {
+            const div = document.createElement('div');
+            div.textContent = value;
+            return div.innerHTML;
+        }
+    }
+}
+</script>
+{% endblock %}

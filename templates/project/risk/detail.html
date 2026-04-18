@@ -1,0 +1,130 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Risque — {{ item.title }}{% endblock %}
+{% block page_title %}{{ item.title }}{% endblock %}
+{% block breadcrumb %}Analytics · Risque{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <h1 class="font-serif text-3xl text-[var(--text1)]">{{ item.title }}</h1>
+
+                    {% if item.severity == "LOW" %}
+                    <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">Faible</span>
+                    {% elif item.severity == "MEDIUM" %}
+                    <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">Moyen</span>
+                    {% elif item.severity == "HIGH" %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">Élevé</span>
+                    {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">Critique</span>
+                    {% endif %}
+
+                    {% if item.status == "OPEN" %}
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">Ouvert</span>
+                    {% elif item.status == "MITIGATED" %}
+                    <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">Maîtrisé</span>
+                    {% elif item.status == "ESCALATED" %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">Escaladé</span>
+                    {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--cyan-bg)] px-3 py-1 text-xs font-semibold text-[var(--cyan)]">Clos</span>
+                    {% endif %}
+
+                    {% if is_overdue %}
+                    <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">
+                        Échéance dépassée
+                    </span>
+                    {% endif %}
+                </div>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--text3)]">
+                    {% if item.project %}<span>{{ item.project.name }}</span>{% endif %}
+                    {% if item.task %}<span>• {{ item.task.title }}</span>{% endif %}
+                    {% if item.owner %}<span>• {{ item.owner }}</span>{% endif %}
+                    {% if item.due_date %}<span>• {{ item.due_date|date:"d/m/Y" }}</span>{% endif %}
+                </div>
+
+                {% if item.description %}
+                <p class="mt-4 max-w-4xl text-sm leading-6 text-[var(--text2)]">
+                    {{ item.description }}
+                </p>
+                {% endif %}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'risk_update' item.pk %}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                    Modifier
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Projet</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.project|default:"—" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Tâche liée</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.task|default:"—" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Probabilité</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.get_probability_display }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Impact</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.impact_score }}/100</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Owner</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.owner|default:"—" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Échéance</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.due_date|date:"d/m/Y"|default:"—" }}</div>
+            </div>
+        </div>
+    </section>
+
+    {% if item.mitigation_plan %}
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <h2 class="text-lg font-semibold text-[var(--text1)]">Plan de mitigation</h2>
+        <div class="mt-4 text-sm leading-6 text-[var(--text2)]">
+            {{ item.mitigation_plan|linebreaks }}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="mb-5">
+            <h2 class="text-lg font-semibold text-[var(--text1)]">Risques liés au même projet</h2>
+            <p class="mt-1 text-xs text-[var(--text3)]">Autres signaux de risque sur le même périmètre.</p>
+        </div>
+
+        <div class="space-y-3">
+            {% for risk in related_risks %}
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="font-semibold text-[var(--text1)]">{{ risk.title }}</div>
+                        <div class="mt-1 text-sm text-[var(--text2)]">
+                            {{ risk.get_severity_display }} · {{ risk.get_status_display }}
+                        </div>
+                    </div>
+                    <a href="{% url 'risk_detail' risk.pk %}" class="text-xs font-semibold text-[var(--accent)] hover:underline">
+                        Voir
+                    </a>
+                </div>
+            </div>
+            {% empty %}
+            <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                Aucun autre risque trouvé sur ce projet.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

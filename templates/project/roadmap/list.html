@@ -1,0 +1,211 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Roadmaps{% endblock %}
+{% block page_title %}Roadmaps{% endblock %}
+{% block breadcrumb %}Projet · Roadmaps{% endblock %}
+
+{% block content %}
+    <div class="space-y-6">
+
+        <!-- HERO -->
+        <section
+                class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+            <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.08)_0%,rgba(14,165,201,0.06)_45%,transparent_100%)]"></div>
+            <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+            <div class="absolute -bottom-20 left-10 h-40 w-40 rounded-full bg-[var(--cyan-bg)] blur-3xl"></div>
+
+            <div class="relative p-6 lg:p-7">
+                <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-3">
+                            <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--accent),var(--accent2))] text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)]">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24"
+                                     stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+                                          d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h1 class="font-serif text-3xl font-medium tracking-[-0.03em] text-[var(--text1)] lg:text-4xl">
+                                    Portefeuille des roadmaps
+                                </h1>
+                                <p class="mt-2 max-w-3xl text-sm leading-6 text-[var(--text2)]">
+                                    Vue stratégique des roadmaps, de leur portée, de leur avancement et des éléments
+                                    clés à piloter.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <a href="{% url 'roadmap_create' %}"
+                           class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(124,111,247,0.34)]">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
+                                 stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+                                      d="M12 5v14m7-7H5"/>
+                            </svg>
+                            Nouvelle roadmap
+                        </a>
+                    </div>
+                </div>
+
+                <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                        <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Total</div>
+                        <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ stats.total|default:0 }}</div>
+                    </div>
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                        <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Publiques</div>
+                        <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ stats.public_count|default:0 }}</div>
+                    </div>
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                        <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Privées</div>
+                        <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ stats.private_count|default:0 }}</div>
+                    </div>
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                        <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Éléments</div>
+                        <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ stats.total_items|default:0 }}</div>
+                    </div>
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm md:col-span-4 xl:col-span-1">
+                        <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Date du jour</div>
+                        <div class="mt-2 text-lg font-semibold text-[var(--text1)]">{{ today|date:"d/m/Y" }}</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ROADMAPS -->
+        <section class="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3">
+            {% for roadmap in object_list %}
+                <article
+                        class="rounded-[26px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft transition hover:-translate-y-1 hover:shadow-lg">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                                {% if roadmap.is_public %}
+                                    <span class="inline-flex items-center rounded-full bg-[var(--green-bg)] px-3 py-1 text-[11px] font-semibold text-[var(--green)]">
+                            Publique
+                        </span>
+                                {% else %}
+                                    <span class="inline-flex items-center rounded-full bg-[var(--bg3)] px-3 py-1 text-[11px] font-semibold text-[var(--text2)]">
+                            Privée
+                        </span>
+                                {% endif %}
+                            </div>
+
+                            <h3 class="mt-3 truncate font-serif text-2xl text-[var(--text1)]">
+                                {{ roadmap.name }}
+                            </h3>
+
+                            {% if roadmap.description %}
+                                <p class="mt-2 line-clamp-3 text-sm leading-6 text-[var(--text2)]">
+                                    {{ roadmap.description|striptags|truncatechars:180 }}
+                                </p>
+                            {% endif %}
+                        </div>
+
+                        <div class="shrink-0">
+                            <a href="{% url 'roadmap_detail' roadmap.pk %}"
+                               class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                                Ouvrir
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="mt-5 grid grid-cols-2 gap-3">
+                        <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-3">
+                            <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Période</div>
+                            <div class="mt-1 text-sm font-semibold text-[var(--text1)]">
+                                {{ roadmap.start_date|date:"d/m/Y" }} → {{ roadmap.end_date|date:"d/m/Y" }}
+                            </div>
+                        </div>
+                        <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-3">
+                            <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Owner</div>
+                            <div class="mt-1 text-sm font-semibold text-[var(--text1)]">
+                                {{ roadmap.owner|default:"—" }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 grid grid-cols-4 gap-2 text-center">
+                        <div class="rounded-xl bg-[var(--bg3)] px-3 py-3">
+                            <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Items</div>
+                            <div class="mt-1 text-lg font-semibold text-[var(--text1)]">{{ roadmap.items_count|default:0 }}</div>
+                        </div>
+                        <div class="rounded-xl bg-[var(--bg3)] px-3 py-3">
+                            <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Planifiés</div>
+                            <div class="mt-1 text-lg font-semibold text-[var(--text1)]">{{ roadmap.planned_items_count|default:0 }}</div>
+                        </div>
+                        <div class="rounded-xl bg-[var(--bg3)] px-3 py-3">
+                            <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">En cours</div>
+                            <div class="mt-1 text-lg font-semibold text-[var(--accent)]">{{ roadmap.in_progress_items_count|default:0 }}</div>
+                        </div>
+                        <div class="rounded-xl bg-[var(--bg3)] px-3 py-3">
+                            <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">À risque</div>
+                            <div class="mt-1 text-lg font-semibold text-[var(--red)]">{{ roadmap.at_risk_items_count|default:0 }}</div>
+                        </div>
+                    </div>
+
+                    {% if roadmap.items_count %}
+                        <div class="mt-4">
+                            <div class="mb-1 flex items-center justify-between text-[10px] text-[var(--text3)]">
+                                <span>Progression globale</span>
+                                <span>{% widthratio roadmap.done_items_count roadmap.items_count 100 %}%</span>
+                            </div>
+                            <div class="h-2 overflow-hidden rounded-full bg-[var(--bg4)]">
+                                <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))]"
+                                     style="width:{% widthratio roadmap.done_items_count roadmap.items_count 100 %}%"></div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <div class="mt-5 flex items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
+                        <div class="text-xs text-[var(--text3)]">
+                            {% if roadmap.first_item_start or roadmap.last_item_end %}
+                                Fenêtre items :
+                                {{ roadmap.first_item_start|default:roadmap.start_date|date:"d/m/Y" }}
+                                →
+                                {{ roadmap.last_item_end|default:roadmap.end_date|date:"d/m/Y" }}
+                            {% else %}
+                                Aucune fenêtre d’item définie
+                            {% endif %}
+                        </div>
+
+                        <div class="flex items-center gap-3">
+                            <a href="{% url 'roadmap_update' roadmap.pk %}"
+                               class="text-xs font-semibold text-[var(--text2)] hover:text-[var(--text1)] hover:underline">
+                                Modifier
+                            </a>
+                            <a href="{% url 'roadmap_detail' roadmap.pk %}"
+                               class="text-xs font-semibold text-[var(--accent)] hover:underline">
+                                Détail
+                            </a>
+                        </div>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="xl:col-span-2 2xl:col-span-3 rounded-[26px] border border-dashed border-[var(--border)] bg-[var(--bg2)] px-6 py-16 text-center shadow-soft">
+                    <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--bg3)] text-[var(--text3)]">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24"
+                             stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+                                  d="M9 17v-6h13M9 5v6h13M3 5h.01M3 12h.01M3 19h.01"/>
+                        </svg>
+                    </div>
+                    <h3 class="mt-4 text-lg font-semibold text-[var(--text1)]">Aucune roadmap disponible</h3>
+                    <p class="mt-2 text-sm text-[var(--text3)]">Commence par créer une roadmap pour structurer les
+                        grandes étapes de tes projets.</p>
+                    <div class="mt-5">
+                        <a href="{% url 'roadmap_create' %}"
+                           class="inline-flex items-center rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
+                            Créer une roadmap
+                        </a>
+                    </div>
+                </div>
+            {% endfor %}
+        </section>
+
+    </div>
+{% endblock %}

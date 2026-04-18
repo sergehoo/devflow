@@ -1,10 +1,32 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Title</title>
-</head>
-<body>
-
-</body>
-</html>
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <span style="font-size:15px;font-weight:700;color:var(--text1)">✨ Nouveau projet</span>
+      <div class="ico-btn" onclick="closeModal()">✕</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-field"><label>Nom du projet</label><input type="text" placeholder="ex: API Paiement v2"></div>
+      <div class="form-row">
+        <div class="form-field"><label>Équipe</label>
+          <select>
+            <option>Backend</option><option>Frontend</option><option>DevOps</option><option>Full-stack</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Priorité</label>
+          <select>
+            <option>Critique</option><option>High</option><option>Medium</option><option>Low</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field"><label>Début</label><input type="date" value="2026-04-08"></div>
+        <div class="form-field"><label>Deadline</label><input type="date" value="2026-06-30"></div>
+      </div>
+      <div class="form-field"><label>Description</label><textarea rows="2" placeholder="Objectifs du projet…"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-soft" onclick="closeModal()">Annuler</button>
+      <button class="btn-main" onclick="createProject()">Créer le projet</button>
+    </div>
+  </div>
+</div>

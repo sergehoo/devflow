@@ -1,0 +1,200 @@
+{% extends "layout/base.html" %}
+{% load static %}
+
+{% block title %}
+    {% if object %}Modifier revenu projet{% else %}Ajouter revenu projet{% endif %} — DevFlow
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-5xl mx-auto">
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <div class="p-6 lg:p-8 bg-gradient-to-r from-[var(--accent-bg)] to-[var(--green-bg)]">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+                <div>
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+                        Budget prévisionnel
+                    </p>
+                    <h1 class="mt-2 text-3xl lg:text-4xl font-serif text-devtext1">
+                        {% if object %}
+                            Modifier un revenu projet
+                        {% else %}
+                            Ajouter une prévision de revenu
+                        {% endif %}
+                    </h1>
+                    <p class="mt-2 text-sm text-devtext2 max-w-2xl">
+                        Suis les revenus attendus, reçus ou planifiés selon les jalons, forfaits ou prestations.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <a href="javascript:history.back()" class="btn-soft">Retour</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <form method="post" class="space-y-6">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="rounded-[18px] border border-[rgba(232,69,60,.18)] bg-[rgba(232,69,60,.08)] px-5 py-4 text-sm text-devred">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div class="xl:col-span-2 space-y-6">
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Données du revenu</div>
+                            <div class="card-sub">Montant, type et planification</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.title.id_for_label }}">
+                                {{ form.title.label }}
+                            </label>
+                            {{ form.title }}
+                            {% if form.title.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.title.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.revenue_type.id_for_label }}">
+                                {{ form.revenue_type.label }}
+                            </label>
+                            {{ form.revenue_type }}
+                            {% if form.revenue_type.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.revenue_type.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.currency.id_for_label }}">
+                                {{ form.currency.label }}
+                            </label>
+                            {{ form.currency }}
+                            {% if form.currency.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.currency.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.amount.id_for_label }}">
+                                {{ form.amount.label }}
+                            </label>
+                            {{ form.amount }}
+                            {% if form.amount.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.amount.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div class="flex items-center gap-3 pt-8">
+                            {{ form.is_received }}
+                            <label class="text-sm font-medium text-devtext2" for="{{ form.is_received.id_for_label }}">
+                                {{ form.is_received.label }}
+                            </label>
+                            {% if form.is_received.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.is_received.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Échéances</div>
+                            <div class="card-sub">Date attendue et date effective de réception</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.expected_date.id_for_label }}">
+                                {{ form.expected_date.label }}
+                            </label>
+                            {{ form.expected_date }}
+                            {% if form.expected_date.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.expected_date.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.received_date.id_for_label }}">
+                                {{ form.received_date.label }}
+                            </label>
+                            {{ form.received_date }}
+                            {% if form.received_date.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.received_date.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Notes</div>
+                            <div class="card-sub">Informations complémentaires</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6">
+                        <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.notes.id_for_label }}">
+                            {{ form.notes.label }}
+                        </label>
+                        {{ form.notes }}
+                        {% if form.notes.errors %}
+                            <div class="mt-2 text-sm text-devred">{{ form.notes.errors }}</div>
+                        {% endif %}
+                    </div>
+                </section>
+            </div>
+
+            <div class="space-y-6">
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Conseils</div>
+                            <div class="card-sub">Pilotage financier</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 space-y-4 text-sm text-devtext2">
+                        <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                            <div class="font-semibold text-devtext1 mb-1">Revenus attendus</div>
+                            <div>Renseigne chaque échéance ou paiement prévu pour obtenir une projection claire du cash-flow projet.</div>
+                        </div>
+
+                        <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                            <div class="font-semibold text-devtext1 mb-1">Reçu ou non</div>
+                            <div>Lorsque le paiement est perçu, active “reçu” et renseigne la date correspondante.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Actions</div>
+                            <div class="card-sub">Validation de la saisie</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 flex flex-col gap-3">
+                        <button type="submit" class="btn-main justify-center">
+                            {% if object %}Enregistrer les modifications{% else %}Ajouter le revenu{% endif %}
+                        </button>
+                        <a href="javascript:history.back()" class="btn-soft justify-center">Annuler</a>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

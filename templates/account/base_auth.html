@@ -1,377 +1,1009 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block head_title %}Authentification{% endblock %}</title>
+    <title>{% block title %}Dev'Flow — Auth{% endblock %}</title>
 
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;1,9..144,300&display=swap"
+          rel="stylesheet">
+
+    <script>
+        (() => {
+            try {
+                const savedTheme = localStorage.getItem("devflow_theme");
+                const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+                const theme = savedTheme || (prefersDark ? "dark" : "light");
+                document.documentElement.setAttribute("data-theme", theme);
+            } catch (e) {
+                document.documentElement.setAttribute("data-theme", "light");
+            }
+        })();
+    </script>
+
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background:
-                radial-gradient(circle at 0% 0%, rgba(249,115,22,.16), transparent 30%),
-                radial-gradient(circle at 100% 0%, rgba(14,165,233,.11), transparent 26%),
-                radial-gradient(circle at 50% 100%, rgba(168,85,247,.08), transparent 30%),
-                linear-gradient(180deg, #f8fafc 0%, #fff7ed 100%);
-            min-height: 100vh;
-        }
-
-        .glass {
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
-        }
-
-        .panel {
-            background: rgba(255,255,255,.72);
-            border: 1px solid rgba(255,255,255,.60);
-            box-shadow: 0 24px 70px rgba(15,23,42,.10);
-        }
-
-        .soft-ring {
-            box-shadow:
-                0 0 0 1px rgba(255,255,255,.58),
-                0 14px 32px rgba(15,23,42,.06);
-        }
-
-        .premium-gradient {
-            background: linear-gradient(135deg, #f97316 0%, #ea580c 50%, #c2410c 100%);
-        }
-
-        .dark-gradient {
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 45%, #7c2d12 100%);
-        }
-
-        .field-control {
-            width: 100%;
-            border-radius: 1rem;
-            border: 1px solid rgba(226, 232, 240, 1);
-            background: rgba(255,255,255,.96);
-            padding: .95rem 1rem;
-            font-size: .95rem;
-            color: #0f172a;
-            outline: none;
-            transition: all .25s ease;
-        }
-
-        .field-control:focus {
-            border-color: #f97316;
-            box-shadow: 0 0 0 4px rgba(249,115,22,.12);
-            background: rgba(255,255,255,1);
-        }
-
-        .btn-primary {
-            display: inline-flex;
-            width: 100%;
-            align-items: center;
-            justify-content: center;
-            gap: .65rem;
-            border-radius: 1rem;
-            padding: 1rem 1.25rem;
-            font-size: .95rem;
-            font-weight: 800;
-            color: white;
-            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-            box-shadow: 0 18px 40px rgba(234,88,12,.24);
-            transition: .22s ease;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            opacity: .98;
-        }
-
-        .btn-secondary {
-            display: inline-flex;
-            width: 100%;
-            align-items: center;
-            justify-content: center;
-            gap: .65rem;
-            border-radius: 1rem;
-            padding: 1rem 1.25rem;
-            font-size: .95rem;
-            font-weight: 700;
-            color: #334155;
-            background: rgba(255,255,255,.95);
-            border: 1px solid rgba(226,232,240,1);
-            transition: .22s ease;
-        }
-
-        .btn-secondary:hover {
-            background: #fff7ed;
-            color: #9a3412;
-        }
-
-        .help-text ul,
-        .errorlist {
-            margin-top: .5rem;
-            padding-left: 1rem;
-            font-size: .85rem;
-            color: #dc2626;
-        }
-
-        label {
-            display: block;
-            margin-bottom: .45rem;
-            font-size: .88rem;
-            font-weight: 700;
-            color: #334155;
-        }
-
-        .auth-card {
-            border-radius: 2rem;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .hero-shell {
-            position: relative;
-            overflow: hidden;
-            border-radius: 2.2rem;
-            min-height: 720px;
-            box-shadow: 0 28px 80px rgba(15,23,42,.18);
-        }
-
-        .hero-shell::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background:
-                linear-gradient(140deg, rgba(15,23,42,.88) 0%, rgba(15,23,42,.55) 36%, rgba(124,45,18,.48) 100%);
-            z-index: 1;
-        }
-
-        .hero-shell::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background:
-                radial-gradient(circle at 20% 20%, rgba(251,146,60,.22), transparent 20%),
-                radial-gradient(circle at 80% 25%, rgba(255,255,255,.10), transparent 18%),
-                radial-gradient(circle at 75% 80%, rgba(14,165,233,.14), transparent 18%);
-            z-index: 2;
-        }
-
-        .hero-bg {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .hero-content {
-            position: relative;
-            z-index: 3;
-        }
-
-        .floating-badge {
-            background: rgba(255,255,255,.10);
-            border: 1px solid rgba(255,255,255,.14);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            box-shadow: 0 14px 35px rgba(0,0,0,.16);
-        }
-
-        .mini-stat {
-            background: rgba(255,255,255,.10);
-            border: 1px solid rgba(255,255,255,.12);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-        }
-
-        .auth-card::before {
-            content: "";
-            position: absolute;
-            top: -90px;
-            right: -90px;
-            width: 220px;
-            height: 220px;
-            border-radius: 999px;
-            background: radial-gradient(circle, rgba(249,115,22,.14), transparent 65%);
-            pointer-events: none;
-        }
-
-        .auth-card::after {
-            content: "";
-            position: absolute;
-            bottom: -80px;
-            left: -80px;
-            width: 220px;
-            height: 220px;
-            border-radius: 999px;
-            background: radial-gradient(circle, rgba(14,165,233,.10), transparent 65%);
-            pointer-events: none;
-        }
-
-        .brand-bar {
-            background: rgba(255,255,255,.66);
-            border: 1px solid rgba(255,255,255,.55);
-            box-shadow: 0 18px 50px rgba(15,23,42,.08);
-        }
-
-        .top-chip {
-            background: rgba(255,255,255,.82);
-            border: 1px solid rgba(255,255,255,.65);
-            box-shadow: 0 8px 25px rgba(15,23,42,.05);
-        }
-    </style>
 
     <script>
         tailwind.config = {
             theme: {
                 extend: {
+                    fontFamily: {
+                        sans: ["Plus Jakarta Sans", "sans-serif"],
+                        serif: ["Fraunces", "serif"],
+                    },
                     colors: {
-                        premium: {
-                            50: '#fff7ed',
-                            100: '#ffedd5',
-                            200: '#fed7aa',
-                            300: '#fdba74',
-                            400: '#fb923c',
-                            500: '#f97316',
-                            600: '#ea580c',
-                            700: '#c2410c',
-                            800: '#9a3412',
-                            900: '#7c2d12'
-                        }
+                        devbg: "var(--bg)",
+                        devbg2: "var(--bg2)",
+                        devbg3: "var(--bg3)",
+                        devbg4: "var(--bg4)",
+                        devborder: "var(--border)",
+                        devborder2: "var(--border2)",
+                        devtext1: "var(--text1)",
+                        devtext2: "var(--text2)",
+                        devtext3: "var(--text3)",
+                        devaccent: "var(--accent)",
+                        devaccent2: "var(--accent2)",
+                        devgreen: "var(--green)",
+                        devamber: "var(--amber)",
+                        devred: "var(--red)",
+                        devcyan: "var(--cyan)",
+                    },
+                    boxShadow: {
+                        soft: "var(--shadow)",
+                        mdsoft: "var(--shadow-md)",
+                        lgsoft: "var(--shadow-lg)",
+                        xlsoft: "var(--shadow-xl)",
+                    },
+                    borderRadius: {
+                        shell: "22px",
+                        shellsm: "14px",
                     }
                 }
             }
-        }
+        };
     </script>
-</head>
-<body class="min-h-screen text-slate-800">
-    <div class="min-h-screen px-4 py-6 lg:px-8">
-        <div class="mx-auto max-w-7xl">
 
-            <!-- Top brand bar -->
-            <div class="brand-bar glass rounded-[30px] px-5 py-5 lg:px-7">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div class="flex items-center gap-4">
-                        <div class="grid h-14 w-14 place-items-center rounded-2xl premium-gradient text-white shadow-lg">
-                            <i class="fa-solid fa-city text-xl"></i>
-                        </div>
-                        <div>
-                            <img src="{% static 'logo/logo_kaydanG_B.png' %}" width="150" alt="Logo">
-                            <p class="mt-1 text-xs font-medium text-slate-500">Gestion parcellaire & immobilière</p>
+    <style>
+        :root {
+            --bg: #f6f3ef;
+            --bg2: #ffffff;
+            --bg3: #f2ede7;
+            --bg4: #e9e1d8;
+            --border: rgba(0, 0, 0, 0.07);
+            --border2: rgba(0, 0, 0, 0.12);
+            --text1: #1d1a17;
+            --text2: #6d655d;
+            --text3: #a79f97;
+
+            --accent: #ff5a1f;
+            --accent2: #ff8758;
+            --accent3: #ffb08a;
+            --accent-bg: rgba(255, 90, 31, 0.10);
+
+            --green: #34A853;
+            --amber: #E8950A;
+            --red: #E8453C;
+            --cyan: #0EA5C9;
+
+            --green-bg: rgba(52, 168, 83, 0.10);
+            --amber-bg: rgba(232, 149, 10, 0.10);
+            --red-bg: rgba(232, 69, 60, 0.10);
+            --cyan-bg: rgba(14, 165, 201, 0.10);
+
+            --shadow: 0 6px 18px rgba(16, 24, 40, 0.06);
+            --shadow-md: 0 12px 30px rgba(16, 24, 40, 0.08);
+            --shadow-lg: 0 18px 50px rgba(16, 24, 40, 0.12);
+            --shadow-xl: 0 30px 80px rgba(16, 24, 40, 0.18);
+        }
+
+        [data-theme="dark"] {
+            --bg: #11100f;
+            --bg2: #181715;
+            --bg3: #22201e;
+            --bg4: #2b2825;
+            --border: rgba(255, 255, 255, 0.08);
+            --border2: rgba(255, 255, 255, 0.14);
+            --text1: #f5efe8;
+            --text2: #a59c94;
+            --text3: #615952;
+
+            --accent-bg: rgba(255, 90, 31, 0.16);
+
+            --green-bg: rgba(52, 168, 83, 0.14);
+            --amber-bg: rgba(232, 149, 10, 0.14);
+            --red-bg: rgba(232, 69, 60, 0.14);
+            --cyan-bg: rgba(14, 165, 201, 0.14);
+
+            --shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+            --shadow-md: 0 18px 40px rgba(0, 0, 0, 0.30);
+            --shadow-lg: 0 28px 60px rgba(0, 0, 0, 0.38);
+            --shadow-xl: 0 40px 90px rgba(0, 0, 0, 0.48);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            min-height: 100%;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            color: var(--text1);
+            background: var(--bg);
+            overflow-x: hidden;
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+
+        .auth-shell {
+            min-height: 100vh;
+            position: relative;
+            isolation: isolate;
+            background: radial-gradient(circle at 10% 10%, rgba(255, 90, 31, .08), transparent 28%),
+            radial-gradient(circle at 90% 20%, rgba(14, 165, 201, .08), transparent 24%),
+            radial-gradient(circle at 80% 85%, rgba(255, 176, 138, .10), transparent 20%),
+            var(--bg);
+        }
+
+        .auth-shell::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background-image: linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+            background-size: 34px 34px;
+            opacity: .25;
+            mask-image: radial-gradient(circle at center, black 30%, transparent 85%);
+            pointer-events: none;
+        }
+
+        [data-theme="dark"] .auth-shell::before {
+            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+
+        .orb {
+            position: absolute;
+            border-radius: 999px;
+            filter: blur(28px);
+            pointer-events: none;
+            opacity: .9;
+            animation: floatOrb 10s ease-in-out infinite;
+        }
+
+        .orb-1 {
+            width: 220px;
+            height: 220px;
+            top: 7%;
+            left: 6%;
+            background: rgba(255, 90, 31, .14);
+        }
+
+        .orb-2 {
+            width: 180px;
+            height: 180px;
+            bottom: 12%;
+            right: 7%;
+            background: rgba(14, 165, 201, .12);
+            animation-delay: 1.2s;
+        }
+
+        .orb-3 {
+            width: 150px;
+            height: 150px;
+            top: 38%;
+            right: 34%;
+            background: rgba(52, 168, 83, .10);
+            animation-delay: .8s;
+        }
+
+        @keyframes floatOrb {
+            0%, 100% {
+                transform: translate(0, 0);
+            }
+            50% {
+                transform: translate(8px, -16px);
+            }
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 50;
+            width: 46px;
+            height: 46px;
+            border-radius: 16px;
+            border: 1px solid var(--border2);
+            background: rgba(255, 255, 255, .55);
+            backdrop-filter: blur(16px);
+            box-shadow: var(--shadow);
+            color: var(--text2);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: .2s ease;
+        }
+
+        [data-theme="dark"] .theme-toggle {
+            background: rgba(24, 23, 21, .75);
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-2px);
+            color: var(--text1);
+        }
+
+        .auth-container {
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: 1.05fr .95fr;
+            position: relative;
+            z-index: 2;
+        }
+
+        .visual-side {
+            position: relative;
+            padding: 28px;
+            display: flex;
+            align-items: stretch;
+        }
+
+        .visual-card {
+            position: relative;
+            width: 100%;
+            min-height: calc(100vh - 56px);
+            border-radius: 30px;
+            overflow: hidden;
+            box-shadow: var(--shadow-xl);
+            border: 1px solid rgba(255, 255, 255, .22);
+            background: linear-gradient(180deg, rgba(0, 0, 0, .08), rgba(0, 0, 0, .48)),
+            url("{% static 'img/branding/auth-cover.jpg' %}") center/cover no-repeat;
+        }
+
+        .visual-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255, 90, 31, .16), transparent 34%),
+            linear-gradient(315deg, rgba(14, 165, 201, .14), transparent 34%);
+            pointer-events: none;
+        }
+
+        .visual-card::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: url("{% static 'img/branding/1179.jpg' %}") center/cover no-repeat;
+            opacity: .10;
+            mix-blend-mode: screen;
+            pointer-events: none;
+        }
+
+        .visual-content {
+            position: relative;
+            z-index: 2;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 34px;
+            color: #fff;
+        }
+
+        .brand-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            width: fit-content;
+            padding: 14px 18px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, .12);
+            border: 1px solid rgba(255, 255, 255, .18);
+            backdrop-filter: blur(14px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+        }
+
+        .brand-logo-img {
+            width: 120px;
+            height: 46px;
+            border-radius: 14px;
+            object-fit: cover;
+            background: rgba(255, 255, 255, .9);
+            padding: 6px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, .12);
+        }
+
+        .brand-name {
+            font-family: 'Fraunces', serif;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: -.4px;
+        }
+
+        .brand-sub {
+            margin-top: 4px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, .78);
+        }
+
+        .visual-hero {
+            max-width: 620px;
+        }
+
+        .hero-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .12);
+            border: 1px solid rgba(255, 255, 255, .16);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 18px;
+        }
+
+        .hero-title {
+            font-family: 'Fraunces', serif;
+            font-size: clamp(36px, 4vw, 60px);
+            line-height: 1.02;
+            letter-spacing: -1.8px;
+            margin: 0;
+        }
+
+        .hero-text {
+            margin-top: 18px;
+            font-size: 15px;
+            line-height: 1.8;
+            color: rgba(255, 255, 255, .82);
+            max-width: 560px;
+        }
+
+        .floating-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 26px;
+        }
+
+        .metric-card {
+            padding: 16px 16px 14px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, .12);
+            border: 1px solid rgba(255, 255, 255, .16);
+            backdrop-filter: blur(16px);
+            box-shadow: 0 14px 30px rgba(0, 0, 0, .16);
+            animation: riseIn .8s ease both;
+        }
+
+        .metric-card:nth-child(2) {
+            animation-delay: .08s;
+        }
+
+        .metric-card:nth-child(3) {
+            animation-delay: .16s;
+        }
+
+        .metric-label {
+            font-size: 11px;
+            color: rgba(255, 255, 255, .70);
+        }
+
+        .metric-value {
+            margin-top: 8px;
+            font-family: 'Fraunces', serif;
+            font-size: 28px;
+            line-height: 1;
+            letter-spacing: -1px;
+        }
+
+        .metric-sub {
+            margin-top: 8px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, .74);
+        }
+
+        .signin-side {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 28px;
+        }
+
+        .form-wrap {
+            width: 100%;
+            max-width: 520px;
+            position: relative;
+        }
+
+        .company-logo-top {
+            display: none;
+            justify-content: center;
+            margin-bottom: 18px;
+        }
+
+        .company-logo-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, .55);
+            border: 1px solid rgba(255, 255, 255, .36);
+            backdrop-filter: blur(16px);
+            box-shadow: var(--shadow);
+        }
+
+        [data-theme="dark"] .company-logo-badge {
+            background: rgba(24, 23, 21, .72);
+            border-color: rgba(255, 255, 255, .08);
+        }
+
+        .company-logo-top img {
+            width: 140px;
+            height: 40px;
+            border-radius: 12px;
+            object-fit: contain;
+            background: #fff;
+            padding: 5px;
+        }
+
+        .company-logo-name {
+            font-family: 'Fraunces', serif;
+            font-size: 21px;
+            letter-spacing: -.4px;
+            color: var(--text1);
+        }
+
+        .auth-card {
+            position: relative;
+            border-radius: 30px;
+            overflow: hidden;
+            padding: 30px;
+            background: rgba(255, 255, 255, .60);
+            border: 1px solid rgba(255, 255, 255, .40);
+            backdrop-filter: blur(20px);
+            box-shadow: var(--shadow-xl);
+            animation: riseIn .75s ease both;
+        }
+
+        [data-theme="dark"] .auth-card {
+            background: rgba(24, 23, 21, .80);
+            border-color: rgba(255, 255, 255, .08);
+        }
+
+        .auth-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at top left, rgba(255, 90, 31, .10), transparent 26%),
+            radial-gradient(circle at bottom right, rgba(14, 165, 201, .07), transparent 28%);
+            pointer-events: none;
+        }
+
+        .auth-card-inner {
+            position: relative;
+            z-index: 2;
+        }
+
+        .auth-mini-logo {
+            width: 162px;
+            height: 62px;
+            border-radius: 18px;
+            object-fit: contain;
+            background: linear-gradient(135deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .82));
+            padding: 10px;
+            box-shadow: 0 16px 28px rgba(255, 90, 31, .14);
+            border: 1px solid rgba(255, 255, 255, .55);
+            margin-bottom: 18px;
+        }
+
+        .auth-eyebrow {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1.15px;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+
+        .auth-title {
+            margin-top: 10px;
+            font-family: 'Fraunces', serif;
+            font-size: 36px;
+            line-height: 1.05;
+            letter-spacing: -1.15px;
+            color: var(--text1);
+        }
+
+        .auth-subtitle {
+            margin-top: 12px;
+            color: var(--text2);
+            font-size: 14px;
+            line-height: 1.75;
+            max-width: 420px;
+        }
+
+        .auth-form {
+            margin-top: 28px;
+        }
+
+        .field-group {
+            margin-bottom: 16px;
+        }
+
+        .field-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text2);
+        }
+
+        .input-shell {
+            position: relative;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            color: var(--text3);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .auth-input {
+            width: 100%;
+            height: 58px;
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, .84);
+            color: var(--text1);
+            padding: 0 18px 0 48px;
+            outline: none;
+            transition: .2s ease;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3);
+        }
+
+        [data-theme="dark"] .auth-input {
+            background: rgba(255, 255, 255, .03);
+            box-shadow: none;
+        }
+
+        .auth-input::placeholder {
+            color: var(--text3);
+        }
+
+        .auth-input:focus {
+            border-color: var(--accent2);
+            background: var(--bg2);
+            box-shadow: 0 0 0 4px var(--accent-bg);
+        }
+
+        .auth-check-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin: 6px 0 20px;
+        }
+
+        .check-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text2);
+        }
+
+        .check-wrap input {
+            accent-color: var(--accent);
+        }
+
+        .link-inline {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 700;
+            transition: .15s ease;
+        }
+
+        .link-inline:hover {
+            color: var(--accent2);
+        }
+
+        .btn-auth {
+            width: 100%;
+            height: 58px;
+            border: none;
+            border-radius: 18px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: #fff;
+            font-weight: 800;
+            font-size: 14px;
+            letter-spacing: -.2px;
+            cursor: pointer;
+            box-shadow: 0 16px 34px rgba(255, 90, 31, .24);
+            transition: .2s ease;
+        }
+
+        .btn-auth:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 22px 38px rgba(255, 90, 31, .28);
+        }
+
+        .btn-auth:active {
+            transform: translateY(0);
+        }
+
+        .auth-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 22px 0 18px;
+            color: var(--text3);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .auth-divider::before,
+        .auth-divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .auth-foot {
+            margin-top: 18px;
+            text-align: center;
+            color: var(--text2);
+            font-size: 13px;
+        }
+
+        .msg-list {
+            display: grid;
+            gap: 10px;
+            margin: 0 0 18px;
+        }
+
+        .msg-item {
+            border-radius: 16px;
+            padding: 13px 14px;
+            font-size: 13px;
+            line-height: 1.55;
+            border: 1px solid transparent;
+        }
+
+        .msg-success {
+            background: var(--green-bg);
+            color: var(--green);
+            border-color: rgba(52, 168, 83, .16);
+        }
+
+        .msg-error {
+            background: var(--red-bg);
+            color: var(--red);
+            border-color: rgba(232, 69, 60, .16);
+        }
+
+        .msg-warning {
+            background: var(--amber-bg);
+            color: var(--amber);
+            border-color: rgba(232, 149, 10, .16);
+        }
+
+        .msg-info {
+            background: var(--accent-bg);
+            color: var(--accent);
+            border-color: rgba(255, 90, 31, .16);
+        }
+
+        .errorlist {
+            list-style: none;
+            padding: 0;
+            margin: 8px 0 0;
+            display: grid;
+            gap: 5px;
+        }
+
+        .errorlist li {
+            font-size: 12px;
+            color: var(--red);
+        }
+
+        .auth-bottom-note {
+            margin-top: 22px;
+            text-align: center;
+            font-size: 11.5px;
+            color: var(--text3);
+        }
+
+        .floating-chip {
+            position: absolute;
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 11px;
+            font-weight: 700;
+            background: rgba(255, 255, 255, .62);
+            border: 1px solid rgba(255, 255, 255, .42);
+            backdrop-filter: blur(14px);
+            box-shadow: var(--shadow-md);
+            color: var(--text1);
+            animation: chipFloat 6s ease-in-out infinite;
+        }
+
+        .chip-a {
+            top: 10%;
+            right: 2%;
+        }
+
+        .chip-b {
+            bottom: 13%;
+            left: 2%;
+            animation-delay: 1s;
+        }
+
+        .chip-c {
+            top: 52%;
+            right: -1%;
+            animation-delay: 2s;
+        }
+
+        @keyframes chipFloat {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-8px);
+            }
+        }
+
+        @keyframes riseIn {
+            from {
+                opacity: 0;
+                transform: translateY(18px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 1180px) {
+            .auth-container {
+                grid-template-columns: 1fr;
+            }
+
+            .visual-side {
+                min-height: 420px;
+                padding-bottom: 10px;
+            }
+
+            .visual-card {
+                min-height: 420px;
+            }
+
+            .signin-side {
+                padding-top: 10px;
+                padding-bottom: 34px;
+            }
+
+            .company-logo-top {
+                display: flex;
+            }
+        }
+
+        @media (max-width: 860px) {
+            .visual-side {
+                padding: 18px 18px 8px;
+            }
+
+            .signin-side {
+                padding: 18px;
+            }
+
+            .visual-content {
+                padding: 22px;
+            }
+
+            .floating-metrics {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-title {
+                font-size: 38px;
+            }
+
+            .auth-card {
+                padding: 24px;
+                border-radius: 24px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .theme-toggle {
+                top: 14px;
+                right: 14px;
+                width: 42px;
+                height: 42px;
+                border-radius: 14px;
+            }
+
+            .visual-side {
+                min-height: 320px;
+            }
+
+            .visual-card {
+                min-height: 320px;
+                border-radius: 22px;
+            }
+
+            .hero-title {
+                font-size: 30px;
+            }
+
+            .hero-text {
+                font-size: 14px;
+            }
+
+            .brand-badge {
+                padding: 12px 14px;
+            }
+
+            .auth-title {
+                font-size: 30px;
+            }
+
+            .auth-mini-logo {
+                width: 56px;
+                height: 56px;
+                border-radius: 16px;
+            }
+
+            .floating-chip {
+                display: none;
+            }
+        }
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="auth-shell" x-data="{ theme: document.documentElement.getAttribute('data-theme') || 'light' }">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <button
+            type="button"
+            class="theme-toggle"
+            @click="
+            theme = theme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('devflow_theme', theme);
+        "
+            aria-label="Changer le thème"
+            title="Changer le thème"
+    >
+        <svg x-show="theme === 'light'" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+                  d="M12 3v2.25M12 18.75V21M4.97 4.97l1.59 1.59M17.44 17.44l1.59 1.59M3 12h2.25M18.75 12H21M4.97 19.03l1.59-1.59M17.44 6.56l1.59-1.59M15.75 12A3.75 3.75 0 1 1 8.25 12a3.75 3.75 0 0 1 7.5 0Z"/>
+        </svg>
+        <svg x-show="theme === 'dark'" x-cloak xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="currentColor"
+             viewBox="0 0 24 24">
+            <path d="M21.752 15.002A9.718 9.718 0 0 1 12.75 21C7.365 21 3 16.635 3 11.25c0-4.054 2.476-7.532 5.998-9.002a.75.75 0 0 1 .972.972A8.25 8.25 0 0 0 20.78 14.03a.75.75 0 0 1 .972.972Z"/>
+        </svg>
+    </button>
+
+    <div class="auth-container">
+        <section class="visual-side">
+            <div class="visual-card">
+                <div class="visual-content">
+                    <div>
+                        <div class="brand-badge">
+                        {% if request.user.is_authenticated and request.user.profile.workspace.logo %}
+    <img src="{{ request.user.profile.workspace.logo.url }}" alt="Logo" class="brand-logo-img">
+{% else %}
+    <img src="{% static 'img/logo_datarium-black.png' %}" alt="Logo" class="brand-logo-img">
+{% endif %}
+                        
+                       
+                            <div>
+                                <div class="brand-name">Dev'Flow</div>
+                                <div class="brand-sub">Project workspace intelligence</div>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="flex flex-wrap items-center gap-2">
-                        <div class="top-chip rounded-2xl px-4 py-2 text-sm font-medium text-slate-600">
-                            Sécurité des accès
-                        </div>
-                        <div class="top-chip rounded-2xl px-4 py-2 text-sm font-medium text-slate-600">
-                            Authentification sécurisée
+                    <div class="visual-hero">
+                        <div class="hero-kicker">Pilotage · Exécution · Visibilité</div>
+                        <h1 class="hero-title">
+                            Donnez à vos projets un espace de travail plus premium, plus stratégique, plus vivant.
+                        </h1>
+                        <p class="hero-text">
+                            Centralisez vos équipes, vos livrables, vos sprints et vos décisions dans une expérience
+                            moderne,
+                            élégante et orientée performance.
+                        </p>
+
+                        <div class="floating-metrics">
+                            <div class="metric-card">
+                                <div class="metric-label">Projets suivis</div>
+                                <div class="metric-value">128+</div>
+                                <div class="metric-sub">Vision consolidée des activités</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Vélocité moyenne</div>
+                                <div class="metric-value">+18%</div>
+                                <div class="metric-sub">Progression continue par sprint</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Équipes actives</div>
+                                <div class="metric-value">24</div>
+                                <div class="metric-sub">Produit, mobile, backend, ops</div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+        </section>
 
-            <!-- Main -->
-            <div class="mt-6 grid min-h-[calc(100vh-170px)] items-center gap-6 xl:grid-cols-[1.18fr_.82fr]">
-
-                <!-- Hero -->
-                <div class="hero-shell hidden xl:block">
-                    <img
-                        src="{% static 'VILLA-6pieces.jpg' %}"
-                        alt="Programme immobilier"
-                        class="hero-bg"
-                    >
-
-                    <div class="hero-content flex h-full flex-col justify-between p-10 text-white">
-                        <div>
-                            <div class="floating-badge inline-flex items-center gap-3 rounded-full px-5 py-3 text-sm font-semibold text-white/95">
-                                <span class="inline-block h-2.5 w-2.5 rounded-full bg-orange-400"></span>
-                                Espace sécurisé • Plateforme immobilière premium
-                            </div>
-
-                            <h1 class="mt-8 max-w-3xl text-5xl font-black leading-tight tracking-tight">
-                                Plateforme de Gestion des Programmes Immobiliers
-                            </h1>
-
-                            <p class="mt-5 max-w-2xl text-base leading-8 text-white/80">
-                                Accédez à un environnement professionnel dédié au pilotage des projets,
-                                programmes, parcelles, réservations, ventes et chantiers à travers une
-                                interface centralisée, moderne et orientée décision.
-                            </p>
-
-                            <div class="mt-8 flex flex-wrap gap-3">
-                                <div class="floating-badge rounded-2xl px-5 py-3 text-sm font-semibold text-white/90">
-                                    <i class="fa-solid fa-draw-polygon mr-2"></i>
-                                    Parcelles & lots
-                                </div>
-                                <div class="floating-badge rounded-2xl px-5 py-3 text-sm font-semibold text-white/90">
-                                    <i class="fa-solid fa-handshake mr-2"></i>
-                                    Clients & ventes
-                                </div>
-                                <div class="floating-badge rounded-2xl px-5 py-3 text-sm font-semibold text-white/90">
-                                    <i class="fa-solid fa-helmet-safety mr-2"></i>
-                                    Suivi chantier
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-3 gap-4">
-                            <div class="mini-stat rounded-[24px] p-5">
-                                <p class="text-xs uppercase tracking-[0.18em] text-white/60">Fonciers</p>
-                                <p class="mt-2 text-xl font-bold">Parcelles & lots</p>
-                                <p class="mt-1 text-sm text-white/70">Inventaire structuré</p>
-                            </div>
-                            <div class="mini-stat rounded-[24px] p-5">
-                                <p class="text-xs uppercase tracking-[0.18em] text-white/60">Commercial</p>
-                                <p class="mt-2 text-xl font-bold">Clients & ventes</p>
-                                <p class="mt-1 text-sm text-white/70">Pilotage opérationnel</p>
-                            </div>
-                            <div class="mini-stat rounded-[24px] p-5">
-                                <p class="text-xs uppercase tracking-[0.18em] text-white/60">Construction</p>
-                                <p class="mt-2 text-xl font-bold">Suivi chantier</p>
-                                <p class="mt-1 text-sm text-white/70">Progression & photos</p>
-                            </div>
-                        </div>
+        <section class="signin-side">
+            <div class="form-wrap">
+                <div class="company-logo-top">
+                    <div class="company-logo-badge">
+                        {% if request.user.workspace and request.user.workspace.logo %}
+                            <img src="{{ request.user.workspace.logo.url }}" alt="Logo" class="brand-logo-img">
+                        {% else %}
+                            <img src="{% static 'img/logo_datarium-black.png' %}" alt="Logo" class="brand-logo-img">
+                        {% endif %}
+                        <div class="company-logo-name">Dev'Flow</div>
                     </div>
                 </div>
 
-                <!-- Auth card -->
-                <div class="panel glass auth-card mx-auto w-full max-w-2xl p-6 md:p-8 lg:p-10">
-                    <div class="relative z-10">
-                        <div class="mb-8">
-                            <div class="inline-flex items-center gap-2 rounded-full bg-premium-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.20em] text-premium-700">
-                                <span class="inline-block h-2 w-2 rounded-full bg-premium-500"></span>
-                                Accès utilisateur
-                            </div>
-                        </div>
+                <div class="floating-chip chip-a">Live sprint tracking</div>
+                <div class="floating-chip chip-b">AI workspace</div>
+                <div class="floating-chip chip-c">Team orchestration</div>
 
-                        {% if messages %}
-                            <div class="mb-6 space-y-3">
-                                {% for message in messages %}
-                                    <div class="rounded-2xl border px-4 py-3 text-sm
-                                        {% if message.tags == 'error' %}
-                                            border-rose-200 bg-rose-50 text-rose-700
-                                        {% elif message.tags == 'success' %}
-                                            border-emerald-200 bg-emerald-50 text-emerald-700
-                                        {% else %}
-                                            border-sky-200 bg-sky-50 text-sky-700
-                                        {% endif %}
-                                    ">
-                                        {{ message }}
-                                    </div>
-                                {% endfor %}
-                            </div>
+                <div class="auth-card">
+                    <div class="auth-card-inner">
+                        {% if request.user.workspace and request.user.workspace.logo %}
+                            <img src="{{ request.user.workspace.logo.url }}" alt="Logo" class="auth-mini-logo">
+                        {% else %}
+                            <img src="{% static 'img/logo_datarium-black.png' %}" alt="Logo" class="auth-mini-logo">
                         {% endif %}
 
-                        {% block content %}{% endblock %}
+                        {% block auth_content %}{% endblock %}
+
+                        <div class="auth-bottom-note">
+                            Expérience sécurisée · Design premium · Accès centralisé
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
     </div>
+</div>
+
+{% block extra_body %}{% endblock %}
 </body>
 </html>

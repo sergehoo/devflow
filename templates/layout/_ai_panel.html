@@ -1,10 +1,32 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
-
-</body>
-</html>
+<div class="ai-panel" id="aiPanel">
+  <div class="ai-panel-head">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--cyan));display:flex;align-items:center;justify-content:center">
+        <div class="ai-pulse" style="background:#fff"></div>
+      </div>
+      <div>
+        <div style="font-size:13.5px;font-weight:700;color:var(--text1)">DevFlow AI</div>
+        <div style="font-size:10.5px;color:var(--green);display:flex;align-items:center;gap:4px"><span class="sprint-pip" style="width:5px;height:5px;animation:breathe 2s ease-in-out infinite"></span>En ligne</div>
+      </div>
+    </div>
+    <button class="btn-soft" style="font-size:11px" onclick="closeAI()">✕ Fermer</button>
+  </div>
+  <div class="ai-messages" id="aiMessages">
+    <div class="ai-msg bot">
+      <div class="ai-bubble">👋 Bonjour Alexandre ! Je suis DevFlow AI.<br><br>Je vois que le <strong>Sprint 14</strong> est en cours avec 9 jours restants. La vélocité est à <strong>62%</strong> — légèrement en dessous de la cible.<br><br>⚠️ <strong>Mobile App v3</strong> est en retard. Voulez-vous que j'analyse les risques ?</div>
+      <div class="ai-time">Maintenant</div>
+    </div>
+  </div>
+  <div class="ai-suggestion">
+    <div class="ai-chip" onclick="sendAI(this.textContent)">📊 Analyse du sprint</div>
+    <div class="ai-chip" onclick="sendAI(this.textContent)">⚠️ Projets à risque</div>
+    <div class="ai-chip" onclick="sendAI(this.textContent)">📋 Générer un rapport</div>
+    <div class="ai-chip" onclick="sendAI(this.textContent)">👥 Charge équipe</div>
+  </div>
+  <div class="ai-input-wrap">
+    <textarea class="ai-input" id="aiInput" rows="1" placeholder="Poser une question…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIMsg()}"></textarea>
+    <button class="ai-send" onclick="sendAIMsg()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>

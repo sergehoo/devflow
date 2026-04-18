@@ -1,0 +1,103 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Éléments roadmap{% endblock %}
+{% block page_title %}Éléments roadmap{% endblock %}
+{% block breadcrumb %}Projet · Roadmap items{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+                <h1 class="font-serif text-3xl text-[var(--text1)]">Éléments de roadmap</h1>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-[var(--text2)]">
+                    Liste transverse des initiatives, jalons et livrables alignés sur les roadmaps de l’espace de travail.
+                </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'roadmap_item_create' %}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                    Nouvel élément
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Total</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--text1)]">{{ stats.total|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Planifiés</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--text1)]">{{ stats.planned|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">En cours</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--accent)]">{{ stats.in_progress|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Terminés</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--green)]">{{ stats.done|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">À risque</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--red)]">{{ stats.at_risk|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Roadmaps</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--text1)]">{{ stats.roadmaps_count|default:0 }}</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-[var(--border)] text-left text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                        <th class="py-3">Titre</th>
+                        <th class="py-3">Roadmap</th>
+                        <th class="py-3">Projet</th>
+                        <th class="py-3">Jalon</th>
+                        <th class="py-3">Statut</th>
+                        <th class="py-3">Période</th>
+                        <th class="py-3 text-right">Ligne</th>
+                        <th class="py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for roadmap_item in object_list %}
+                    <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/30">
+                        <td class="py-3">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex h-3 w-3 rounded-full" style="background: {{ roadmap_item.color }};"></span>
+                                <span class="font-medium text-[var(--text1)]">{{ roadmap_item.title }}</span>
+                            </div>
+                        </td>
+                        <td class="py-3 text-[var(--text2)]">{{ roadmap_item.roadmap.name }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ roadmap_item.project|default:"—" }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ roadmap_item.milestone|default:"—" }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ roadmap_item.get_status_display }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ roadmap_item.start_date|date:"d/m/Y" }} → {{ roadmap_item.end_date|date:"d/m/Y" }}</td>
+                        <td class="py-3 text-right text-[var(--text2)]">{{ roadmap_item.row }}</td>
+                        <td class="py-3 text-right">
+                            <div class="flex justify-end gap-2">
+                                <a href="{% url 'roadmap_item_detail' roadmap_item.pk %}" class="text-xs font-semibold text-[var(--accent)] hover:underline">Détail</a>
+                                <a href="{% url 'roadmap_item_update' roadmap_item.pk %}" class="text-xs font-semibold text-[var(--text2)] hover:text-[var(--text1)] hover:underline">Modifier</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="py-8 text-center text-[var(--text3)]">Aucun élément de roadmap.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

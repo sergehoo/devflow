@@ -1,0 +1,136 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Insight IA — {{ item.title }}{% endblock %}
+{% block page_title %}{{ item.title }}{% endblock %}
+{% block breadcrumb %}Analytics · Insight IA{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <h1 class="font-serif text-3xl text-[var(--text1)]">{{ item.title }}</h1>
+
+                    {% if item.severity == "INFO" %}
+                    <span class="inline-flex rounded-full bg-[var(--cyan-bg)] px-3 py-1 text-xs font-semibold text-[var(--cyan)]">Info</span>
+                    {% elif item.severity == "LOW" %}
+                    <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">Faible</span>
+                    {% elif item.severity == "MEDIUM" %}
+                    <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">Moyen</span>
+                    {% elif item.severity == "HIGH" %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">Élevé</span>
+                    {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">Critique</span>
+                    {% endif %}
+
+                    <span class="inline-flex rounded-full border border-[var(--border)] bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                        {{ item.get_insight_type_display }}
+                    </span>
+                </div>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--text3)]">
+                    {% if item.project %}<span>{{ item.project.name }}</span>{% endif %}
+                    {% if item.sprint %}<span>• {{ item.sprint.name }}</span>{% endif %}
+                    {% if item.task %}<span>• {{ item.task.title }}</span>{% endif %}
+                    <span>• {{ item.detected_at|date:"d/m/Y H:i" }}</span>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'ai_insight_update' item.pk %}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                    Modifier
+                </a>
+
+                <form method="post" action="{% url 'ai_insight_dismiss' item.pk %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                            class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)]">
+                        Masquer
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Type</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.get_insight_type_display }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Sévérité</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.get_severity_display }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Score</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.score }}/100</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Lecture</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{% if item.is_read %}Lu{% else %}Non lu{% endif %}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Détection</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.detected_at|date:"d/m/Y H:i" }}</div>
+            </div>
+        </div>
+
+        <div class="mt-5">
+            <div class="mb-2 flex items-center justify-between text-sm">
+                <span class="font-medium text-[var(--text2)]">Importance analytique</span>
+                <span class="font-semibold text-[var(--text1)]">{{ item.score }}%</span>
+            </div>
+            <div class="h-2 overflow-hidden rounded-full bg-[var(--bg3)]">
+                <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))]" style="width: {{ item.score }}%"></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <h2 class="text-lg font-semibold text-[var(--text1)]">Résumé analytique</h2>
+        <div class="mt-4 text-sm leading-7 text-[var(--text2)]">
+            {{ item.summary|linebreaks }}
+        </div>
+    </section>
+
+    {% if item.recommendation %}
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <h2 class="text-lg font-semibold text-[var(--text1)]">Recommandation IA</h2>
+        <div class="mt-4 rounded-2xl border border-[var(--accent-bg)] bg-[var(--accent-bg)]/40 p-5 text-sm leading-7 text-[var(--text2)]">
+            {{ item.recommendation|linebreaks }}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="mb-5">
+            <h2 class="text-lg font-semibold text-[var(--text1)]">Insights associés</h2>
+            <p class="mt-1 text-xs text-[var(--text3)]">Même contexte projet, sprint, tâche ou type d’insight.</p>
+        </div>
+
+        <div class="space-y-3">
+            {% for insight in related_insights %}
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="font-semibold text-[var(--text1)]">{{ insight.title }}</div>
+                        <div class="mt-1 text-sm text-[var(--text2)]">
+                            {{ insight.get_insight_type_display }} · {{ insight.get_severity_display }}
+                        </div>
+                    </div>
+                    <a href="{% url 'ai_insight_detail' insight.pk %}" class="text-xs font-semibold text-[var(--accent)] hover:underline">
+                        Voir
+                    </a>
+                </div>
+            </div>
+            {% empty %}
+            <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                Aucun insight lié trouvé.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

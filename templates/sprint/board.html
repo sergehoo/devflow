@@ -1,10 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends 'devflow/layout/base.html' %}
 
-</body>
-</html>
+{% block title %}DevFlow — Board Sprint{% endblock %}
+{% block page_title %}Board Sprint{% endblock %}
+{% block breadcrumb %}Sprint · Kanban interactif{% endblock %}
+
+{% block content %}
+    {% include 'devflow/partials/_sprint_banner.html' %}
+    {% include 'devflow/partials/_kanban_board.html' %}
+{% endblock %}

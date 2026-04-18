@@ -1,0 +1,42 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Supprimer {{ object.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <div class="p-6 lg:p-8 border-b border-devborder bg-[rgba(232,69,60,0.06)]">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devred">Suppression</p>
+            <h1 class="mt-2 text-3xl font-serif text-devtext1">Supprimer ce workspace ?</h1>
+            <p class="mt-2 text-sm text-devtext2">
+                Cette action supprimera définitivement le workspace <strong>{{ object.name }}</strong>.
+            </p>
+        </div>
+
+        <div class="p-6 lg:p-8">
+            <div class="rounded-[18px] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                Vérifie qu’aucune dépendance critique ne repose encore sur cet espace de travail.
+            </div>
+
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="rounded-[16px] border border-devborder bg-devbg3 p-4">
+                    <div class="text-xs uppercase tracking-wide text-devtext3">Workspace</div>
+                    <div class="mt-2 text-base font-semibold text-devtext1">{{ object.name }}</div>
+                </div>
+                <div class="rounded-[16px] border border-devborder bg-devbg3 p-4">
+                    <div class="text-xs uppercase tracking-wide text-devtext3">Slug</div>
+                    <div class="mt-2 text-base font-semibold text-devtext1">{{ object.slug }}</div>
+                </div>
+            </div>
+
+            <form method="post" class="mt-8 flex flex-wrap justify-end gap-3">
+                {% csrf_token %}
+                <a href="{% url 'workspace_detail' object.pk %}" class="btn-soft">Annuler</a>
+                <button type="submit" class="inline-flex items-center gap-2 px-5 py-3 rounded-[10px] bg-[var(--red)] text-white font-semibold shadow-md hover:opacity-95 transition">
+                    Confirmer la suppression
+                </button>
+            </form>
+        </div>
+    </section>
+</div>
+{% endblock %}

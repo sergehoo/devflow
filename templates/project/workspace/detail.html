@@ -1,0 +1,273 @@
+{% extends "layout/base.html" %}
+{% load static %}
+
+{% block title %}{{ object.name }} — Workspace{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Hero -->
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <div class="p-6 lg:p-8 bg-gradient-to-r from-[var(--accent-bg)] to-[var(--cyan-bg)]">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                <div class="flex items-center gap-4">
+                    {% if object.logo %}
+                        <img src="{{ object.logo.url }}" alt="{{ object.name }}" class="w-20 h-20 rounded-[20px] object-cover border border-white/60 shadow-md">
+                    {% else %}
+                        <div class="w-20 h-20 rounded-[20px] bg-white text-devaccent flex items-center justify-center text-2xl font-bold shadow-md">
+                            {{ object.name|slice:":2"|upper }}
+                        </div>
+                    {% endif %}
+
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">Workspace</p>
+                        <h1 class="mt-2 text-3xl lg:text-4xl font-serif text-devtext1">{{ object.name }}</h1>
+                        <p class="mt-2 text-sm text-devtext2 max-w-2xl">
+                            {{ object.description|default:"Aucune description renseignée pour ce workspace." }}
+                        </p>
+
+                        <div class="mt-4 flex flex-wrap gap-2">
+                            {% if object.is_archived %}
+                                <span class="badge b-gray">Archivé</span>
+                            {% elif object.is_active %}
+                                <span class="badge b-green">Actif</span>
+                            {% else %}
+                                <span class="badge b-amber">Inactif</span>
+                            {% endif %}
+
+                            <span class="badge b-purple">{{ object.timezone }}</span>
+                            {% if object.quarter_label %}
+                                <span class="badge b-cyan">{{ object.quarter_label }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <a href="{% url 'workspace_update' object.pk %}" class="btn-main">Modifier</a>
+                    <a href="{% url 'workspace_list' %}" class="btn-soft">Retour liste</a>
+                    <a href="{% url 'workspace_delete' object.pk %}" class="btn-soft">Supprimer</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- KPIs -->
+    <section class="stat-grid">
+        <article class="stat-card">
+            <div class="stat-icon-wrap si-grape"></div>
+            <div class="stat-val">{{ object.memberships_count }}</div>
+            <div class="stat-lbl">Membres</div>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-icon-wrap si-sage"><fa fa-teams></fa></div>
+            <div class="stat-val">{{ object.teams_count }}</div>
+            <div class="stat-lbl">Équipes</div>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-icon-wrap si-amber"></div>
+            <div class="stat-val">{{ object.projects_count }}</div>
+            <div class="stat-lbl">Projets</div>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-icon-wrap si-sky"></div>
+            <div class="stat-val">{{ integrations|length }}</div>
+            <div class="stat-lbl">Intégrations</div>
+        </article>
+    </section>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <!-- Left -->
+        <div class="xl:col-span-2 space-y-6">
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Informations générales</div>
+                        <div class="card-sub">Résumé principal du workspace</div>
+                    </div>
+                </div>
+                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Nom</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ object.name }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Slug</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ object.slug }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Owner</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ object.owner }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Timezone</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ object.timezone }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Quarter</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ object.quarter_label|default:"—" }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Statut</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">
+                            {% if object.is_archived %}Archivé{% elif object.is_active %}Actif{% else %}Inactif{% endif %}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Projets récents</div>
+                        <div class="card-sub">10 premiers projets du workspace</div>
+                    </div>
+                </div>
+                <div class="p-4">
+                    {% if projects %}
+                        <div class="overflow-x-auto">
+                            <table class="tbl">
+                                <thead>
+                                <tr>
+                                    <th>Projet</th>
+                                    <th>Team</th>
+                                    <th>Owner</th>
+                                    <th>Statut</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for project in projects %}
+                                    <tr>
+                                        <td>
+                                            <div class="proj-name">{{ project.name }}</div>
+                                            <div class="proj-tech">{{ project.slug|default:"—" }}</div>
+                                        </td>
+                                        <td>{{ project.team|default:"—" }}</td>
+                                        <td>{{ project.owner|default:"—" }}</td>
+                                        <td>{{ project.status|default:"—" }}</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-devtext3 px-2 py-6">Aucun projet lié à ce workspace.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Membres récents</div>
+                        <div class="card-sub">10 adhésions workspace</div>
+                    </div>
+                </div>
+                <div class="p-4">
+                    {% if memberships %}
+                        <div class="space-y-3">
+                            {% for membership in memberships %}
+                                <div class="flex items-center justify-between rounded-[14px] border border-devborder bg-devbg3 px-4 py-3">
+                                    <div>
+                                        <div class="text-sm font-semibold text-devtext1">{{ membership.user }}</div>
+                                        <div class="text-xs text-devtext3">{{ membership.team|default:"Sans équipe" }}</div>
+                                    </div>
+                                    <span class="badge b-gray">{{ membership.role|default:"Membre" }}</span>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-devtext3 px-2 py-6">Aucun membre trouvé.</p>
+                    {% endif %}
+                </div>
+            </section>
+        </div>
+
+        <!-- Right -->
+        <div class="space-y-6">
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Équipes</div>
+                        <div class="card-sub">10 premières équipes</div>
+                    </div>
+                </div>
+                <div class="p-4">
+                    {% if teams %}
+                        <div class="space-y-3">
+                            {% for team in teams %}
+                                <div class="rounded-[14px] border border-devborder bg-devbg3 px-4 py-3">
+                                    <div class="text-sm font-semibold text-devtext1">{{ team.name }}</div>
+                                    <div class="text-xs text-devtext3">{{ team.slug|default:"—" }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-devtext3 py-4">Aucune équipe disponible.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Intégrations</div>
+                        <div class="card-sub">Connexions configurées</div>
+                    </div>
+                </div>
+                <div class="p-4">
+                    {% if integrations %}
+                        <div class="space-y-3">
+                            {% for integration in integrations %}
+                                <div class="rounded-[14px] border border-devborder bg-devbg3 px-4 py-3">
+                                    <div class="text-sm font-semibold text-devtext1">{{ integration }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-devtext3 py-4">Aucune intégration configurée.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Snapshots</div>
+                        <div class="card-sub">Derniers instantanés dashboard</div>
+                    </div>
+                </div>
+                <div class="p-4">
+                    {% if snapshots %}
+                        <div class="space-y-3">
+                            {% for snapshot in snapshots %}
+                                <div class="rounded-[14px] border border-devborder bg-devbg3 px-4 py-3">
+                                    <div class="text-sm font-semibold text-devtext1">{{ snapshot }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-devtext3 py-4">Aucun snapshot disponible.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            {% if settings_obj %}
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Settings</div>
+                            <div class="card-sub">Configuration du workspace</div>
+                        </div>
+                    </div>
+                    <div class="p-4 text-sm text-devtext2">
+                        {{ settings_obj }}
+                    </div>
+                </section>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

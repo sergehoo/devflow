@@ -1,0 +1,170 @@
+{% extends "layout/base.html" %}
+{% load static %}
+
+{% block title %}Workspaces — DevFlow{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <section class="rounded-[22px] border border-devborder bg-devbg2 shadow-soft p-6">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">Workspace management</p>
+                <h1 class="mt-2 text-3xl font-serif text-devtext1">Espaces de travail</h1>
+                <p class="mt-2 text-sm text-devtext2 max-w-2xl">
+                    Gérez l’ensemble de vos workspaces, leur activité, leurs équipes et leurs projets depuis une interface centralisée.
+                </p>
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+                <a href="{% url 'workspace_create' %}" class="btn-main">
+                    <span>＋</span>
+                    <span>Nouveau workspace</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats -->
+    <section class="stat-grid">
+        <article class="stat-card">
+            <div class="stat-card-deco deco-grape"></div>
+            <div class="stat-icon-wrap si-grape">🏢</div>
+            <div class="stat-val">{{ total_workspaces }}</div>
+            <div class="stat-lbl">Total workspaces</div>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-card-deco deco-sage"></div>
+            <div class="stat-icon-wrap si-sage">✅</div>
+            <div class="stat-val">{{ active_workspaces }}</div>
+            <div class="stat-lbl">Actifs</div>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-card-deco deco-amber"></div>
+            <div class="stat-icon-wrap si-amber">🗂️</div>
+            <div class="stat-val">{{ archived_workspaces }}</div>
+            <div class="stat-lbl">Archivés</div>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-card-deco deco-sky"></div>
+            <div class="stat-icon-wrap si-sky">📊</div>
+            <div class="stat-val">{{ page_obj.paginator.count }}</div>
+            <div class="stat-lbl">Résultats visibles</div>
+        </article>
+    </section>
+
+    <!-- Search / filters -->
+    <section class="card">
+        <div class="card-head">
+            <div>
+                <div class="card-title">Liste des workspaces</div>
+                <div class="card-sub">Vue synthétique des espaces de travail enregistrés</div>
+            </div>
+        </div>
+
+        <div class="p-5 border-b border-devborder">
+            <form method="get" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="md:col-span-2">
+                    <input
+                        type="text"
+                        name="q"
+                        value="{{ request.GET.q }}"
+                        placeholder="Rechercher par nom, slug, description, trimestre..."
+                        class="w-full rounded-[12px] border border-devborder bg-devbg3 px-4 py-3 text-sm text-devtext1 outline-none focus:border-devaccent focus:ring-4 focus:ring-[var(--accent-bg)]"
+                    >
+                </div>
+                <div class="flex gap-2">
+                    <button type="submit" class="btn-main w-full justify-center">Rechercher</button>
+                    <a href="{% url 'workspace_list' %}" class="btn-soft w-full justify-center">Réinitialiser</a>
+                </div>
+            </form>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="tbl">
+                <thead>
+                <tr>
+                    <th>Workspace</th>
+                    <th>Owner</th>
+                    <th>Timezone</th>
+                    <th>Quarter</th>
+                    <th>Teams</th>
+                    <th>Projects</th>
+                    <th>Membres</th>
+                    <th>Statut</th>
+                    <th class="text-right">Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for workspace in object_list %}
+                    <tr>
+                        <td>
+                            <div class="flex items-center gap-3">
+                                {% if workspace.logo %}
+                                    <img src="{{ workspace.logo.url }}" alt="{{ workspace.name }}" class="w-11 h-11 rounded-xl object-cover border border-devborder">
+                                {% else %}
+                                    <div class="w-11 h-11 rounded-xl bg-[var(--accent-bg)] text-devaccent flex items-center justify-center font-bold">
+                                        {{ workspace.name|slice:":2"|upper }}
+                                    </div>
+                                {% endif %}
+                                <div>
+                                    <div class="proj-name">{{ workspace.name }}</div>
+                                    <div class="proj-tech">{{ workspace.slug }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>{{ workspace.owner }}</td>
+                        <td>{{ workspace.timezone }}</td>
+                        <td>{{ workspace.quarter_label|default:"—" }}</td>
+                        <td>{{ workspace.teams_count }}</td>
+                        <td>{{ workspace.projects_count }}</td>
+                        <td>{{ workspace.memberships_count }}</td>
+                        <td>
+                            {% if workspace.is_archived %}
+                                <span class="badge b-gray">Archivé</span>
+                            {% elif workspace.is_active %}
+                                <span class="badge b-green">Actif</span>
+                            {% else %}
+                                <span class="badge b-amber">Inactif</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="flex justify-end gap-2">
+                                <a href="{% url 'workspace_detail' workspace.pk %}" class="btn-soft">Voir</a>
+                                <a href="{% url 'workspace_update' workspace.pk %}" class="btn-soft">Modifier</a>
+                                <a href="{% url 'workspace_delete' workspace.pk %}" class="btn-soft">Supprimer</a>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center py-10 text-devtext3">
+                            Aucun workspace trouvé.
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if is_paginated %}
+            <div class="p-5 border-t border-devborder flex items-center justify-between flex-wrap gap-3">
+                <div class="text-sm text-devtext2">
+                    Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}
+                </div>
+                <div class="flex gap-2">
+                    {% if page_obj.has_previous %}
+                        <a href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}" class="btn-soft">Précédent</a>
+                    {% endif %}
+                    {% if page_obj.has_next %}
+                        <a href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}" class="btn-soft">Suivant</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

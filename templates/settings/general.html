@@ -1,10 +1,23 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends 'devflow/layout/base.html' %}
 
-</body>
-</html>
+{% block title %}DevFlow — Paramètres{% endblock %}
+{% block page_title %}Paramètres{% endblock %}
+{% block breadcrumb %}Configuration · Workspace{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-head">
+        <div>
+            <div class="card-title">Paramètres généraux</div>
+            <div class="card-sub">Configuration du workspace</div>
+        </div>
+    </div>
+    <div style="padding:18px 20px;">
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit" class="btn-main">Enregistrer</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

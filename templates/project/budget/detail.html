@@ -1,10 +1,473 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "layout/base.html" %}
+{% load static %}
 
-</body>
-</html>
+{% block title %}Budget projet — {{ object.project.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto">
+    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft overflow-hidden relative">
+        <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,78,0,.10),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(14,165,201,.08),transparent_25%)]"></div>
+        <div class="relative p-6 lg:p-8">
+            <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
+                <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="badge b-purple">{{ object.get_status_display }}</span>
+                        <span class="badge b-cyan">Version {{ object.version_number }}</span>
+                        <span class="badge b-green">{{ object.currency }}</span>
+                        {% if object.is_over_alert_threshold %}
+                            <span class="badge b-red">Seuil d’alerte dépassé</span>
+                        {% endif %}
+                    </div>
+
+                    <p class="mt-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+                        Financial cockpit
+                    </p>
+                    <h1 class="mt-2 text-3xl lg:text-4xl font-serif text-devtext1">
+                        Budget · {{ object.project.name }}
+                    </h1>
+                    <p class="mt-3 text-sm text-devtext2 max-w-3xl leading-7">
+                        Tableau budgétaire consolidé du projet, avec vision coûts, revenus, marge, alertes et exécution réelle.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <a href="{% url 'project_budget_update' object.pk %}" class="btn-main">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                        Modifier
+                    </a>
+                    <a href="{% url 'project_detail' object.project.pk %}" class="btn-soft">
+                        <i class="fa-solid fa-arrow-left"></i>
+                        Retour projet
+                    </a>
+                </div>
+            </div>
+
+            <div class="mt-8 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="flex items-center justify-between">
+                        <div class="w-11 h-11 rounded-[14px] bg-[rgba(255,78,0,.10)] text-devaccent flex items-center justify-center">
+                            <i class="fa-solid fa-wallet text-lg"></i>
+                        </div>
+                        <span class="text-[11px] font-semibold text-devtext3 uppercase tracking-wide">Budget</span>
+                    </div>
+                    <div class="mt-4 text-3xl font-serif text-devtext1">{{ overview.approved_budget|floatformat:0 }}</div>
+                    <div class="mt-1 text-sm text-devtext2">Budget approuvé</div>
+                    <div class="mt-4 flex items-center justify-between text-xs">
+                        <span class="text-devtext3">Devise</span>
+                        <span class="font-semibold text-devtext1">{{ object.currency }}</span>
+                    </div>
+                </div>
+
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="flex items-center justify-between">
+                        <div class="w-11 h-11 rounded-[14px] bg-[rgba(232,149,10,.10)] text-devamber flex items-center justify-center">
+                            <i class="fa-solid fa-coins text-lg"></i>
+                        </div>
+                        <span class="text-[11px] font-semibold text-devtext3 uppercase tracking-wide">Coûts</span>
+                    </div>
+                    <div class="mt-4 text-3xl font-serif text-devtext1">{{ overview.estimated_cost|floatformat:0 }}</div>
+                    <div class="mt-1 text-sm text-devtext2">Coût estimé total</div>
+                    <div class="mt-4 flex items-center justify-between text-xs">
+                        <span class="text-devtext3">Contingence</span>
+                        <span class="font-semibold text-devtext1">{{ object.contingency_amount|floatformat:0 }} {{ object.currency }}</span>
+                    </div>
+                </div>
+
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="flex items-center justify-between">
+                        <div class="w-11 h-11 rounded-[14px] bg-[rgba(52,168,83,.10)] text-devgreen flex items-center justify-center">
+                            <i class="fa-solid fa-sack-dollar text-lg"></i>
+                        </div>
+                        <span class="text-[11px] font-semibold text-devtext3 uppercase tracking-wide">Revenus</span>
+                    </div>
+                    <div class="mt-4 text-3xl font-serif text-devtext1">{{ overview.planned_revenue|floatformat:0 }}</div>
+                    <div class="mt-1 text-sm text-devtext2">Revenu planifié</div>
+                    <div class="mt-4 flex items-center justify-between text-xs">
+                        <span class="text-devtext3">Reçu</span>
+                        <span class="font-semibold text-devtext1">{{ overview.total_received|floatformat:0 }} {{ object.currency }}</span>
+                    </div>
+                </div>
+
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="flex items-center justify-between">
+                        <div class="w-11 h-11 rounded-[14px] {% if overview.forecast_margin >= 0 %}bg-[rgba(14,165,201,.10)] text-devcyan{% else %}bg-[rgba(232,69,60,.10)] text-devred{% endif %} flex items-center justify-center">
+                            <i class="fa-solid fa-chart-line text-lg"></i>
+                        </div>
+                        <span class="text-[11px] font-semibold text-devtext3 uppercase tracking-wide">Marge</span>
+                    </div>
+                    <div class="mt-4 text-3xl font-serif {% if overview.forecast_margin >= 0 %}text-devtext1{% else %}text-devred{% endif %}">
+                        {{ overview.forecast_margin|floatformat:0 }}
+                    </div>
+                    <div class="mt-1 text-sm text-devtext2">Marge prévisionnelle</div>
+                    <div class="mt-4 flex items-center justify-between text-xs">
+                        <span class="text-devtext3">Marge réelle</span>
+                        <span class="font-semibold {% if overview.real_margin >= 0 %}text-devgreen{% else %}text-devred{% endif %}">
+                            {{ overview.real_margin|floatformat:0 }} {{ object.currency }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div class="xl:col-span-2 space-y-6">
+            <section class="card overflow-hidden">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Alertes budgétaires</div>
+                        <div class="card-sub">Analyse immédiate de la santé financière du projet</div>
+                    </div>
+                </div>
+
+                <div class="p-6 space-y-4">
+                    {% with expense_ratio=overview.expense_ratio_percent %}
+                        {% if expense_ratio >= 100 %}
+                            <div class="rounded-[18px] border border-[rgba(232,69,60,.18)] bg-[rgba(232,69,60,.08)] px-5 py-4">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 rounded-[12px] bg-[rgba(232,69,60,.12)] text-devred flex items-center justify-center shrink-0">
+                                        <i class="fa-solid fa-triangle-exclamation"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-semibold text-devred">Budget dépassé</div>
+                                        <div class="mt-1 text-sm text-devtext2">
+                                            La consommation réelle atteint <strong>{{ expense_ratio }}%</strong> du budget approuvé.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif expense_ratio >= object.alert_threshold_percent %}
+                            <div class="rounded-[18px] border border-[rgba(232,149,10,.18)] bg-[rgba(232,149,10,.08)] px-5 py-4">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 rounded-[12px] bg-[rgba(232,149,10,.12)] text-devamber flex items-center justify-center shrink-0">
+                                        <i class="fa-solid fa-bell"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-semibold text-devamber">Seuil d’alerte atteint</div>
+                                        <div class="mt-1 text-sm text-devtext2">
+                                            La consommation est de <strong>{{ expense_ratio }}%</strong>, au-dessus du seuil de {{ object.alert_threshold_percent }}%.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="rounded-[18px] border border-[rgba(52,168,83,.18)] bg-[rgba(52,168,83,.08)] px-5 py-4">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 rounded-[12px] bg-[rgba(52,168,83,.12)] text-devgreen flex items-center justify-center shrink-0">
+                                        <i class="fa-solid fa-circle-check"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-semibold text-devgreen">Budget sous contrôle</div>
+                                        <div class="mt-1 text-sm text-devtext2">
+                                            La consommation budgétaire reste sous le seuil d’alerte défini.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endif %}
+                    {% endwith %}
+
+                    {% if overview.forecast_margin < 0 %}
+                        <div class="rounded-[18px] border border-[rgba(232,69,60,.18)] bg-[rgba(232,69,60,.08)] px-5 py-4">
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-[12px] bg-[rgba(232,69,60,.12)] text-devred flex items-center justify-center shrink-0">
+                                    <i class="fa-solid fa-chart-simple"></i>
+                                </div>
+                                <div>
+                                    <div class="text-sm font-semibold text-devred">Marge prévisionnelle négative</div>
+                                    <div class="mt-1 text-sm text-devtext2">
+                                        Le revenu planifié ne couvre pas le coût estimé actuel.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if overview.remaining_budget < 0 %}
+                        <div class="rounded-[18px] border border-[rgba(232,69,60,.18)] bg-[rgba(232,69,60,.08)] px-5 py-4">
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-[12px] bg-[rgba(232,69,60,.12)] text-devred flex items-center justify-center shrink-0">
+                                    <i class="fa-solid fa-ban"></i>
+                                </div>
+                                <div>
+                                    <div class="text-sm font-semibold text-devred">Budget restant négatif</div>
+                                    <div class="mt-1 text-sm text-devtext2">
+                                        Les dépenses engagées dépassent déjà le budget approuvé.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if overview.forecast_margin >= 0 and overview.remaining_budget >= 0 and overview.expense_ratio_percent < object.alert_threshold_percent %}
+                        <div class="rounded-[18px] border border-devborder bg-devbg3 px-5 py-4">
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 rounded-[12px] bg-[rgba(14,165,201,.10)] text-devcyan flex items-center justify-center shrink-0">
+                                    <i class="fa-solid fa-lightbulb"></i>
+                                </div>
+                                <div>
+                                    <div class="text-sm font-semibold text-devtext1">Lecture financière saine</div>
+                                    <div class="mt-1 text-sm text-devtext2">
+                                        Le projet présente une marge prévisionnelle positive avec une consommation encore maîtrisée.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="card overflow-hidden">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Tableau des postes de coûts</div>
+                        <div class="card-sub">Décomposition complète de la structure budgétaire</div>
+                    </div>
+                </div>
+
+                <div class="p-6">
+                    <div class="overflow-x-auto">
+                        <table class="tbl">
+                            <thead>
+                                <tr>
+                                    <th>Poste</th>
+                                    <th>Montant</th>
+                                    <th>Poids</th>
+                                    <th>Observation</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% with total=object.total_estimated_cost %}
+                                <tr>
+                                    <td>Ressources humaines</td>
+                                    <td>{{ object.estimated_labor_cost|floatformat:0 }} {{ object.currency }}</td>
+                                    <td>{% if total > 0 %}{% widthratio object.estimated_labor_cost total 100 %}%{% else %}0%{% endif %}</td>
+                                    <td>Charge salariale, staffing, allocation interne</td>
+                                </tr>
+                                <tr>
+                                    <td>Logiciels / licences</td>
+                                    <td>{{ object.estimated_software_cost|floatformat:0 }} {{ object.currency }}</td>
+                                    <td>{% if total > 0 %}{% widthratio object.estimated_software_cost total 100 %}%{% else %}0%{% endif %}</td>
+                                    <td>Abonnements, licences, outils SaaS</td>
+                                </tr>
+                                <tr>
+                                    <td>Infrastructure / cloud</td>
+                                    <td>{{ object.estimated_infra_cost|floatformat:0 }} {{ object.currency }}</td>
+                                    <td>{% if total > 0 %}{% widthratio object.estimated_infra_cost total 100 %}%{% else %}0%{% endif %}</td>
+                                    <td>Serveurs, stockage, hébergement, monitoring</td>
+                                </tr>
+                                <tr>
+                                    <td>Sous-traitance</td>
+                                    <td>{{ object.estimated_subcontract_cost|floatformat:0 }} {{ object.currency }}</td>
+                                    <td>{% if total > 0 %}{% widthratio object.estimated_subcontract_cost total 100 %}%{% else %}0%{% endif %}</td>
+                                    <td>Prestataires externes et renforts spécialisés</td>
+                                </tr>
+                                <tr>
+                                    <td>Autres coûts</td>
+                                    <td>{{ object.estimated_other_cost|floatformat:0 }} {{ object.currency }}</td>
+                                    <td>{% if total > 0 %}{% widthratio object.estimated_other_cost total 100 %}%{% else %}0%{% endif %}</td>
+                                    <td>Dépenses diverses non classées</td>
+                                </tr>
+                                <tr>
+                                    <td>Contingence</td>
+                                    <td>{{ object.contingency_amount|floatformat:0 }} {{ object.currency }}</td>
+                                    <td>{% if total > 0 %}{% widthratio object.contingency_amount total 100 %}%{% else %}0%{% endif %}</td>
+                                    <td>Réserve de sécurité pour aléas</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Total estimé</strong></td>
+                                    <td><strong>{{ object.total_estimated_cost|floatformat:0 }} {{ object.currency }}</strong></td>
+                                    <td><strong>100%</strong></td>
+                                    <td><strong>Base consolidée du budget estimatif</strong></td>
+                                </tr>
+                                {% endwith %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card overflow-hidden">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Timeline revenus / dépenses</div>
+                        <div class="card-sub">Lecture chronologique simplifiée des flux financiers</div>
+                    </div>
+                </div>
+
+                <div class="p-6">
+                    <div class="space-y-5">
+                        {% if object.project.revenues.all or object.project.expenses.all %}
+                            {% for revenue in object.project.revenues.all|slice:":5" %}
+                                <div class="tl-item">
+                                    <div class="tl-dot g">
+                                        <i class="fa-solid fa-arrow-down text-[10px] text-devgreen"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between gap-4 flex-wrap">
+                                            <div class="tl-name">Revenu · {{ revenue.title }}</div>
+                                            <span class="badge {% if revenue.is_received %}b-green{% else %}b-cyan{% endif %}">
+                                                {% if revenue.is_received %}Reçu{% else %}Prévu{% endif %}
+                                            </span>
+                                        </div>
+                                        <div class="tl-meta">
+                                            {{ revenue.expected_date|date:"d/m/Y"|default:"Date non définie" }} ·
+                                            {{ revenue.amount|floatformat:0 }} {{ revenue.currency }} ·
+                                            {{ revenue.get_revenue_type_display }}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+
+                            {% for expense in object.project.expenses.all|slice:":5" %}
+                                <div class="tl-item">
+                                    <div class="tl-dot am">
+                                        <i class="fa-solid fa-arrow-up text-[10px] text-devamber"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between gap-4 flex-wrap">
+                                            <div class="tl-name">Dépense · {{ expense.title }}</div>
+                                            <span class="badge {% if expense.status == 'VALIDATED' %}b-red{% elif expense.status == 'DRAFT' %}b-amber{% else %}b-gray{% endif %}">
+                                                {{ expense.get_status_display }}
+                                            </span>
+                                        </div>
+                                        <div class="tl-meta">
+                                            {{ expense.expense_date|date:"d/m/Y" }} ·
+                                            {{ expense.amount|floatformat:0 }} {{ expense.currency }} ·
+                                            {{ expense.vendor|default:"Sans fournisseur" }}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-sm text-devtext3">Aucun flux financier disponible pour le moment.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="space-y-6">
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Exécution budgétaire</div>
+                        <div class="card-sub">Indicateurs temps réel</div>
+                    </div>
+                </div>
+
+                <div class="p-6 space-y-5">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-devtext2">Consommation du budget</span>
+                            <span class="text-sm font-semibold {% if overview.expense_ratio_percent >= object.alert_threshold_percent %}text-devred{% else %}text-devtext1{% endif %}">
+                                {{ overview.expense_ratio_percent }}%
+                            </span>
+                        </div>
+                        <div class="prog h-[8px]">
+                            <div class="prog-fill {% if overview.expense_ratio_percent >= 100 %}pf-red{% elif overview.expense_ratio_percent >= object.alert_threshold_percent %}pf-amber{% else %}pf-sage{% endif %}"
+                                 style="width:{% if overview.expense_ratio_percent > 100 %}100{% else %}{{ overview.expense_ratio_percent }}{% endif %}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Budget restant</div>
+                        <div class="mt-2 text-xl font-serif {% if overview.remaining_budget >= 0 %}text-devtext1{% else %}text-devred{% endif %}">
+                            {{ overview.remaining_budget|floatformat:0 }} {{ object.currency }}
+                        </div>
+                    </div>
+
+                    <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Markup</div>
+                        <div class="mt-2 text-xl font-serif text-devtext1">{{ object.markup_percent }}%</div>
+                    </div>
+
+                    <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Marge cible</div>
+                        <div class="mt-2 text-xl font-serif text-devtext1">{{ object.target_margin_percent }}%</div>
+                    </div>
+
+                    <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Seuil d’alerte</div>
+                        <div class="mt-2 text-xl font-serif text-devtext1">{{ object.alert_threshold_percent }}%</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Métadonnées</div>
+                        <div class="card-sub">Traçabilité et validation</div>
+                    </div>
+                </div>
+
+                <div class="p-6 space-y-4 text-sm">
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Créé le</div>
+                        <div class="mt-1 text-devtext1 font-medium">{{ object.created_at|date:"d/m/Y H:i" }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Dernière mise à jour</div>
+                        <div class="mt-1 text-devtext1 font-medium">{{ object.updated_at|date:"d/m/Y H:i" }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Approuvé par</div>
+                        <div class="mt-1 text-devtext1 font-medium">{{ object.approved_by|default:"—" }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Date d’approbation</div>
+                        <div class="mt-1 text-devtext1 font-medium">{{ object.approved_at|date:"d/m/Y H:i"|default:"—" }}</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Actions rapides</div>
+                        <div class="card-sub">Poursuivre le pilotage financier</div>
+                    </div>
+                </div>
+
+                <div class="p-6 flex flex-col gap-3">
+                    <a href="{% url 'project_budget_update' object.pk %}" class="btn-main justify-center">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                        Modifier le budget
+                    </a>
+                    <a href="{% url 'project_estimate_line_create' %}?project={{ object.project.pk }}" class="btn-soft justify-center">
+                        <i class="fa-solid fa-table-list"></i>
+                        Ajouter ligne d’estimation
+                    </a>
+                    <a href="{% url 'project_revenue_create' %}?project={{ object.project.pk }}" class="btn-soft justify-center">
+                        <i class="fa-solid fa-money-bill-trend-up"></i>
+                        Ajouter revenu
+                    </a>
+                    <a href="{% url 'project_expense_create' %}?project={{ object.project.pk }}" class="btn-soft justify-center">
+                        <i class="fa-solid fa-receipt"></i>
+                        Ajouter dépense
+                    </a>
+                    <a href="{% url 'project_detail' object.project.pk %}" class="btn-soft justify-center">
+                        <i class="fa-solid fa-folder-open"></i>
+                        Revenir au projet
+                    </a>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    {% if object.notes %}
+    <section class="card">
+        <div class="card-head">
+            <div>
+                <div class="card-title">Notes budgétaires</div>
+                <div class="card-sub">Commentaires de gestion et d’arbitrage</div>
+            </div>
+        </div>
+        <div class="p-6 text-sm text-devtext2 leading-7">
+            {{ object.notes|linebreaks }}
+        </div>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}

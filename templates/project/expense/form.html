@@ -1,0 +1,247 @@
+{% extends "layout/base.html" %}
+{% load static %}
+
+{% block title %}
+    {% if object %}Modifier dépense projet{% else %}Ajouter dépense projet{% endif %} — DevFlow
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-6xl mx-auto">
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <div class="p-6 lg:p-8 bg-gradient-to-r from-[var(--accent-bg)] to-[var(--amber-bg)]">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+                <div>
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+                        Dépenses projet
+                    </p>
+                    <h1 class="mt-2 text-3xl lg:text-4xl font-serif text-devtext1">
+                        {% if object %}
+                            Modifier une dépense
+                        {% else %}
+                            Ajouter une dépense
+                        {% endif %}
+                    </h1>
+                    <p class="mt-2 text-sm text-devtext2 max-w-2xl">
+                        Enregistre les dépenses réelles ou pré-validées du projet pour suivre la consommation budgétaire.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <a href="javascript:history.back()" class="btn-soft">Retour</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <form method="post" class="space-y-6">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="rounded-[18px] border border-[rgba(232,69,60,.18)] bg-[rgba(232,69,60,.08)] px-5 py-4 text-sm text-devred">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div class="xl:col-span-2 space-y-6">
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Informations de dépense</div>
+                            <div class="card-sub">Nature, montant et statut</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.title.id_for_label }}">
+                                {{ form.title.label }}
+                            </label>
+                            {{ form.title }}
+                            {% if form.title.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.title.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.category.id_for_label }}">
+                                {{ form.category.label }}
+                            </label>
+                            {{ form.category }}
+                            {% if form.category.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.category.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.status.id_for_label }}">
+                                {{ form.status.label }}
+                            </label>
+                            {{ form.status }}
+                            {% if form.status.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.status.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.amount.id_for_label }}">
+                                {{ form.amount.label }}
+                            </label>
+                            {{ form.amount }}
+                            {% if form.amount.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.amount.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.currency.id_for_label }}">
+                                {{ form.currency.label }}
+                            </label>
+                            {{ form.currency }}
+                            {% if form.currency.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.currency.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.description.id_for_label }}">
+                                {{ form.description.label }}
+                            </label>
+                            {{ form.description }}
+                            {% if form.description.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.description.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Imputation projet</div>
+                            <div class="card-sub">Associe la dépense à une tâche, un sprint ou un jalon</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.task.id_for_label }}">
+                                {{ form.task.label }}
+                            </label>
+                            {{ form.task }}
+                            {% if form.task.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.task.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.sprint.id_for_label }}">
+                                {{ form.sprint.label }}
+                            </label>
+                            {{ form.sprint }}
+                            {% if form.sprint.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.sprint.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.milestone.id_for_label }}">
+                                {{ form.milestone.label }}
+                            </label>
+                            {{ form.milestone }}
+                            {% if form.milestone.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.milestone.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Référence comptable</div>
+                            <div class="card-sub">Date, fournisseur et référence</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.expense_date.id_for_label }}">
+                                {{ form.expense_date.label }}
+                            </label>
+                            {{ form.expense_date }}
+                            {% if form.expense_date.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.expense_date.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.vendor.id_for_label }}">
+                                {{ form.vendor.label }}
+                            </label>
+                            {{ form.vendor }}
+                            {% if form.vendor.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.vendor.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.reference.id_for_label }}">
+                                {{ form.reference.label }}
+                            </label>
+                            {{ form.reference }}
+                            {% if form.reference.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.reference.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="space-y-6">
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Conseils</div>
+                            <div class="card-sub">Bonne pratique de suivi</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 space-y-4 text-sm text-devtext2">
+                        <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                            <div class="font-semibold text-devtext1 mb-1">Statut de la dépense</div>
+                            <div>Utilise “Brouillon” pour une saisie initiale, puis “Validée” après contrôle.</div>
+                        </div>
+
+                        <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                            <div class="font-semibold text-devtext1 mb-1">Imputation</div>
+                            <div>Lier une dépense à une tâche ou un sprint facilite ensuite l’analyse réelle vs estimée.</div>
+                        </div>
+
+                        <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                            <div class="font-semibold text-devtext1 mb-1">Référence</div>
+                            <div>Ajoute un fournisseur ou un numéro de pièce pour garder une bonne traçabilité.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Actions</div>
+                            <div class="card-sub">Validation de la dépense</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 flex flex-col gap-3">
+                        <button type="submit" class="btn-main justify-center">
+                            {% if object %}Enregistrer les modifications{% else %}Ajouter la dépense{% endif %}
+                        </button>
+                        <a href="javascript:history.back()" class="btn-soft justify-center">Annuler</a>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

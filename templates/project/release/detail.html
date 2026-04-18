@@ -1,0 +1,173 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Release — {{ item.name }}{% endblock %}
+{% block page_title %}{{ item.name }}{% endblock %}
+{% block breadcrumb %}Projet · Release{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <h1 class="font-serif text-3xl text-[var(--text1)]">{{ item.name }}</h1>
+
+                    {% if item.status == "PLANNED" %}
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">Planifiée</span>
+                    {% elif item.status == "IN_PROGRESS" %}
+                    <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">En cours</span>
+                    {% elif item.status == "RELEASED" %}
+                    <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">Publiée</span>
+                    {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">Annulée</span>
+                    {% endif %}
+
+                    {% if item.tag %}
+                    <span class="inline-flex rounded-full border border-[var(--border)] bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                        {{ item.tag }}
+                    </span>
+                    {% endif %}
+
+                    {% if is_late_release %}
+                    <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">
+                        En retard
+                    </span>
+                    {% endif %}
+                </div>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--text3)]">
+                    <span>{{ item.project.name }}</span>
+                    {% if item.release_date %}<span>• Date prévue {{ item.release_date|date:"d/m/Y" }}</span>{% endif %}
+                    {% if item.released_at %}<span>• Publiée le {{ item.released_at|date:"d/m/Y H:i" }}</span>{% endif %}
+                </div>
+
+                {% if item.description %}
+                <p class="mt-4 max-w-4xl text-sm leading-6 text-[var(--text2)]">
+                    {{ item.description }}
+                </p>
+                {% endif %}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'release_update' item.pk %}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                    Modifier
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Projet</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.project.name }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Date release</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.release_date|date:"d/m/Y"|default:"—" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Publiée à</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.released_at|date:"d/m/Y H:i"|default:"—" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Tâches</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ task_stats.total|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Terminées</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--green)]">{{ task_stats.done|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Bloquées</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--red)]">{{ task_stats.blocked|default:0 }}</div>
+            </div>
+        </div>
+    </section>
+
+    {% if item.changelog %}
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <h2 class="text-lg font-semibold text-[var(--text1)]">Changelog</h2>
+        <div class="prose prose-sm mt-4 max-w-none text-[var(--text2)]">
+            {{ item.changelog|linebreaks }}
+        </div>
+    </section>
+    {% endif %}
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="mb-5 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-[var(--text1)]">Tâches embarquées</h2>
+                    <p class="mt-1 text-xs text-[var(--text3)]">Backlog inclus dans la release.</p>
+                </div>
+            </div>
+
+            <div class="space-y-3">
+                {% for task in release_tasks %}
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="font-semibold text-[var(--text1)]">{{ task.title }}</div>
+                            <div class="mt-1 text-sm text-[var(--text2)]">
+                                {{ task.get_status_display }}{% if task.assignee %} · {{ task.assignee }}{% endif %}
+                            </div>
+                        </div>
+                        <a href="{% url 'task_detail' task.pk %}" class="text-xs font-semibold text-[var(--accent)] hover:underline">
+                            Voir
+                        </a>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                    Aucune tâche associée.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="mb-5 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-[var(--text1)]">Sprints liés</h2>
+                    <p class="mt-1 text-xs text-[var(--text3)]">Cadence de delivery concernée.</p>
+                </div>
+            </div>
+
+            <div class="space-y-3">
+                {% for sprint in release_sprints %}
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="font-semibold text-[var(--text1)]">{{ sprint.name }}</div>
+                            <div class="mt-1 text-sm text-[var(--text2)]">
+                                {{ sprint.start_date|date:"d/m/Y" }} → {{ sprint.end_date|date:"d/m/Y" }}
+                            </div>
+                        </div>
+                        <a href="{% url 'sprint_detail' sprint.pk %}" class="text-xs font-semibold text-[var(--accent)] hover:underline">
+                            Voir
+                        </a>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                    Aucun sprint lié.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    {% if item.release_url %}
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <h2 class="text-lg font-semibold text-[var(--text1)]">Lien de publication</h2>
+        <div class="mt-4">
+            <a href="{{ item.release_url }}" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
+                Ouvrir la release
+            </a>
+        </div>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}

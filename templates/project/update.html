@@ -1,10 +1,431 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends 'layout/base.html' %}
 
-</body>
-</html>
+{% block title %}DevFlow — Modifier {{ form.instance.name }}{% endblock %}
+{% block page_title %}Modifier le projet{% endblock %}
+{% block breadcrumb %}Projet · Mise à jour{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Hero -->
+    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+        <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.05)_45%,transparent_100%)]"></div>
+        <div class="absolute -right-12 -top-10 h-40 w-40 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+
+        <div class="relative p-6 lg:p-7">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h1 class="font-serif text-3xl font-medium tracking-[-0.03em] text-[var(--text1)]">
+                            Modifier le projet
+                        </h1>
+
+                        {% if form.instance.code %}
+                        <span class="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                            {{ form.instance.code }}
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    <p class="mt-2 max-w-3xl text-sm leading-6 text-[var(--text2)]">
+                        Mettez à jour les responsables, la planification, le budget et les paramètres de pilotage du projet.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                    <a href="{% url 'project_detail' form.instance.pk %}"
+                       class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
+                        Retour au détail
+                    </a>
+
+                    <a href="{% url 'project_list' %}"
+                       class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
+                        Liste des projets
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <form method="post" novalidate class="space-y-6">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+        <section class="rounded-[22px] border border-[var(--red-bg)] bg-[var(--red-bg)] px-5 py-4 text-sm text-[var(--red)] shadow-soft">
+            {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_.8fr]">
+
+            <!-- Colonne principale -->
+            <div class="space-y-6">
+
+                <!-- Informations générales -->
+                <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <div class="mb-5">
+                        <h2 class="text-lg font-semibold text-[var(--text1)]">Informations générales</h2>
+                        <p class="mt-1 text-xs text-[var(--text3)]">
+                            Identité, description et structure fonctionnelle du projet.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        {% if form.workspace %}
+                        <div>
+                            <label for="{{ form.workspace.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.workspace.field.required %}(*) {% endif %}Workspace
+                            </label>
+                            {{ form.workspace }}
+                            {% if form.workspace.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.workspace.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.team %}
+                        <div>
+                            <label for="{{ form.team.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.team.field.required %}(*) {% endif %}Équipe
+                            </label>
+                            {{ form.team }}
+                            {% if form.team.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.team.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        <div class="md:col-span-2">
+                            <label for="{{ form.name.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.name.field.required %}(*) {% endif %}Nom du projet
+                            </label>
+                            {{ form.name }}
+                            {% if form.name.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.name.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        {% if form.code %}
+                        <div>
+                            <label for="{{ form.code.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.code.field.required %}(*) {% endif %}Code projet
+                            </label>
+                            {{ form.code }}
+                            <div class="mt-1 text-[11px] text-[var(--text3)]">Laisse vide pour conserver ou générer automatiquement selon ta logique métier.</div>
+                            {% if form.code.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.code.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.tech_stack %}
+                        <div>
+                            <label for="{{ form.tech_stack.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.tech_stack.field.required %}(*) {% endif %}Stack technique
+                            </label>
+                            {{ form.tech_stack }}
+                            {% if form.tech_stack.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.tech_stack.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.description %}
+                        <div class="md:col-span-2">
+                            <label for="{{ form.description.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.description.field.required %}(*) {% endif %}Description
+                            </label>
+                            {{ form.description }}
+                            {% if form.description.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.description.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </section>
+
+                <!-- Pilotage -->
+                <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <div class="mb-5">
+                        <h2 class="text-lg font-semibold text-[var(--text1)]">Pilotage</h2>
+                        <p class="mt-1 text-xs text-[var(--text3)]">
+                            Responsables, statut, priorité et santé projet.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        {% if form.owner %}
+                        <div>
+                            <label for="{{ form.owner.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.owner.field.required %}(*) {% endif %}Owner
+                            </label>
+                            {{ form.owner }}
+                            {% if form.owner.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.owner.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.product_manager %}
+                        <div>
+                            <label for="{{ form.product_manager.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.product_manager.field.required %}(*) {% endif %}Product manager
+                            </label>
+                            {{ form.product_manager }}
+                            {% if form.product_manager.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.product_manager.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.status %}
+                        <div>
+                            <label for="{{ form.status.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.status.field.required %}(*) {% endif %}Statut
+                            </label>
+                            {{ form.status }}
+                            {% if form.status.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.status.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.priority %}
+                        <div>
+                            <label for="{{ form.priority.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.priority.field.required %}(*) {% endif %}Priorité
+                            </label>
+                            {{ form.priority }}
+                            {% if form.priority.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.priority.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.health_status %}
+                        <div>
+                            <label for="{{ form.health_status.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.health_status.field.required %}(*) {% endif %}Santé projet
+                            </label>
+                            {{ form.health_status }}
+                            {% if form.health_status.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.health_status.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.ai_risk_label %}
+                        <div>
+                            <label for="{{ form.ai_risk_label.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.ai_risk_label.field.required %}(*) {% endif %}Libellé risque IA
+                            </label>
+                            {{ form.ai_risk_label }}
+                            {% if form.ai_risk_label.errors %}
+                            <div class="mt-2 text-xs text-[var(--textred)]">
+                                {% for error in form.ai_risk_label.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </section>
+
+                <!-- Planning & budget -->
+                <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <div class="mb-5">
+                        <h2 class="text-lg font-semibold text-[var(--text1)]">Planning & budget</h2>
+                        <p class="mt-1 text-xs text-[var(--text3)]">
+                            Dates clés, budget et progression.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        {% if form.start_date %}
+                        <div>
+                            <label for="{{ form.start_date.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.start_date.field.required %}(*) {% endif %}Date de début
+                            </label>
+                            {{ form.start_date }}
+                            {% if form.start_date.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.start_date.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.target_date %}
+                        <div>
+                            <label for="{{ form.target_date.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.target_date.field.required %}(*) {% endif %}Date cible
+                            </label>
+                            {{ form.target_date }}
+                            {% if form.target_date.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.target_date.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.delivered_at %}
+                        <div>
+                            <label for="{{ form.delivered_at.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.delivered_at.field.required %}(*) {% endif %}Date de livraison
+                            </label>
+                            {{ form.delivered_at }}
+                            {% if form.delivered_at.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.delivered_at.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.budget %}
+                        <div>
+                            <label for="{{ form.budget.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.budget.field.required %}(*) {% endif %}Budget
+                            </label>
+                            {{ form.budget }}
+                            {% if form.budget.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.budget.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.progress_percent %}
+                        <div>
+                            <label for="{{ form.progress_percent.id_for_label }}"
+                                   class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.progress_percent.field.required %}(*) {% endif %}Progression
+                            </label>
+                            {{ form.progress_percent }}
+                            {% if form.progress_percent.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.progress_percent.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if form.is_favorite %}
+                        <div class="md:col-span-2">
+                            <label class="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm font-medium text-[var(--text1)]">
+                                {{ form.is_favorite }}
+                                <span>{% if form.is_favorite.field.required %}(*) {% endif %}Marquer comme projet favori</span>
+                            </label>
+                            {% if form.is_favorite.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">
+                                {% for error in form.is_favorite.errors %}<div>{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </section>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="space-y-6">
+                <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <h3 class="text-base font-semibold text-[var(--text1)]">Aide à la mise à jour</h3>
+                    <div class="mt-4 space-y-4 text-sm text-[var(--text2)]">
+                        <div class="rounded-2xl bg-[var(--bg3)] p-4">
+                            Vérifie la cohérence entre la progression, la date cible et la date de livraison.
+                        </div>
+                        <div class="rounded-2xl bg-[var(--bg3)] p-4">
+                            Mets à jour les responsables si le pilotage du projet a changé.
+                        </div>
+                        <div class="rounded-2xl bg-[var(--bg3)] p-4">
+                            Garde une description claire pour faciliter le reporting portefeuille.
+                        </div>
+                        <div class="rounded-2xl bg-[var(--bg3)] p-4">
+                            Les champs précédés de <strong>(*)</strong> sont obligatoires.
+                        </div>
+                    </div>
+                </section>
+
+                <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <h3 class="text-base font-semibold text-[var(--text1)]">Projet actuel</h3>
+                    <div class="mt-4 space-y-3 text-sm">
+                        <div class="flex items-start justify-between gap-4">
+                            <span class="text-[var(--text3)]">Nom</span>
+                            <span class="text-right font-medium text-[var(--text1)]">{{ form.instance.name }}</span>
+                        </div>
+                        <div class="flex items-start justify-between gap-4">
+                            <span class="text-[var(--text3)]">Code</span>
+                            <span class="text-right font-medium text-[var(--text1)]">{{ form.instance.code|default:"—" }}</span>
+                        </div>
+                        <div class="flex items-start justify-between gap-4">
+                            <span class="text-[var(--text3)]">Statut</span>
+                            <span class="text-right font-medium text-[var(--text1)]">{{ form.instance.get_status_display }}</span>
+                        </div>
+                        <div class="flex items-start justify-between gap-4">
+                            <span class="text-[var(--text3)]">Priorité</span>
+                            <span class="text-right font-medium text-[var(--text1)]">{{ form.instance.get_priority_display }}</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <h3 class="text-base font-semibold text-[var(--text1)]">Actions</h3>
+                    <div class="mt-5 flex flex-col gap-3">
+                        <button type="submit"
+                                class="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,111,247,0.24)] transition hover:-translate-y-0.5">
+                            Enregistrer les modifications
+                        </button>
+
+                        <a href="{% url 'project_detail' form.instance.pk %}"
+                           class="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-3 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
+                            Annuler
+                        </a>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

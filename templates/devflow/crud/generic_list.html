@@ -1,10 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Title</title>
-</head>
-<body>
+{% extends "layout/base.html" %}
 
-</body>
-</html>
+{% block crud_content %}
+<h2>{{ model_verbose_name_plural }}</h2>
+
+<a href="{% url 'devflow:'|add:model_key|add:'_create' %}">
+    ➕ Créer
+</a>
+
+<form method="get">
+    <input type="text" name="q" value="{{ request.GET.q }}" placeholder="Recherche...">
+</form>
+
+<ul>
+{% for item in items %}
+    <li>
+        {{ item }}
+        <a href="{% url 'devflow:'|add:model_key|add:'_detail' item.pk %}">Voir</a>
+    </li>
+{% empty %}
+    <li>Aucune donnée</li>
+{% endfor %}
+</ul>
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends "layout/base.html" %}
+{% load static %}
+
+{% block title %}
+    {% if object %}Modifier {{ object.name }}{% else %}Créer workspace{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+    <section class="rounded-[22px] border border-devborder bg-devbg2 shadow-soft p-6 lg:p-8">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">Workspace form</p>
+                <h1 class="mt-2 text-3xl font-serif text-devtext1">
+                    {% if object %}Modifier le workspace{% else %}Créer un workspace{% endif %}
+                </h1>
+                <p class="mt-2 text-sm text-devtext2">
+                    Renseignez les informations principales de l’espace de travail.
+                </p>
+            </div>
+            <a href="{% url 'workspace_list' %}" class="btn-soft">Retour liste</a>
+        </div>
+    </section>
+
+    <form method="post" enctype="multipart/form-data" class="card">
+        {% csrf_token %}
+
+        <div class="card-head">
+            <div>
+                <div class="card-title">Informations du workspace</div>
+                <div class="card-sub">Nom, branding, owner, paramètres temporels</div>
+            </div>
+        </div>
+
+        <div class="p-6 space-y-6">
+            {% if form.non_field_errors %}
+                <div class="rounded-[14px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {% for field in form %}
+                    <div class="{% if field.name == 'description' %}md:col-span-2{% endif %}">
+                        <label for="{{ field.id_for_label }}" class="block text-sm font-semibold text-devtext2 mb-2">
+                            {{ field.label }}
+                        </label>
+
+                        {{ field }}
+
+                        {% if field.help_text %}
+                            <p class="mt-2 text-xs text-devtext3">{{ field.help_text }}</p>
+                        {% endif %}
+
+                        {% if field.errors %}
+                            <div class="mt-2 text-sm text-red-600">
+                                {{ field.errors }}
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="px-6 pb-6">
+            <div class="rounded-[18px] bg-[var(--accent-bg)] border border-[rgba(255,78,0,0.12)] p-4 text-sm text-devtext2">
+                Conseil : ajoute un logo et un quarter label pour mieux identifier visuellement le workspace dans les vues liste et détail.
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-end gap-3 px-6 py-5 border-t border-devborder">
+            <a href="{% url 'workspace_list' %}" class="btn-soft">Annuler</a>
+            <button type="submit" class="btn-main">
+                {% if object %}Enregistrer les modifications{% else %}Créer le workspace{% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll("form input, form select, form textarea").forEach((el) => {
+            if (el.type !== "checkbox" && el.type !== "radio" && el.type !== "file") {
+                el.classList.add(
+                    "w-full", "rounded-[12px]", "border", "border-devborder", "bg-devbg3",
+                    "px-4", "py-3", "text-sm", "text-devtext1", "outline-none",
+                    "focus:border-devaccent", "focus:ring-4", "focus:ring-[var(--accent-bg)]"
+                );
+            }
+
+            if (el.tagName === "TEXTAREA") {
+                el.classList.add("min-h-[120px]");
+            }
+
+            if (el.type === "file") {
+                el.classList.add("block", "w-full", "text-sm", "text-devtext2");
+            }
+        });
+    });
+</script>
+{% endblock %}

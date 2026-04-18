@@ -1,0 +1,189 @@
+{% extends "layout/base.html" %}
+
+{% block title %}{% if object %}Modifier tâche{% else %}Créer tâche{% endif %}{% endblock %}
+{% block page_title %}{% if object %}Modifier tâche{% else %}Créer tâche{% endif %}{% endblock %}
+{% block breadcrumb %}Exécution · Tâche · Formulaire{% endblock %}
+
+{% block content %}
+<form method="post" enctype="multipart/form-data" class="space-y-6">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <section class="rounded-[24px] border border-[var(--red-bg)] bg-[var(--red-bg)]/40 p-5 shadow-soft">
+        <h2 class="text-sm font-semibold text-[var(--red)]">Veuillez corriger les erreurs du formulaire.</h2>
+        <div class="mt-3 space-y-1 text-sm text-[var(--red)]">
+            {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_.95fr]">
+
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="mb-5">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Informations générales</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Définis clairement le périmètre d’exécution de la tâche.</p>
+            </div>
+
+            <div class="space-y-5">
+                <div>
+                    <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Titre</label>
+                    {{ form.title }}
+                    {% include "components/forms/field_errors.html" with field=form.title %}
+                </div>
+
+                <div>
+                    <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Description</label>
+                    {{ form.description }}
+                    {% include "components/forms/field_errors.html" with field=form.description %}
+                </div>
+
+                <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Projet</label>
+                        {{ form.project }}
+                        {% include "components/forms/field_errors.html" with field=form.project %}
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Sprint</label>
+                        {{ form.sprint }}
+                        {% include "components/forms/field_errors.html" with field=form.sprint %}
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Backlog item</label>
+                        {{ form.backlog_item }}
+                        {% include "components/forms/field_errors.html" with field=form.backlog_item %}
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Parent</label>
+                        {{ form.parent }}
+                        {% include "components/forms/field_errors.html" with field=form.parent %}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="space-y-6">
+            <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <div class="mb-5">
+                    <h2 class="text-lg font-semibold text-[var(--text1)]">Pilotage</h2>
+                </div>
+
+                <div class="space-y-5">
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Statut</label>
+                        {{ form.status }}
+                        {% include "components/forms/field_errors.html" with field=form.status %}
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Priorité</label>
+                        {{ form.priority }}
+                        {% include "components/forms/field_errors.html" with field=form.priority %}
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Progression (%)</label>
+                        {{ form.progress_percent }}
+                        {% include "components/forms/field_errors.html" with field=form.progress_percent %}
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Risque (%)</label>
+                        {{ form.risk_score }}
+                        {% include "components/forms/field_errors.html" with field=form.risk_score %}
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        <div>
+                            <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Estimé (h)</label>
+                            {{ form.estimate_hours }}
+                            {% include "components/forms/field_errors.html" with field=form.estimate_hours %}
+                        </div>
+
+                        <div>
+                            <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Passé (h)</label>
+                            {{ form.spent_hours }}
+                            {% include "components/forms/field_errors.html" with field=form.spent_hours %}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Échéance</label>
+                        {{ form.due_date }}
+                        {% include "components/forms/field_errors.html" with field=form.due_date %}
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Début réel</label>
+                        {{ form.started_at }}
+                        {% include "components/forms/field_errors.html" with field=form.started_at %}
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Fin réelle</label>
+                        {{ form.completed_at }}
+                        {% include "components/forms/field_errors.html" with field=form.completed_at %}
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Assigné à</label>
+                        {{ form.assignee }}
+                        {% include "components/forms/field_errors.html" with field=form.assignee %}
+                    </div>
+
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                        <label class="flex items-start gap-3">
+                            {{ form.is_flagged }}
+                            <span>
+                                <span class="block text-sm font-medium text-[var(--text1)]">Marquer comme sensible</span>
+                                <span class="mt-1 block text-xs text-[var(--text3)]">
+                                    Met en avant la tâche pour un traitement prioritaire.
+                                </span>
+                            </span>
+                        </label>
+                        {% include "components/forms/field_errors.html" with field=form.is_flagged %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Aide</h2>
+                <div class="mt-4 space-y-3 text-sm text-[var(--text2)]">
+                    <p>Rédige un titre orienté action.</p>
+                    <p>Associe la tâche au bon projet et au bon sprint pour le reporting.</p>
+                    <p>Utilise progression et risque pour enrichir les tableaux de bord intelligents.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="text-sm text-[var(--text3)]">
+                {% if object %}
+                    Les modifications seront appliquées immédiatement à la tâche.
+                {% else %}
+                    La tâche sera créée et intégrée au flux opérationnel.
+                {% endif %}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'task_list' %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)]">
+                    Annuler
+                </a>
+                <button type="submit"
+                        class="inline-flex items-center rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white">
+                    {% if object %}Enregistrer{% else %}Créer la tâche{% endif %}
+                </button>
+            </div>
+        </div>
+    </section>
+</form>
+{% endblock %}

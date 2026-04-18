@@ -37,15 +37,15 @@ CSRF_TRUSTED_ORIGINS=[
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 # Application definition
 
+
 INSTALLED_APPS = [
-    # 'grappelli',
     'django.contrib.admin',
     'django.contrib.auth',
+    'django.contrib.gis',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.gis',
     'django.contrib.humanize',
     'django.contrib.sites',
     'allauth',
@@ -55,22 +55,18 @@ INSTALLED_APPS = [
     'import_export',
     'mathfilters',
     'django_select2',
-    'widget_tweaks',
     'djmoney',
-    # 'autocomplete_light',
-    # 'import_export_extensions',
     'tinymce',
-    'simple_history',
-    'num2words',
+    # 'simple_history',
+    # 'num2words',
     'django_filters',
-    'qr_code',
-    'notifications',
+    # 'qr_code',
+    # 'notifications',
     'weasyprint',
     "csp",
     'drf_spectacular',
     'corsheaders',
-    'parcelaire',
-    'ai_construction'
+    "project",
 ]
 
 MIDDLEWARE = [
@@ -81,11 +77,11 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'simple_history.middleware.HistoryRequestMiddleware',
     "allauth.account.middleware.AccountMiddleware",
 ]
 
-ROOT_URLCONF = 'parcelaireKG.urls'
+ROOT_URLCONF = 'ProjectFlow.urls'
+
 
 TEMPLATES = [
     {
@@ -99,12 +95,13 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'project.context_processors.devflow_notifications',
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'parcelaireKG.wsgi.application'
+WSGI_APPLICATION = 'ProjectFlow.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
@@ -130,7 +127,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'fr-FR'
 
 TIME_ZONE = 'UTC'
 
@@ -139,6 +136,7 @@ USE_I18N = True
 USE_TZ = True
 SITE_ID = 1
 
+USE_THOUSAND_SEPARATOR=True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
@@ -153,14 +151,6 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CELERY_BEAT_SCHEDULE = {
-    "sync-kaydan-stale-parcels-every-30-min": {
-        "task": "parcelaire.tasks.sync_kaydan_stale_parcels_task",
-        "schedule": 60.0 * 30,
-    },
-    "sync-kaydan-full-nightly": {
-        "task": "parcelaire.tasks.sync_kaydan_all_parcels_task",
-        "schedule": crontab(hour=2, minute=0),
-    },
 }
 
 CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
@@ -170,17 +160,7 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "Africa/Abidjan"
 
-EXTERNAL_LOTS_API_URL = os.environ.get("EXTERNAL_LOTS_API_URL")
-EXTERNAL_LOTS_API_KEY = os.environ.get("EXTERNAL_LOTS_API_KEY")
-EXTERNAL_LOTS_API_USERNAME = os.environ.get("EXTERNAL_LOTS_API_USERNAME")
-EXTERNAL_LOTS_API_PASSWORD = os.environ.get("EXTERNAL_LOTS_API_PASSWORD")
 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-
-SAP_BASE_URL = os.getenv("SAP_BASE_URL", "").rstrip("/")
-SAP_TOKEN_URL = os.getenv("SAP_TOKEN_URL", "")
-SAP_CLIENT_ID = os.getenv("SAP_CLIENT_ID", "")
-SAP_CLIENT_SECRET = os.getenv("SAP_CLIENT_SECRET", "")
-SAP_TIMEOUT = int(os.getenv("SAP_TIMEOUT", "60"))
-SAP_VERIFY_SSL = os.getenv("SAP_VERIFY_SSL", "true").lower() == "true"
 

@@ -1,0 +1,315 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Tâche — {{ item.title }}{% endblock %}
+{% block page_title %}{{ item.title }}{% endblock %}
+{% block breadcrumb %}Exécution · Tâche{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- HERO -->
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <h1 class="font-serif text-3xl text-[var(--text1)]">{{ item.title }}</h1>
+
+                    {% if item.status == "TODO" %}
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">À faire</span>
+                    {% elif item.status == "IN_PROGRESS" %}
+                    <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">En cours</span>
+                    {% elif item.status == "REVIEW" %}
+                    <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">Review</span>
+                    {% elif item.status == "DONE" %}
+                    <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">Terminée</span>
+                    {% elif item.status == "BLOCKED" %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">Bloquée</span>
+                    {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">Annulée</span>
+                    {% endif %}
+
+                    {% if item.priority == "CRITICAL" %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">Critique</span>
+                    {% elif item.priority == "HIGH" %}
+                    <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">High</span>
+                    {% elif item.priority == "MEDIUM" %}
+                    <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">Medium</span>
+                    {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--cyan-bg)] px-3 py-1 text-xs font-semibold text-[var(--cyan)]">Low</span>
+                    {% endif %}
+
+                    {% if item.is_flagged %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">Flagged</span>
+                    {% endif %}
+
+                    {% if is_overdue %}
+                    <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">En retard</span>
+                    {% endif %}
+                </div>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--text3)]">
+                    <span>{{ item.project.name }}</span>
+                    {% if item.sprint %}<span>• {{ item.sprint.name }}</span>{% endif %}
+                    {% if item.assignee %}<span>• Assignée à {{ item.assignee }}</span>{% endif %}
+                    {% if item.reporter %}<span>• Reportée par {{ item.reporter }}</span>{% endif %}
+                </div>
+
+                {% if item.description %}
+                <div class="mt-4 max-w-4xl text-sm leading-7 text-[var(--text2)]">
+                    {{ item.description|linebreaks }}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'task_update' item.pk %}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
+                    Modifier
+                </a>
+                <a href="{% url 'task_list' %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)]">
+                    Retour
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Progression</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.progress_percent }}%</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Risque</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.risk_score }}/100</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Estimé</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.estimate_hours|default:0 }} h</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Passé</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.spent_hours|default:0 }} h</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Commentaires</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ comments.count }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Pièces jointes</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ attachments.count }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Sous-tâches</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ subtasks.count }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Échéance</div>
+                <div class="mt-1 text-sm font-semibold {% if is_overdue %}text-[var(--red)]{% else %}text-[var(--text1)]{% endif %}">
+                    {{ item.due_date|date:"d/m/Y"|default:"—" }}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_.9fr]">
+
+        <!-- LEFT -->
+        <div class="space-y-6">
+
+            <!-- EXECUTION -->
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Exécution</h2>
+
+                <div class="mt-5 space-y-4">
+                    <div>
+                        <div class="mb-2 flex items-center justify-between text-sm">
+                            <span class="font-medium text-[var(--text2)]">Avancement</span>
+                            <span class="font-semibold text-[var(--text1)]">{{ item.progress_percent }}%</span>
+                        </div>
+                        <div class="h-2 overflow-hidden rounded-full bg-[var(--bg3)]">
+                            <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))]" style="width: {{ item.progress_percent }}%"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="mb-2 flex items-center justify-between text-sm">
+                            <span class="font-medium text-[var(--text2)]">Checklist</span>
+                            <span class="font-semibold text-[var(--text1)]">{{ checklist_items_done }}/{{ checklist_items_total }}</span>
+                        </div>
+                        <div class="h-2 overflow-hidden rounded-full bg-[var(--bg3)]">
+                            <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--green),#6ee7b7)]" style="width: {{ checklist_progress }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CHECKLISTS -->
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Checklists</h2>
+
+                <div class="mt-5 space-y-4">
+                    {% for checklist in checklists %}
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                        <div class="font-semibold text-[var(--text1)]">{{ checklist.title }}</div>
+                        <div class="mt-3 space-y-2">
+                            {% for item_ck in checklist.items_cached %}
+                            <div class="flex items-center gap-3">
+                                <span class="inline-flex h-5 w-5 items-center justify-center rounded-full {% if item_ck.is_checked %}bg-[var(--green-bg)] text-[var(--green)]{% else %}bg-[var(--bg2)] text-[var(--text3)]{% endif %}">
+                                    {% if item_ck.is_checked %}✓{% else %}•{% endif %}
+                                </span>
+                                <span class="text-sm {% if item_ck.is_checked %}text-[var(--text3)] line-through{% else %}text-[var(--text2)]{% endif %}">
+                                    {{ item_ck.text }}
+                                </span>
+                            </div>
+                            {% empty %}
+                            <div class="text-sm text-[var(--text3)]">Aucun élément.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-sm text-[var(--text3)]">Aucune checklist liée.</div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <!-- COMMENTS -->
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Commentaires</h2>
+
+                <div class="mt-5 space-y-4">
+                    {% for comment in comments %}
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="font-medium text-[var(--text1)]">{{ comment.author }}</div>
+                            <div class="text-xs text-[var(--text3)]">{{ comment.created_at|date:"d/m/Y H:i" }}</div>
+                        </div>
+                        <div class="mt-3 text-sm leading-6 text-[var(--text2)]">
+                            {{ comment.body|linebreaks }}
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-sm text-[var(--text3)]">Aucun commentaire.</div>
+                    {% endfor %}
+                </div>
+            </section>
+        </div>
+
+        <!-- RIGHT -->
+        <div class="space-y-6">
+
+            <!-- CONTEXT -->
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Contexte</h2>
+
+                <div class="mt-5 space-y-4 text-sm">
+                    <div class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-3">
+                        <span class="text-[var(--text3)]">Projet</span>
+                        <span class="text-right font-medium text-[var(--text1)]">{{ item.project }}</span>
+                    </div>
+                    <div class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-3">
+                        <span class="text-[var(--text3)]">Sprint</span>
+                        <span class="text-right font-medium text-[var(--text1)]">{{ item.sprint|default:"—" }}</span>
+                    </div>
+                    <div class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-3">
+                        <span class="text-[var(--text3)]">Backlog item</span>
+                        <span class="text-right font-medium text-[var(--text1)]">{{ item.backlog_item|default:"—" }}</span>
+                    </div>
+                    <div class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-3">
+                        <span class="text-[var(--text3)]">Parent</span>
+                        <span class="text-right font-medium text-[var(--text1)]">{{ item.parent|default:"—" }}</span>
+                    </div>
+                    <div class="flex items-start justify-between gap-4">
+                        <span class="text-[var(--text3)]">Assigné à</span>
+                        <span class="text-right font-medium text-[var(--text1)]">{{ item.assignee|default:"—" }}</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- LABELS / INSIGHTS -->
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Étiquettes & Insights IA</h2>
+
+                <div class="mt-4 flex flex-wrap gap-2">
+                    {% for task_label in labels %}
+                    <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold text-white"
+                          style="background: {{ task_label.label.color|default:'#F4722B' }};">
+                        {{ task_label.label.name }}
+                    </span>
+                    {% empty %}
+                    <span class="text-sm text-[var(--text3)]">Aucune étiquette.</span>
+                    {% endfor %}
+                </div>
+
+                <div class="mt-5 space-y-3">
+                    {% for insight in insights %}
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="font-semibold text-[var(--text1)]">{{ insight.title }}</div>
+                            <span class="text-xs font-semibold text-[var(--accent)]">{{ insight.score }}/100</span>
+                        </div>
+                        <div class="mt-2 text-sm text-[var(--text2)]">{{ insight.summary|truncatechars:120 }}</div>
+                    </div>
+                    {% empty %}
+                    <div class="text-sm text-[var(--text3)]">Aucun insight IA.</div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <!-- DEPENDENCIES -->
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Dépendances</h2>
+
+                <div class="mt-5 space-y-4">
+                    <div>
+                        <div class="mb-2 text-sm font-semibold text-[var(--text1)]">Bloque</div>
+                        <div class="space-y-2">
+                            {% for dep in outgoing_dependencies %}
+                            <div class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-sm text-[var(--text2)]">
+                                {{ dep.to_task.title }}
+                            </div>
+                            {% empty %}
+                            <div class="text-sm text-[var(--text3)]">Aucune dépendance sortante.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="mb-2 text-sm font-semibold text-[var(--text1)]">Est bloquée par</div>
+                        <div class="space-y-2">
+                            {% for dep in incoming_dependencies %}
+                            <div class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-sm text-[var(--text2)]">
+                                {{ dep.from_task.title }}
+                            </div>
+                            {% empty %}
+                            <div class="text-sm text-[var(--text3)]">Aucune dépendance entrante.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RELATED -->
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Tâches liées du projet</h2>
+
+                <div class="mt-5 space-y-3">
+                    {% for related in related_tasks %}
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="font-semibold text-[var(--text1)]">{{ related.title }}</div>
+                                <div class="mt-1 text-xs text-[var(--text3)]">{{ related.sprint|default:"—" }} · {{ related.assignee|default:"—" }}</div>
+                            </div>
+                            <a href="{% url 'task_detail' related.pk %}" class="text-xs font-semibold text-[var(--accent)] hover:underline">Voir</a>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-sm text-[var(--text3)]">Aucune tâche liée.</div>
+                    {% endfor %}
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}

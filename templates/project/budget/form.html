@@ -1,0 +1,291 @@
+{% extends "layout/base.html" %}
+{% load static %}
+
+{% block title %}
+    {% if object %}Modifier budget projet{% else %}Créer budget projet{% endif %} — DevFlow
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-6xl mx-auto">
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <div class="p-6 lg:p-8 bg-gradient-to-r from-[var(--accent-bg)] to-[var(--cyan-bg)]">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+                <div>
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+                        Budget projet
+                    </p>
+                    <h1 class="mt-2 text-3xl lg:text-4xl font-serif text-devtext1">
+                        {% if object %}
+                            Modifier le budget
+                        {% else %}
+                            Créer un budget estimatif
+                        {% endif %}
+                    </h1>
+                    <p class="mt-2 text-sm text-devtext2 max-w-2xl">
+                        Structure les coûts, la marge, le revenu prévisionnel et les seuils d’alerte du projet.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <a href="javascript:history.back()" class="btn-soft">
+                        Retour
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <form method="post" class="space-y-6">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="rounded-[18px] border border-[rgba(232,69,60,.18)] bg-[rgba(232,69,60,.08)] px-5 py-4 text-sm text-devred">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div class="xl:col-span-2 space-y-6">
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Paramètres généraux</div>
+                            <div class="card-sub">Informations de base du budget</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.status.id_for_label }}">
+                                {{ form.status.label }}
+                            </label>
+                            {{ form.status }}
+                            {% if form.status.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.status.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.currency.id_for_label }}">
+                                {{ form.currency.label }}
+                            </label>
+                            {{ form.currency }}
+                            {% if form.currency.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.currency.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.version_number.id_for_label }}">
+                                {{ form.version_number.label }}
+                            </label>
+                            {{ form.version_number }}
+                            {% if form.version_number.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.version_number.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.alert_threshold_percent.id_for_label }}">
+                                {{ form.alert_threshold_percent.label }}
+                            </label>
+                            {{ form.alert_threshold_percent }}
+                            {% if form.alert_threshold_percent.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.alert_threshold_percent.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Estimation des coûts</div>
+                            <div class="card-sub">Répartition des charges estimatives</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.estimated_labor_cost.id_for_label }}">
+                                {{ form.estimated_labor_cost.label }}
+                            </label>
+                            {{ form.estimated_labor_cost }}
+                            {% if form.estimated_labor_cost.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.estimated_labor_cost.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.estimated_software_cost.id_for_label }}">
+                                {{ form.estimated_software_cost.label }}
+                            </label>
+                            {{ form.estimated_software_cost }}
+                            {% if form.estimated_software_cost.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.estimated_software_cost.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.estimated_infra_cost.id_for_label }}">
+                                {{ form.estimated_infra_cost.label }}
+                            </label>
+                            {{ form.estimated_infra_cost }}
+                            {% if form.estimated_infra_cost.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.estimated_infra_cost.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.estimated_subcontract_cost.id_for_label }}">
+                                {{ form.estimated_subcontract_cost.label }}
+                            </label>
+                            {{ form.estimated_subcontract_cost }}
+                            {% if form.estimated_subcontract_cost.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.estimated_subcontract_cost.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.estimated_other_cost.id_for_label }}">
+                                {{ form.estimated_other_cost.label }}
+                            </label>
+                            {{ form.estimated_other_cost }}
+                            {% if form.estimated_other_cost.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.estimated_other_cost.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.contingency_amount.id_for_label }}">
+                                {{ form.contingency_amount.label }}
+                            </label>
+                            {{ form.contingency_amount }}
+                            {% if form.contingency_amount.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.contingency_amount.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Marge, vente et validation</div>
+                            <div class="card-sub">Pilotage financier et projection commerciale</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.target_margin_percent.id_for_label }}">
+                                {{ form.target_margin_percent.label }}
+                            </label>
+                            {{ form.target_margin_percent }}
+                            {% if form.target_margin_percent.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.target_margin_percent.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.markup_percent.id_for_label }}">
+                                {{ form.markup_percent.label }}
+                            </label>
+                            {{ form.markup_percent }}
+                            {% if form.markup_percent.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.markup_percent.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.planned_revenue.id_for_label }}">
+                                {{ form.planned_revenue.label }}
+                            </label>
+                            {{ form.planned_revenue }}
+                            {% if form.planned_revenue.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.planned_revenue.errors }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.approved_budget.id_for_label }}">
+                                {{ form.approved_budget.label }}
+                            </label>
+                            {{ form.approved_budget }}
+                            {% if form.approved_budget.errors %}
+                                <div class="mt-2 text-sm text-devred">{{ form.approved_budget.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Notes</div>
+                            <div class="card-sub">Commentaires et remarques complémentaires</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6">
+                        <label class="block text-sm font-semibold text-devtext2 mb-2" for="{{ form.notes.id_for_label }}">
+                            {{ form.notes.label }}
+                        </label>
+                        {{ form.notes }}
+                        {% if form.notes.errors %}
+                            <div class="mt-2 text-sm text-devred">{{ form.notes.errors }}</div>
+                        {% endif %}
+                    </div>
+                </section>
+            </div>
+
+            <div class="space-y-6">
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Aide rapide</div>
+                            <div class="card-sub">Conseils de saisie</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 space-y-4 text-sm text-devtext2">
+                        <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                            <div class="font-semibold text-devtext1 mb-1">Coûts estimatifs</div>
+                            <div>Renseigne les coûts prévus par catégorie pour construire un budget cohérent.</div>
+                        </div>
+
+                        <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                            <div class="font-semibold text-devtext1 mb-1">Markup / marge</div>
+                            <div>Le markup permet de transformer le coût en prix de vente prévisionnel.</div>
+                        </div>
+
+                        <div class="rounded-[16px] border border-devborder bg-devbg3 px-4 py-4">
+                            <div class="font-semibold text-devtext1 mb-1">Seuil d’alerte</div>
+                            <div>Définis un pourcentage pour déclencher plus tôt les alertes budgétaires.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-head">
+                        <div>
+                            <div class="card-title">Actions</div>
+                            <div class="card-sub">Enregistrement du budget</div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 flex flex-col gap-3">
+                        <button type="submit" class="btn-main justify-center">
+                            {% if object %}Enregistrer les modifications{% else %}Créer le budget{% endif %}
+                        </button>
+
+                        <a href="javascript:history.back()" class="btn-soft justify-center">
+                            Annuler
+                        </a>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

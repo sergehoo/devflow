@@ -1,10 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends 'devflow/layout/base.html' %}
 
-</body>
-</html>
+{% block title %}DevFlow — Analytics{% endblock %}
+{% block page_title %}Analytics{% endblock %}
+{% block breadcrumb %}Pilotage · Indicateurs{% endblock %}
+
+{% block content %}
+<div class="stat-grid">
+    {% include 'devflow/partials/_stats_cards.html' %}
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+    {% include 'devflow/partials/_velocity_chart.html' %}
+    {% include 'devflow/partials/_task_distribution.html' %}
+</div>
+{% endblock %}

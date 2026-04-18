@@ -1,10 +1,454 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends 'layout/base.html' %}
 
-</body>
-</html>
+{% block title %}DevFlow — Dashboard{% endblock %}
+{% block page_title %}Tableau de bord{% endblock %}
+{% block breadcrumb %}Vue d'ensemble · {{ current_workspace.quarter_label|default:'Période active' }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    {% if not current_workspace %}
+        <div class="card p-8 text-center">
+            <div class="text-xl font-semibold text-devtext1">Aucun workspace disponible</div>
+            <div class="mt-2 text-sm text-devtext2">Crée un workspace pour démarrer ton pilotage.</div>
+        </div>
+    {% else %}
+
+    <!-- AI + analyses -->
+    <div class="ai-banner" onclick="openAI()">
+        <div class="ai-glow"><div class="ai-pulse"></div></div>
+        <div style="flex:1">
+            <div style="font-size:13px;font-weight:700;color:var(--text1)">DevFlow AI — Lecture stratégique</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">
+                {% if analysis_cards %}
+                    {% for item in analysis_cards|slice:":3" %}
+                        {% if not forloop.first %} · {% endif %}
+                        <strong>{{ item.title }}</strong>
+                    {% endfor %}
+                {% else %}
+                    Situation stable, aucune alerte majeure détectée.
+                {% endif %}
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+            <span class="badge b-purple">{{ analysis_cards|length }} analyse{{ analysis_cards|length|pluralize }}</span>
+        </div>
+    </div>
+
+    <!-- Analysis cards -->
+    {% if analysis_cards %}
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {% for item in analysis_cards %}
+        <div class="card p-5">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="text-sm font-semibold text-devtext1">{{ item.title }}</div>
+                    <div class="mt-2 text-xs text-devtext2 leading-5">{{ item.text }}</div>
+                </div>
+                <span class="badge
+                    {% if item.severity == 'critical' %}b-red
+                    {% elif item.severity == 'high' %}b-amber
+                    {% elif item.severity == 'medium' %}b-cyan
+                    {% elif item.severity == 'positive' %}b-green
+                    {% else %}b-gray{% endif %}">
+                    {{ item.severity|upper }}
+                </span>
+            </div>
+            <div class="mt-4 text-[11px] text-devaccent font-semibold">{{ item.action }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Sprint banner -->
+    <div class="sprint-banner">
+        <div class="sprint-pip"></div>
+        <div style="flex:1">
+            {% if active_sprint %}
+                <span style="font-size:13px;font-weight:600;color:var(--text1)">
+                    {{ active_sprint.name }} · {{ active_sprint.get_status_display }}
+                </span>
+                <span style="font-size:13px;color:var(--text2)">
+                    — {{ active_sprint.project.name }}
+                    {% if active_sprint.team %} · {{ active_sprint.team.name }}{% endif %}
+                    ·
+                </span>
+                <span style="font-size:13px;color:var(--accent);font-weight:600">
+                    {{ active_sprint.remaining_days }} jour{{ active_sprint.remaining_days|pluralize }} restant{{ active_sprint.remaining_days|pluralize }}
+                </span>
+            {% else %}
+                <span style="font-size:13px;font-weight:600;color:var(--text1)">Aucun sprint actif</span>
+                <span style="font-size:13px;color:var(--text2)"> — Lance un sprint pour activer la lecture temps réel</span>
+            {% endif %}
+        </div>
+
+        {% if active_sprint %}
+        <div style="display:flex;align-items:center;gap:14px">
+            <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                    <span style="font-size:10.5px;color:var(--text3)">Story points</span>
+                    <span style="font-size:10.5px;color:var(--accent);font-weight:600">
+                        {{ active_sprint.completed_story_points }}/{{ active_sprint.total_story_points }}
+                    </span>
+                </div>
+                <div class="prog" style="width:180px;height:4px">
+                    <div class="prog-fill pf-grape" style="width:{% if active_sprint.total_story_points %}{% widthratio active_sprint.completed_story_points active_sprint.total_story_points 100 %}{% else %}0{% endif %}%"></div>
+                </div>
+            </div>
+            <a href="{% url 'sprint_detail' active_sprint.pk %}" class="btn-soft" style="font-size:11.5px">Voir sprint →</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- KPI principal -->
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-card-deco deco-grape"></div>
+        <div class="stat-icon-wrap si-grape">
+            <i class="fa-solid fa-diagram-project"></i>
+        </div>
+        <div class="stat-val">{{ stats.active_projects_count }}</div>
+        <div class="stat-lbl">Projets actifs</div>
+        <div class="stat-row">
+            <span class="delta delta-muted">sur {{ stats.projects_total }}</span>
+            <span class="delta-muted">{{ stats.project_completion_percent }}% terminés</span>
+        </div>
+        <div class="prog"><div class="prog-fill pf-grape" style="width:{{ stats.project_completion_percent }}%"></div></div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-card-deco deco-sage"></div>
+        <div class="stat-icon-wrap si-sage">
+            <i class="fa-regular fa-circle-check"></i>
+        </div>
+        <div class="stat-val">{{ stats.done_tasks_count }}</div>
+        <div class="stat-lbl">Tâches terminées</div>
+        <div class="stat-row">
+            <span class="delta delta-up">{{ stats.done_ratio_percent }}%</span>
+            <span class="delta-muted">du backlog</span>
+        </div>
+        <div class="prog"><div class="prog-fill pf-sage" style="width:{{ stats.done_ratio_percent }}%"></div></div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-card-deco deco-amber"></div>
+        <div class="stat-icon-wrap si-amber">
+            <i class="fa-solid fa-ban"></i>
+        </div>
+        <div class="stat-val">{{ stats.blocked_tasks_count }}</div>
+        <div class="stat-lbl">Tâches bloquées</div>
+        <div class="stat-row">
+            <span class="delta {% if stats.blocked_tasks_count %}delta-dn{% else %}delta-up{% endif %}">
+                {% if stats.blocked_tasks_count %}Action requise{% else %}Sous contrôle{% endif %}
+            </span>
+            <span class="delta-muted">{{ stats.blocked_ratio_percent }}%</span>
+        </div>
+        <div class="prog"><div class="prog-fill pf-amber" style="width:{{ stats.blocked_ratio_percent }}%"></div></div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-card-deco deco-sky"></div>
+        <div class="stat-icon-wrap si-sky">
+            <i class="fa-solid fa-users"></i>
+        </div>
+        <div class="stat-val">{{ stats.active_members_count }}</div>
+        <div class="stat-lbl">Membres actifs</div>
+        <div class="stat-row">
+            <span class="delta delta-up">{{ stats.remote_members_count }} remote</span>
+            <span class="delta-muted">{{ stats.remote_ratio_percent }}%</span>
+        </div>
+        <div class="prog"><div class="prog-fill pf-sky" style="width:{{ stats.remote_ratio_percent }}%"></div></div>
+    </div>
+</div>
+
+    <!-- KPI finance -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div class="card p-5">
+            <div class="text-xs text-devtext3 uppercase tracking-wide">Budget approuvé</div>
+            <div class="mt-2 text-2xl font-serif text-devtext1">{{ finance.approved_budget_total }}</div>
+            <div class="mt-1 text-xs text-devtext2">{{ finance.currency }}</div>
+        </div>
+        <div class="card p-5">
+            <div class="text-xs text-devtext3 uppercase tracking-wide">Dépenses validées</div>
+            <div class="mt-2 text-2xl font-serif text-devtext1">{{ finance.actual_expenses_total }}</div>
+            <div class="mt-1 text-xs text-devtext2">Consommation : {{ finance.budget_usage_percent }}%</div>
+        </div>
+        <div class="card p-5">
+            <div class="text-xs text-devtext3 uppercase tracking-wide">Revenus reçus</div>
+            <div class="mt-2 text-2xl font-serif text-devtext1">{{ finance.received_revenue_total }}</div>
+            <div class="mt-1 text-xs text-devtext2">Attendus : {{ finance.expected_revenue_total }}</div>
+        </div>
+        <div class="card p-5">
+            <div class="text-xs text-devtext3 uppercase tracking-wide">Marge réelle</div>
+            <div class="mt-2 text-2xl font-serif {% if finance.actual_margin < 0 %}text-devred{% else %}text-devgreen{% endif %}">
+                {{ finance.actual_margin }}
+            </div>
+            <div class="mt-1 text-xs text-devtext2">Heures loggées : {{ finance.logged_hours_total }}</div>
+        </div>
+    </div>
+
+    <!-- Row projets + panels -->
+    <div style="display:grid;grid-template-columns:1fr 320px;gap:14px">
+
+        <div class="card" style="overflow:hidden">
+            <div class="card-head flex items-center justify-between">
+    <div>
+        <div class="card-title">Portefeuille projets</div>
+        <div class="card-sub">Lecture consolidée du workspace</div>
+    </div>
+
+    <a href="{% url 'project_list' %}?workspace={{ workspace.id }}"
+       class="inline-flex items-center gap-2 text-sm font-medium text-devaccent hover:underline">
+        Voir tout
+        <i class="fa-solid fa-arrow-right"></i>
+    </a>
+</div>
+
+            <table class="tbl">
+                <thead>
+                    <tr>
+                        <th>Projet</th>
+                        <th>Équipe</th>
+                        <th>Avancement</th>
+                        <th>Risque</th>
+                        <th>Statut</th>
+                        <th>Deadline</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for project in projects %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'project_detail' project.pk %}"><div class="proj-name">{{ project.name }}</div>
+                            <div class="proj-tech">{{ project.tech_stack|default:"—" }}</div>
+                        </a></td>
+                        <td>{{ project.team.name|default:"—" }}</td>
+                        <td style="min-width:120px">
+                            <div style="font-size:10px;color:var(--text3);margin-bottom:3px">{{ project.progress_percent }}%</div>
+                            <div class="prog" style="height:3px">
+                                <div class="prog-fill pf-grape" style="width:{{ project.progress_percent }}%"></div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if project.risk_score >= 70 %}
+                                <span class="badge b-red">Élevé</span>
+                            {% elif project.risk_score >= 40 %}
+                                <span class="badge b-amber">Moyen</span>
+                            {% else %}
+                                <span class="badge b-green">Faible</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge b-purple">{{ project.get_status_display }}</span></td>
+                        <td>{{ project.target_date|date:"d M Y"|default:"—" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" style="text-align:center;color:var(--text3);padding:20px;">Aucun projet disponible.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="card" style="padding:16px 18px">
+                <div class="card-title" style="margin-bottom:12px">Répartition des tâches</div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                    {% for label, value in task_distribution.items %}
+                    <div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                            <span style="font-size:11.5px;color:var(--text2)">{{ label|title }}</span>
+                            <span style="font-size:12px;font-weight:600;color:var(--text1)">{{ value }}</span>
+                        </div>
+                        <div class="prog">
+                            <div class="prog-fill pf-sky" style="width:{{ task_distribution_pct }}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card" style="padding:16px 18px">
+                <div class="card-title" style="margin-bottom:12px">Risques & alertes</div>
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11.5px] text-devtext2">Risques ouverts</span>
+                        <span class="badge b-amber">{{ stats.open_risks_count }}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11.5px] text-devtext2">Risques critiques</span>
+                        <span class="badge b-red">{{ stats.critical_risks_count }}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11.5px] text-devtext2">Risques escaladés</span>
+                        <span class="badge b-purple">{{ stats.escalated_risks_count }}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11.5px] text-devtext2">Projets en retard</span>
+                        <span class="badge b-amber">{{ stats.delayed_projects_count }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="padding:16px 18px">
+                <div class="card-title" style="margin-bottom:12px">Échéances proches</div>
+                <div class="space-y-3">
+                    {% for task in due_soon_tasks %}
+                    <div class="rounded-[12px] border border-devborder p-3">
+                        <div class="text-sm font-semibold text-devtext1">{{ task.title }}</div>
+                        <div class="text-xs text-devtext3 mt-1">{{ task.project.name }} · {{ task.due_date|date:"d M Y" }}</div>
+                    </div>
+                    {% empty %}
+                    <div class="text-[11.5px] text-devtext3">Aucune échéance critique cette semaine.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sprint board -->
+    <div class="card" style="overflow:hidden">
+        <div class="card-head">
+            <div>
+                <div class="card-title">
+                    {% if active_sprint %}{{ active_sprint.name }} — Board sprint{% else %}Board sprint{% endif %}
+                </div>
+                <div class="card-sub">
+                    {% if active_sprint %}
+                        {{ active_sprint.project.name }}
+                        {% if active_sprint.team %} · {{ active_sprint.team.name }}{% endif %}
+                    {% else %}
+                        Aucun sprint actif
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="kanban" data-kanban-board>
+            {% for col in kanban_columns %}
+            <div class="kol" data-kanban-column id="{{ col.id }}">
+                <div class="kol-head">
+                    <div class="kol-label" style="color:{{ col.color }}">
+                        {{ col.name }}
+                        <span class="kol-count">{{ col.count }}</span>
+                    </div>
+                </div>
+
+                {% for task in col.tasks %}
+                <div class="tc">
+                    <div style="margin-bottom:6px">
+                        <span class="badge {% if col.is_done %}b-green{% elif col.name|lower == 'review' %}b-amber{% else %}b-purple{% endif %}">
+                            {{ task.get_priority_display }}
+                        </span>
+                    </div>
+                    <div class="tc-title {% if col.is_done %}line-through text-[var(--text3)]{% endif %}">
+                        {{ task.title }}
+                    </div>
+                    <div class="tc-foot">
+                        <div class="tc-meta">
+                            {% if task.estimate_hours %}⏱ {{ task.estimate_hours }} h{% endif %}
+                        </div>
+                        {% if task.assignee %}
+                            <div class="av av-sm av-grape">{{ task.assignee|stringformat:"s"|slice:":2"|upper }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <div class="tc"><div class="tc-title" style="color:var(--text3)">Aucune tâche</div></div>
+                {% endfor %}
+            </div>
+            {% empty %}
+            <div class="p-5 text-sm text-devtext3">Aucune colonne sprint disponible.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Bottom row -->
+    <div style="display:grid;grid-template-columns:1fr 300px 300px;gap:14px">
+
+        <div class="card" style="padding:16px 18px;overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <div class="card-title">Activité récente</div>
+                <span style="font-size:10.5px;color:var(--text3)">Temps réel</span>
+            </div>
+            <div>
+                {% for activity in activities %}
+                <div class="tl-item">
+                    <div class="tl-dot a"></div>
+                    <div>
+                        <div class="tl-name">{{ activity.title }}</div>
+                        <div class="tl-meta">
+                            {% if activity.actor %}{{ activity.actor }} · {% endif %}{{ activity.created_at|date:"d/m/Y H:i" }}
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div style="font-size:11.5px;color:var(--text3)">Aucune activité récente.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card" style="padding:16px 18px">
+            <div class="card-title" style="margin-bottom:16px">Charge équipe</div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+                {% for member in team_load %}
+                <div class="wl-item">
+                    <div class="av av-md av-grape">{{ member.user|stringformat:"s"|slice:":2"|upper }}</div>
+                    <div style="flex:1;min-width:0">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                            <span style="font-size:12px;font-weight:500;color:var(--text1)">{{ member.user }}</span>
+                            <span style="font-size:10.5px;color:var(--text3)">{{ member.current_load_percent }}%</span>
+                        </div>
+                        <div class="wl-bar">
+                            <div class="wl-fill"
+                                 style="width:{{ member.current_load_percent }}%;
+                                        background:{% if member.current_load_percent >= 85 %}linear-gradient(90deg,#E8453C,#F87171){% elif member.current_load_percent >= 65 %}linear-gradient(90deg,#D97706,#FBBF24){% else %}linear-gradient(90deg,#059669,#34D399){% endif %}">
+                            </div>
+                        </div>
+                        <span style="font-size:10px;color:var(--text3)">{{ member.get_status_display }}</span>
+                    </div>
+                </div>
+                {% empty %}
+                <div style="font-size:11.5px;color:var(--text3)">Aucun membre disponible.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card" style="padding:16px 18px">
+            <div class="card-title" style="margin-bottom:16px">Profils les plus coûteux</div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+                {% for profile in top_cost_members %}
+                <div class="rounded-[12px] border border-devborder px-3 py-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <div class="text-sm font-semibold text-devtext1">
+                                {{ profile.user.get_full_name|default:profile.user.username }}
+                            </div>
+                            <div class="text-xs text-devtext3">
+                                {{ profile.job_title|default:profile.get_seniority_display }}
+                            </div>
+                        </div>
+                        <span class="badge b-purple">{{ profile.cost_per_day }} {{ profile.currency }}</span>
+                    </div>
+                </div>
+                {% empty %}
+                <div style="font-size:11.5px;color:var(--text3)">Aucune donnée coût disponible.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="foot-strip">
+        <span style="font-size:10.5px;color:var(--text3)">
+            DevFlow · {{ current_workspace.name }} · <span style="color:var(--accent)">⌘K</span> pour la palette
+        </span>
+        <div style="display:flex;gap:16px">
+            <span style="font-size:10.5px;color:var(--text3)">Notifications : {{ notifications|length }}</span>
+            <span style="font-size:10.5px;color:var(--text3)">Insights IA : {{ ai_insights|length }}</span>
+            <span style="font-size:10.5px;color:var(--text3)">Dépenses draft : {{ finance.draft_expenses_total }}</span>
+        </div>
+    </div>
+
+    {% endif %}
+</div>
+{% endblock %}

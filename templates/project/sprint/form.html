@@ -1,0 +1,143 @@
+{% extends 'layout/base.html' %}
+
+{% block title %}
+    DevFlow —
+    {% if object %}Modifier sprint{% else %}Créer sprint{% endif %}
+{% endblock %}
+
+{% block page_title %}
+    {% if object %}Modifier sprint{% else %}Créer sprint{% endif %}
+{% endblock %}
+
+{% block breadcrumb %}Projet · Sprint · Formulaire{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-5xl space-y-6">
+
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <h1 class="font-serif text-3xl font-medium tracking-[-0.03em] text-[var(--text1)]">
+                    {% if object %}Modifier le sprint{% else %}Créer un sprint{% endif %}
+                </h1>
+                <p class="mt-2 text-sm text-[var(--text2)]">
+                    Renseigne les informations de planification, de capacité et de pilotage du sprint.
+                </p>
+            </div>
+
+            <a href="{% url 'sprint_list' %}"
+               class="inline-flex items-center rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                Retour
+            </a>
+        </div>
+    </section>
+
+    <form method="post" class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+        <div class="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {{ form.non_field_errors }}
+        </div>
+        {% endif %}
+
+        <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Workspace</label>
+                {{ form.workspace }}
+                {% if form.workspace.errors %}<p class="mt-1 text-xs text-red-600">{{ form.workspace.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Projet</label>
+                {{ form.project }}
+                {% if form.project.errors %}<p class="mt-1 text-xs text-red-600">{{ form.project.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Équipe</label>
+                {{ form.team }}
+                {% if form.team.errors %}<p class="mt-1 text-xs text-red-600">{{ form.team.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Statut</label>
+                {{ form.status }}
+                {% if form.status.errors %}<p class="mt-1 text-xs text-red-600">{{ form.status.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div class="md:col-span-2">
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Nom</label>
+                {{ form.name }}
+                {% if form.name.errors %}<p class="mt-1 text-xs text-red-600">{{ form.name.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Numéro</label>
+                {{ form.number }}
+                {% if form.number.errors %}<p class="mt-1 text-xs text-red-600">{{ form.number.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Objectif</label>
+                {{ form.goal }}
+                {% if form.goal.errors %}<p class="mt-1 text-xs text-red-600">{{ form.goal.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Date début</label>
+                {{ form.start_date }}
+                {% if form.start_date.errors %}<p class="mt-1 text-xs text-red-600">{{ form.start_date.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Date fin</label>
+                {{ form.end_date }}
+                {% if form.end_date.errors %}<p class="mt-1 text-xs text-red-600">{{ form.end_date.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Vélocité cible</label>
+                {{ form.velocity_target }}
+                {% if form.velocity_target.errors %}<p class="mt-1 text-xs text-red-600">{{ form.velocity_target.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Vélocité réalisée</label>
+                {{ form.velocity_completed }}
+                {% if form.velocity_completed.errors %}<p class="mt-1 text-xs text-red-600">{{ form.velocity_completed.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Story points totaux</label>
+                {{ form.total_story_points }}
+                {% if form.total_story_points.errors %}<p class="mt-1 text-xs text-red-600">{{ form.total_story_points.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Story points complétés</label>
+                {{ form.completed_story_points }}
+                {% if form.completed_story_points.errors %}<p class="mt-1 text-xs text-red-600">{{ form.completed_story_points.errors.0 }}</p>{% endif %}
+            </div>
+
+            <div class="md:col-span-2">
+                <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Story points restants</label>
+                {{ form.remaining_story_points }}
+                {% if form.remaining_story_points.errors %}<p class="mt-1 text-xs text-red-600">{{ form.remaining_story_points.errors.0 }}</p>{% endif %}
+            </div>
+        </div>
+
+        <div class="mt-8 flex flex-wrap items-center justify-end gap-3">
+            <a href="{% url 'sprint_list' %}"
+               class="inline-flex items-center rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-5 py-3 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                Annuler
+            </a>
+
+            <button type="submit"
+                    class="inline-flex items-center rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5">
+                {% if object %}Enregistrer les modifications{% else %}Créer le sprint{% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

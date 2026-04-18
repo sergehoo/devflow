@@ -1,0 +1,316 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Dashboard IA{% endblock %}
+{% block page_title %}Dashboard IA{% endblock %}
+{% block breadcrumb %}Analytics · AI Insights Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- HERO -->
+    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+        <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,78,0,0.08)_0%,rgba(14,165,201,0.06)_45%,transparent_100%)]"></div>
+        <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+
+        <div class="relative p-6 lg:p-7">
+            <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                    <div class="mb-3 inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent)]">
+                        Intelligence cockpit
+                    </div>
+                    <h1 class="font-serif text-3xl text-[var(--text1)]">AI Insights Dashboard</h1>
+                    <p class="mt-3 max-w-3xl text-sm leading-6 text-[var(--text2)]">
+                        Centre d’analyse des signaux IA : détection des risques, charge, livraison, vélocité et recommandations opérationnelles prioritaires.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <a href="{% url 'ai_insight_list' %}"
+                       class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)]">
+                        Voir tous les insights
+                    </a>
+                    <a href="{% url 'ai_insight_create' %}"
+                       class="inline-flex items-center rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
+                        Nouvel insight
+                    </a>
+                </div>
+            </div>
+
+            <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/85 p-4">
+                    <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Insights actifs</div>
+                    <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ active_count }}</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/85 p-4">
+                    <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Masqués</div>
+                    <div class="mt-2 font-serif text-3xl text-[var(--text2)]">{{ hidden_count }}</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/85 p-4">
+                    <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Non lus</div>
+                    <div class="mt-2 font-serif text-3xl text-[var(--accent)]">{{ stats.unread_count|default:0 }}</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/85 p-4">
+                    <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Critiques</div>
+                    <div class="mt-2 font-serif text-3xl text-[var(--red)]">{{ stats.critical_count|default:0 }}</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/85 p-4">
+                    <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Élevés</div>
+                    <div class="mt-2 font-serif text-3xl text-[var(--amber)]">{{ stats.high_count|default:0 }}</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/85 p-4">
+                    <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Score moyen</div>
+                    <div class="mt-2 font-serif text-3xl text-[var(--accent)]">{{ stats.avg_score|default:0|floatformat:0 }}</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CHARTS -->
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <!-- Répartition par type -->
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="mb-5">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Répartition par type d’insight</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Vision globale des signaux produits par l’IA.</p>
+            </div>
+
+            <div class="space-y-4">
+                {% for row in type_breakdown %}
+                <div>
+                    <div class="mb-2 flex items-center justify-between text-sm">
+                        <span class="font-medium text-[var(--text2)]">{{ row.label }}</span>
+                        <span class="font-semibold text-[var(--text1)]">{{ row.count }}</span>
+                    </div>
+                    <div class="h-2 overflow-hidden rounded-full bg-[var(--bg3)]">
+                        <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))]"
+                             style="width: {% if active_count %}{% widthratio row.count active_count 100 %}{% else %}0{% endif %}%"></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Histogramme sévérité -->
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="mb-5">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Histogramme par sévérité</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Distribution du niveau d’importance analytique.</p>
+            </div>
+
+            <div class="grid grid-cols-5 gap-3 items-end h-[240px]">
+                {% for row in severity_breakdown %}
+                <div class="flex flex-col items-center justify-end gap-3">
+                    <div class="w-full rounded-t-2xl {% if row.key == 'CRITICAL' %}bg-[var(--red)]
+                                                {% elif row.key == 'HIGH' %}bg-[var(--amber)]
+                                                {% elif row.key == 'MEDIUM' %}bg-[var(--accent)]
+                                                {% elif row.key == 'LOW' %}bg-[var(--green)]
+                                                {% else %}bg-[var(--cyan)]{% endif %}"
+                         style="height: {% if stats.total %}{% widthratio row.count stats.total 180 %}{% else %}8{% endif %}px; min-height: 10px;">
+                    </div>
+                    <div class="text-center">
+                        <div class="text-sm font-semibold text-[var(--text1)]">{{ row.count }}</div>
+                        <div class="text-[11px] text-[var(--text3)]">{{ row.label }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <!-- PRIORITY + CRITICAL -->
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_.8fr]">
+        <!-- recommandations prioritaires -->
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="mb-5">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Recommandations prioritaires</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Actions proposées par l’IA à traiter en priorité.</p>
+            </div>
+
+            <div class="space-y-4">
+                {% for insight in priority_recommendations %}
+                <article class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div class="truncate font-semibold text-[var(--text1)]">{{ insight.title }}</div>
+
+                                {% if insight.severity == "CRITICAL" %}
+                                <span class="inline-flex rounded-full bg-[var(--red-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--red)]">Critique</span>
+                                {% elif insight.severity == "HIGH" %}
+                                <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--amber)]">Élevé</span>
+                                {% else %}
+                                <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--accent)]">Moyen</span>
+                                {% endif %}
+
+                                <span class="inline-flex rounded-full border border-[var(--border)] bg-[var(--bg2)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text2)]">
+                                    Score {{ insight.score }}
+                                </span>
+                            </div>
+
+                            <div class="mt-2 text-xs text-[var(--text3)]">
+                                {% if insight.project %}{{ insight.project.name }}{% endif %}
+                                {% if insight.sprint %} · {{ insight.sprint.name }}{% endif %}
+                                {% if insight.task %} · {{ insight.task.title }}{% endif %}
+                            </div>
+
+                            <div class="mt-3 text-sm leading-6 text-[var(--text2)]">
+                                {{ insight.recommendation|truncatechars:220 }}
+                            </div>
+                        </div>
+
+                        <a href="{% url 'ai_insight_detail' insight.pk %}"
+                           class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                            Voir
+                        </a>
+                    </div>
+                </article>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-10 text-center text-sm text-[var(--text3)]">
+                    Aucune recommandation prioritaire disponible.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- critiques non lus -->
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="mb-5">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Insights critiques non lus</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Signaux urgents qui nécessitent une lecture immédiate.</p>
+            </div>
+
+            <div class="space-y-3">
+                {% for insight in critical_unread %}
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="font-semibold text-[var(--text1)]">{{ insight.title }}</div>
+                            <div class="mt-1 text-xs text-[var(--text3)]">
+                                {{ insight.get_insight_type_display }} · Score {{ insight.score }} · {{ insight.detected_at|date:"d/m/Y H:i" }}
+                            </div>
+                            {% if insight.project %}
+                            <div class="mt-2 text-xs text-[var(--text2)]">{{ insight.project.name }}</div>
+                            {% endif %}
+                        </div>
+
+                        <a href="{% url 'ai_insight_detail' insight.pk %}"
+                           class="text-xs font-semibold text-[var(--accent)] hover:underline">
+                            Ouvrir
+                        </a>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-10 text-center text-sm text-[var(--text3)]">
+                    Aucun insight critique non lu.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <!-- PROJECT ANALYSIS -->
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_.8fr]">
+        <!-- insights par projet -->
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="mb-5">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Insights par projet</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Quels projets concentrent le plus de signaux IA.</p>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-[var(--border)] text-left text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                            <th class="py-3">Projet</th>
+                            <th class="py-3 text-right">Insights</th>
+                            <th class="py-3 text-right">Non lus</th>
+                            <th class="py-3 text-right">Critiques</th>
+                            <th class="py-3 text-right">Score moyen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in insights_by_project %}
+                        <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/30">
+                            <td class="py-3 font-medium text-[var(--text1)]">
+                                {{ row.project__name|default:"Sans projet" }}
+                            </td>
+                            <td class="py-3 text-right text-[var(--text2)]">{{ row.total }}</td>
+                            <td class="py-3 text-right text-[var(--accent)] font-semibold">{{ row.unread }}</td>
+                            <td class="py-3 text-right text-[var(--red)] font-semibold">{{ row.critical }}</td>
+                            <td class="py-3 text-right text-[var(--text1)] font-semibold">{{ row.avg_score|default:0|floatformat:0 }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="py-8 text-center text-[var(--text3)]">Aucune donnée projet disponible.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- actifs / masqués -->
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="mb-5">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Insights actifs / masqués</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Vision rapide de l’état de visibilité du moteur IA.</p>
+            </div>
+
+            <div class="space-y-5">
+                <div>
+                    <div class="mb-2 flex items-center justify-between text-sm">
+                        <span class="font-medium text-[var(--text2)]">Actifs</span>
+                        <span class="font-semibold text-[var(--text1)]">{{ active_count }}</span>
+                    </div>
+                    <div class="h-3 overflow-hidden rounded-full bg-[var(--bg3)]">
+                        <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))]"
+                             style="width: {% if active_count or hidden_count %}{% widthratio active_count active_count|add:hidden_count 100 %}{% else %}0{% endif %}%"></div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="mb-2 flex items-center justify-between text-sm">
+                        <span class="font-medium text-[var(--text2)]">Masqués</span>
+                        <span class="font-semibold text-[var(--text1)]">{{ hidden_count }}</span>
+                    </div>
+                    <div class="h-3 overflow-hidden rounded-full bg-[var(--bg3)]">
+                        <div class="h-full rounded-full bg-[var(--text3)]"
+                             style="width: {% if active_count or hidden_count %}{% widthratio hidden_count active_count|add:hidden_count 100 %}{% else %}0{% endif %}%"></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                        <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Derniers actifs</div>
+                        <div class="mt-3 space-y-2">
+                            {% for insight in recent_active|slice:":3" %}
+                            <div class="text-sm text-[var(--text2)]">{{ insight.title|truncatechars:38 }}</div>
+                            {% empty %}
+                            <div class="text-sm text-[var(--text3)]">—</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                        <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Derniers masqués</div>
+                        <div class="mt-3 space-y-2">
+                            {% for insight in recent_hidden|slice:":3" %}
+                            <div class="text-sm text-[var(--text2)]">{{ insight.title|truncatechars:38 }}</div>
+                            {% empty %}
+                            <div class="text-sm text-[var(--text3)]">—</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+</div>
+{% endblock %}

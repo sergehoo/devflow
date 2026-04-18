@@ -1,24 +1,52 @@
+version: "3.9"
+
 services:
-  parcelaireweb:
-    build: .
-    container_name: parcelaireweb
-    command: gunicorn parcelaireKG.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120
+  devflowweb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devflowweb
+    command: >
+      gunicorn devflow.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers 3
+      --threads 2
+      --timeout 120
+      --keep-alive 5
+      --max-requests 1000
+      --max-requests-jitter 150
+      --access-logfile -
+      --error-logfile -
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
-      - ./media:/app/media
+      - media_volume:/app/media
+      - logs_volume:/app/logs
     environment:
+      # Django
       - DEBUG=${DEBUG:-False}
-      - DJANGO_SETTINGS_MODULE=parcelaireKG.settings
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-devflow.settings}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS}
+      - SITE_ID=${SITE_ID:-1}
+      - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
+      - LANGUAGE_CODE=${LANGUAGE_CODE:-fr-fr}
+      - USE_X_FORWARDED_HOST=True
+      - SECURE_PROXY_SSL_HEADER=HTTP_X_FORWARDED_PROTO,https
+
+      # Static / media
+      - STATIC_URL=/static/
       - STATIC_ROOT=/app/staticfiles
+      - MEDIA_URL=/media/
       - MEDIA_ROOT=/app/media
 
-      # Base de données
-      - DB_ENGINE=django.contrib.gis.db.backends.postgis
+      # Database
+      - DB_ENGINE=${DB_ENGINE:-django.db.backends.postgresql}
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
-      - DB_HOST=parcelairedb
+      - DB_HOST=devflowdb
       - DB_PORT=5432
 
       # Redis / Celery
@@ -26,22 +54,34 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
 
-      # API CRM externe
-      - EXTERNAL_LOTS_API_URL=${EXTERNAL_LOTS_API_URL}
-      - EXTERNAL_LOTS_API_KEY=${EXTERNAL_LOTS_API_KEY}
-      - EXTERNAL_LOTS_API_USERNAME=${EXTERNAL_LOTS_API_USERNAME}
-      - EXTERNAL_LOTS_API_PASSWORD=${EXTERNAL_LOTS_API_PASSWORD}
+      # Email
+      - EMAIL_HOST=${EMAIL_HOST:-}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER:-}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD:-}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS:-True}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@${DOMAIN}}
 
-      # Django
-      - SECRET_KEY=${SECRET_KEY}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
-      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS}
-      - SITE_ID=${SITE_ID:-1}
-      - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
+      # AI / external integrations
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITLAB_TOKEN=${GITLAB_TOKEN:-}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+
+      # Storage / imports
+      - FILE_UPLOAD_MAX_MEMORY_SIZE=${FILE_UPLOAD_MAX_MEMORY_SIZE:-10485760}
+      - DATA_UPLOAD_MAX_MEMORY_SIZE=${DATA_UPLOAD_MAX_MEMORY_SIZE:-26214400}
+
+      # App
+      - DEVFLOW_ENV=${DEVFLOW_ENV:-production}
+      - ENABLE_AI_INSIGHTS=${ENABLE_AI_INSIGHTS:-True}
+      - ENABLE_NOTIFICATIONS=${ENABLE_NOTIFICATIONS:-True}
+      - ENABLE_WORKSPACE_INVITATIONS=${ENABLE_WORKSPACE_INVITATIONS:-True}
     env_file:
       - .env
     depends_on:
-      - parcelairedb
+      - devflowdb
       - redis
     networks:
       - proxy
@@ -50,116 +90,167 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
 
-      # Router HTTPS principal
-      - "traefik.http.routers.parcelaire.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.parcelaire.entrypoints=websecure"
-      - "traefik.http.routers.parcelaire.tls.certresolver=lets"
+      # Main HTTPS router
+      - "traefik.http.routers.devflow.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.devflow.entrypoints=websecure"
+      - "traefik.http.routers.devflow.tls=true"
+      - "traefik.http.routers.devflow.tls.certresolver=lets"
 
-      # Service interne gunicorn
-      - "traefik.http.services.parcelaire.loadbalancer.server.port=8000"
+      # HTTP -> HTTPS redirection
+      - "traefik.http.routers.devflow-http.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.devflow-http.entrypoints=web"
+      - "traefik.http.routers.devflow-http.middlewares=devflow-redirect-https"
 
-      # Middlewares
-      - "traefik.http.middlewares.parcelaire-compress.compress=true"
-      - "traefik.http.middlewares.parcelaire-sec.headers.stsSeconds=31536000"
-      - "traefik.http.middlewares.parcelaire-sec.headers.stsIncludeSubdomains=true"
-      - "traefik.http.middlewares.parcelaire-sec.headers.forceSTSHeader=true"
-      - "traefik.http.middlewares.parcelaire-sec.headers.frameDeny=true"
-      - "traefik.http.middlewares.parcelaire-sec.headers.contentTypeNosniff=true"
-      - "traefik.http.routers.parcelaire.middlewares=parcelaire-compress,parcelaire-sec"
+      - "traefik.http.middlewares.devflow-redirect-https.redirectscheme.scheme=https"
 
+      # Gunicorn internal service
+      - "traefik.http.services.devflow.loadbalancer.server.port=8000"
+
+      # Security / compression
+      - "traefik.http.middlewares.devflow-compress.compress=true"
+      - "traefik.http.middlewares.devflow-sec.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.devflow-sec.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.devflow-sec.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.devflow-sec.headers.frameDeny=true"
+      - "traefik.http.middlewares.devflow-sec.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.devflow-sec.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.devflow-sec.headers.referrerPolicy=strict-origin-when-cross-origin"
+      - "traefik.http.middlewares.devflow-sec.headers.customRequestHeaders.X-Forwarded-Proto=https"
+      - "traefik.http.routers.devflow.middlewares=devflow-compress,devflow-sec"
     restart: unless-stopped
 
-  parcelairecelery:
-    build: .
-    container_name: parcelairecelery
-    command: celery -A parcelaire.celery:app worker -l info
+  devflowcelery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devflowcelery
+    command: celery -A devflow.celery:app worker -l info --concurrency=4
     volumes:
       - .:/app
-      - media_volume:/app/media
       - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - logs_volume:/app/logs
     environment:
       - DEBUG=${DEBUG:-False}
-      - DJANGO_SETTINGS_MODULE=parcelaireKG.settings
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-devflow.settings}
+      - SECRET_KEY=${SECRET_KEY}
+      - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
+
       - STATIC_ROOT=/app/staticfiles
       - MEDIA_ROOT=/app/media
 
-      # Base de données
-      - DB_ENGINE=django.contrib.gis.db.backends.postgis
+      - DB_ENGINE=${DB_ENGINE:-django.db.backends.postgresql}
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
-      - DB_HOST=parcelairedb
+      - DB_HOST=devflowdb
       - DB_PORT=5432
 
-      # Redis / Celery
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
 
-      # API CRM externe
-      - EXTERNAL_LOTS_API_URL=${EXTERNAL_LOTS_API_URL}
-      - EXTERNAL_LOTS_API_KEY=${EXTERNAL_LOTS_API_KEY}
-      - EXTERNAL_LOTS_API_USERNAME=${EXTERNAL_LOTS_API_USERNAME}
-      - EXTERNAL_LOTS_API_PASSWORD=${EXTERNAL_LOTS_API_PASSWORD}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITLAB_TOKEN=${GITLAB_TOKEN:-}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SENTRY_DSN=${SENTRY_DSN:-}
 
-      - SECRET_KEY=${SECRET_KEY}
-      - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
+      - DEVFLOW_ENV=${DEVFLOW_ENV:-production}
+      - ENABLE_AI_INSIGHTS=${ENABLE_AI_INSIGHTS:-True}
+      - ENABLE_NOTIFICATIONS=${ENABLE_NOTIFICATIONS:-True}
     env_file:
       - .env
     depends_on:
-      - parcelairedb
+      - devflowdb
       - redis
     networks:
       - default
     restart: unless-stopped
 
-  parcelairebeat:
-    build: .
-    container_name: parcelairebeat
-    command: celery -A parcelaire.celery:app beat -l info
+  devflowbeat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devflowbeat
+    command: celery -A devflow.celery:app beat -l info
     volumes:
       - .:/app
-      - media_volume:/app/media
       - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - logs_volume:/app/logs
     environment:
       - DEBUG=${DEBUG:-False}
-      - DJANGO_SETTINGS_MODULE=parcelaireKG.settings
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-devflow.settings}
+      - SECRET_KEY=${SECRET_KEY}
+      - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
+
       - STATIC_ROOT=/app/staticfiles
       - MEDIA_ROOT=/app/media
 
-      # Base de données
-      - DB_ENGINE=django.contrib.gis.db.backends.postgis
+      - DB_ENGINE=${DB_ENGINE:-django.db.backends.postgresql}
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
-      - DB_HOST=parcelairedb
+      - DB_HOST=devflowdb
       - DB_PORT=5432
 
-      # Redis / Celery
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
 
-      # API CRM externe
-      - EXTERNAL_LOTS_API_URL=${EXTERNAL_LOTS_API_URL}
-      - EXTERNAL_LOTS_API_KEY=${EXTERNAL_LOTS_API_KEY}
-      - EXTERNAL_LOTS_API_USERNAME=${EXTERNAL_LOTS_API_USERNAME}
-      - EXTERNAL_LOTS_API_PASSWORD=${EXTERNAL_LOTS_API_PASSWORD}
-
-      - SECRET_KEY=${SECRET_KEY}
-      - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - DEVFLOW_ENV=${DEVFLOW_ENV:-production}
     env_file:
       - .env
     depends_on:
-      - parcelairedb
+      - devflowdb
       - redis
     networks:
       - default
     restart: unless-stopped
 
-  parcelairedb:
-    image: postgis/postgis:15-3.4
-    container_name: parcelairedb
+  devflowflower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devflowflower
+    command: >
+      celery -A devflow.celery:app flower
+      --port=5555
+      --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin123}
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-devflow.settings}
+      - SECRET_KEY=${SECRET_KEY}
+      - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - devflowcelery
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.devflowflower.rule=Host(`flower.${DOMAIN}`)"
+      - "traefik.http.routers.devflowflower.entrypoints=websecure"
+      - "traefik.http.routers.devflowflower.tls=true"
+      - "traefik.http.routers.devflowflower.tls.certresolver=lets"
+      - "traefik.http.services.devflowflower.loadbalancer.server.port=5555"
+      - "traefik.http.middlewares.devflowflower-compress.compress=true"
+      - "traefik.http.routers.devflowflower.middlewares=devflowflower-compress"
+    restart: unless-stopped
+
+  devflowdb:
+    image: postgres:15-alpine
+    container_name: devflowdb
     environment:
       - POSTGRES_DB=${DB_NAME}
       - POSTGRES_USER=${DB_USER}
@@ -169,48 +260,49 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5437:5432"
+      - "5438:5432"
     networks:
       - default
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: parcelaire-redis
+    container_name: devflow-redis
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     networks:
       - default
     restart: unless-stopped
-  parcelaireadminer:
+
+  devflowadminer:
     image: adminer:4
-    container_name: parcelaire-adminer
-    restart: unless-stopped
+    container_name: devflow-adminer
     depends_on:
-      - parcelairedb
+      - devflowdb
+    restart: unless-stopped
     ports:
-      - "8081:8080"
+      - "8082:8080"
     environment:
-      - ADMINER_DEFAULT_SERVER=parcelairedb
+      - ADMINER_DEFAULT_SERVER=devflowdb
     networks:
       - default
       - proxy
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
-      - "traefik.http.routers.parcelaireadminer.rule=Host(`adminer.${DOMAIN}`)"
-      - "traefik.http.routers.parcelaireadminer.entrypoints=websecure"
-      - "traefik.http.routers.parcelaireadminer.tls=true"
-      - "traefik.http.routers.parcelaireadminer.tls.certresolver=lets"
-      - "traefik.http.services.parcelaireadminer.loadbalancer.server.port=8080"
-      - "traefik.http.services.parcelaireadminer.loadbalancer.server.scheme=http"
+      - "traefik.http.routers.devflowadminer.rule=Host(`adminer.${DOMAIN}`)"
+      - "traefik.http.routers.devflowadminer.entrypoints=websecure"
+      - "traefik.http.routers.devflowadminer.tls=true"
+      - "traefik.http.routers.devflowadminer.tls.certresolver=lets"
+      - "traefik.http.services.devflowadminer.loadbalancer.server.port=8080"
 
 volumes:
   postgres_data:
   redis_data:
   static_volume:
   media_volume:
+  logs_volume:
 
 networks:
   proxy:

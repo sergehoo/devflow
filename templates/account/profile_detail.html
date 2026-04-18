@@ -1,0 +1,212 @@
+{% extends "layout/base.html" %}
+{% load static %}
+
+{% block title %}Mon profil — DevFlow{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <div class="p-6 lg:p-8 bg-gradient-to-r from-[var(--accent-bg)] to-[var(--cyan-bg)]">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                <div class="flex items-center gap-4">
+                    {% if profile.avatar %}
+                        <img src="{{ profile.avatar.url }}" alt="{{ request.user }}" class="w-24 h-24 rounded-full object-cover border border-white/70 shadow-md">
+                    {% else %}
+                        <div class="w-24 h-24 rounded-full bg-white text-devaccent flex items-center justify-center text-2xl font-bold shadow-md">
+                            {{ request.user.get_full_name|default:request.user.username|slice:":2"|upper }}
+                        </div>
+                    {% endif %}
+
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">Profil utilisateur</p>
+                        <h1 class="mt-2 text-3xl font-serif text-devtext1">
+                            {{ request.user.get_full_name|default:request.user.username }}
+                        </h1>
+                        <p class="mt-2 text-sm text-devtext2">
+                            {{ profile.job_title|default:"Aucun poste renseigné" }}
+                        </p>
+
+                        <div class="mt-4 flex flex-wrap gap-2">
+                            <span class="badge b-purple">{{ profile.get_seniority_display }}</span>
+                            <span class="badge b-cyan">{{ profile.get_contract_type_display }}</span>
+                            {% if profile.is_active %}
+                                <span class="badge b-green">Actif</span>
+                            {% else %}
+                                <span class="badge b-gray">Inactif</span>
+                            {% endif %}
+                            {% if profile.is_billable %}
+                                <span class="badge b-amber">Billable</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <a href="{% url 'profile_update' %}" class="btn-main">Modifier le profil</a>
+                    <a href="{% url 'profile_password_change' %}" class="btn-soft">Changer mot de passe</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div class="xl:col-span-2 space-y-6">
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Informations personnelles</div>
+                        <div class="card-sub">Données principales du compte</div>
+                    </div>
+                </div>
+                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Nom complet</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ request.user.get_full_name|default:"—" }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Username</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ request.user.username }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Email</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ request.user.email|default:"—" }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Téléphone</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.phone|default:"—" }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Localisation</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.location|default:"—" }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Workspace</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.workspace.name|default:"—" }}</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Capacité & performance</div>
+                        <div class="card-sub">Disponibilité, capacité et contribution</div>
+                    </div>
+                </div>
+                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Capacité / jour</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.capacity_hours_per_day }} h</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Capacité / semaine</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.capacity_hours_per_week }} h</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Disponibilité</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.availability_percent }}%</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Performance</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.performance_score }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Contribution vélocité</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.velocity_contribution }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Date d’entrée</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.joined_company_at|date:"d/m/Y"|default:"—" }}</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Projets liés</div>
+                        <div class="card-sub">Projets possédés, gérés ou assignés</div>
+                    </div>
+                </div>
+                <div class="p-4 space-y-4">
+                    {% if owned_projects %}
+                        <div>
+                            <div class="text-xs uppercase tracking-wide text-devtext3 mb-2">Owned projects</div>
+                            <div class="space-y-2">
+                                {% for project in owned_projects %}
+                                    <div class="rounded-[14px] border border-devborder bg-devbg3 px-4 py-3">
+                                        <div class="text-sm font-semibold text-devtext1">{{ project.name }}</div>
+                                        <div class="text-xs text-devtext3">{{ project.team|default:"—" }} · {{ project.get_status_display }}</div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if managed_projects %}
+                        <div>
+                            <div class="text-xs uppercase tracking-wide text-devtext3 mb-2">Managed projects</div>
+                            <div class="space-y-2">
+                                {% for project in managed_projects %}
+                                    <div class="rounded-[14px] border border-devborder bg-devbg3 px-4 py-3">
+                                        <div class="text-sm font-semibold text-devtext1">{{ project.name }}</div>
+                                        <div class="text-xs text-devtext3">{{ project.team|default:"—" }} · {{ project.get_status_display }}</div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </section>
+        </div>
+
+        <div class="space-y-6">
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Facturation</div>
+                        <div class="card-sub">Coûts et vente</div>
+                    </div>
+                </div>
+                <div class="p-4 space-y-3">
+                    <div class="rounded-[14px] border border-devborder bg-devbg3 px-4 py-3">
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Coût / jour</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.cost_per_day }} {{ profile.currency }}</div>
+                    </div>
+                    <div class="rounded-[14px] border border-devborder bg-devbg3 px-4 py-3">
+                        <div class="text-xs uppercase tracking-wide text-devtext3">Tarif de vente / jour</div>
+                        <div class="mt-1 text-sm font-medium text-devtext1">{{ profile.billable_rate_per_day }} {{ profile.currency }}</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Rôles workspace</div>
+                        <div class="card-sub">Adhésions DevFlow</div>
+                    </div>
+                </div>
+                <div class="p-4">
+                    {% if current_memberships %}
+                        <div class="space-y-3">
+                            {% for membership in current_memberships %}
+                                <div class="rounded-[14px] border border-devborder bg-devbg3 px-4 py-3">
+                                    <div class="text-sm font-semibold text-devtext1">
+                                        {{ membership.workspace.name }}
+                                    </div>
+                                    <div class="text-xs text-devtext3">
+                                        {{ membership.get_role_display }}{% if membership.team %} · {{ membership.team.name }}{% endif %} · {{ membership.get_status_display }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-devtext3">Aucune adhésion enregistrée.</p>
+                    {% endif %}
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}

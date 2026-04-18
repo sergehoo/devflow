@@ -1,10 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
-
-</body>
-</html>
+<div class="cmd-overlay" id="cmdOverlay" onclick="if(event.target===this)closePalette()">
+  <div class="cmd-box">
+    <div class="cmd-input-wrap">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input class="cmd-input" id="cmdInput" placeholder="Rechercher ou exécuter une action…" oninput="filterCmd(this.value)">
+      <span class="cmd-k">Esc</span>
+    </div>
+    <div class="cmd-results" id="cmdResults">
+      <div class="cmd-section">Actions rapides</div>
+      <div class="cmd-item" onclick="openModal();closePalette()">
+        <div class="cmd-item-icon">✨</div>
+        <div><div class="cmd-item-label">Nouveau projet</div><div class="cmd-item-sub">Créer un projet</div></div>
+      </div>
+      <div class="cmd-item" onclick="showToast('Tâche créée',var(--green));closePalette()">
+        <div class="cmd-item-icon">📋</div>
+        <div><div class="cmd-item-label">Nouvelle tâche</div><div class="cmd-item-sub">Ajouter au sprint actuel</div></div>
+      </div>
+      <div class="cmd-item" onclick="openAI();closePalette()">
+        <div class="cmd-item-icon">🤖</div>
+        <div><div class="cmd-item-label">Ouvrir DevFlow AI</div><div class="cmd-item-sub">Assistant intelligent</div></div>
+      </div>
+      <div class="cmd-item" onclick="toggleTheme();closePalette()">
+        <div class="cmd-item-icon">🌙</div>
+        <div><div class="cmd-item-label">Basculer le thème</div><div class="cmd-item-sub">Clair / Sombre</div></div>
+      </div>
+      <div class="cmd-section">Navigation</div>
+      <div class="cmd-item" onclick="closePalette()"><div class="cmd-item-icon">📊</div><div><div class="cmd-item-label">Tableau de bord</div></div></div>
+      <div class="cmd-item" onclick="closePalette()"><div class="cmd-item-icon">🗂</div><div><div class="cmd-item-label">Projets</div></div></div>
+      <div class="cmd-item" onclick="closePalette()"><div class="cmd-item-icon">⚡</div><div><div class="cmd-item-label">Sprints</div></div></div>
+    </div>
+    <div class="cmd-footer">
+      <span class="cmd-hint"><span class="cmd-k">↑↓</span> naviguer</span>
+      <span class="cmd-hint"><span class="cmd-k">↵</span> sélectionner</span>
+      <span class="cmd-hint"><span class="cmd-k">Esc</span> fermer</span>
+    </div>
+  </div>
+</div>

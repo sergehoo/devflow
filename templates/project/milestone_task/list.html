@@ -1,0 +1,92 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Tâches par jalon{% endblock %}
+{% block page_title %}Tâches par jalon{% endblock %}
+{% block breadcrumb %}Projet · Milestone tasks{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+                <h1 class="font-serif text-3xl text-[var(--text1)]">Associations tâches / jalons</h1>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-[var(--text2)]">
+                    Visualise les tâches rattachées aux jalons et identifie les retards, blocages et écarts de delivery.
+                </p>
+            </div>
+
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'milestone_task_create' %}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                    Nouvelle association
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Total</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--text1)]">{{ stats.total|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">En cours</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--accent)]">{{ stats.in_progress|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Bloquées</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--red)]">{{ stats.blocked|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Terminées</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--green)]">{{ stats.done|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">En retard</div>
+                <div class="mt-1 font-serif text-2xl text-[var(--amber)]">{{ stats.overdue|default:0 }}</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-[var(--border)] text-left text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                        <th class="py-3">Jalon</th>
+                        <th class="py-3">Projet</th>
+                        <th class="py-3">Tâche</th>
+                        <th class="py-3">Statut tâche</th>
+                        <th class="py-3">Assigné à</th>
+                        <th class="py-3">Échéance</th>
+                        <th class="py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for obj in object_list %}
+                    <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/30">
+                        <td class="py-3 font-medium text-[var(--text1)]">{{ obj.milestone.name }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ obj.milestone.project.name }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ obj.task.title }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ obj.task.get_status_display }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ obj.task.assignee|default:"—" }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ obj.task.due_date|date:"d/m/Y"|default:"—" }}</td>
+                        <td class="py-3 text-right">
+                            <div class="flex justify-end gap-2">
+                                <a href="{% url 'milestone_task_detail' obj.pk %}" class="text-xs font-semibold text-[var(--accent)] hover:underline">Détail</a>
+                                <a href="{% url 'milestone_task_update' obj.pk %}" class="text-xs font-semibold text-[var(--text2)] hover:text-[var(--text1)] hover:underline">Modifier</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="py-8 text-center text-[var(--text3)]">Aucune association disponible.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

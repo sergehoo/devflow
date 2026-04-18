@@ -1,10 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends 'devflow/layout/base.html' %}
 
-</body>
-</html>
+{% block title %}DevFlow — Messages{% endblock %}
+{% block page_title %}Messages{% endblock %}
+{% block breadcrumb %}Collaboration · Canaux{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:300px 1fr;gap:14px;">
+    <div class="card">
+        <div class="card-head">
+            <div>
+                <div class="card-title">Canaux</div>
+                <div class="card-sub">Espaces de discussion</div>
+            </div>
+        </div>
+        <div style="padding:14px;display:flex;flex-direction:column;gap:8px;">
+            {% for channel in items %}
+                <a class="nav-item" href="{% url 'devflow:channel_detail' channel.pk %}"># {{ channel.name }}</a>
+            {% empty %}
+                <div class="text-muted">Aucun canal.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <div>
+                <div class="card-title">Fil de discussion</div>
+                <div class="card-sub">Sélectionne un canal</div>
+            </div>
+        </div>
+        <div style="padding:16px;min-height:420px;">
+            <div class="text-muted">Choisissez un canal dans la colonne de gauche.</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

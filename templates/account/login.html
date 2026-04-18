@@ -1,136 +1,144 @@
 {% extends "account/base_auth.html" %}
 {% load i18n %}
-{#{% load account %}#}
-{#{% load socialaccount %}#}
+{% load account %}
 
-{% block head_title %}Connexion{% endblock %}
 
-{% block content %}
+{% block title %}Connexion — Dev'Flow{% endblock %}
 
-    <div>
-        <p class="text-xs font-bold uppercase tracking-[0.22em] text-premium-600">Authentification</p>
-        <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900">Connexion</h2>
-        <p class="mt-2 text-sm leading-6 text-slate-500">
-            Connectez-vous à votre espace pour accéder au dashboard parcellaire et aux outils de gestion.
-        </p>
+{% block auth_content %}
+<div class="auth-eyebrow">Connexion sécurisée</div>
+<h2 class="auth-title">Bienvenue sur Dev'Flow</h2>
+<p class="auth-subtitle">
+    Connectez-vous pour retrouver vos espaces de travail, vos tableaux de bord et vos projets en cours.
+</p>
+
+{% if messages %}
+    <div class="msg-list">
+        {% for message in messages %}
+            <div class="msg-item
+                {% if 'success' in message.tags %}msg-success
+                {% elif 'error' in message.tags %}msg-error
+                {% elif 'warning' in message.tags %}msg-warning
+                {% else %}msg-info{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<form method="post" action="{% url 'account_login' %}" class="auth-form" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="msg-list">
+            <div class="msg-item msg-error">
+                {% for error in form.non_field_errors %}
+                    <div>{{ error }}</div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="field-group">
+        <label for="{{ form.login.id_for_label }}" class="field-label">Identifiant ou email</label>
+        <div class="input-shell">
+            <span class="input-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 7.5A3 3 0 1 1 9 7.5a3 3 0 0 1 6 0Zm4.5 11.25a7.5 7.5 0 0 0-15 0"/>
+                </svg>
+            </span>
+            <input
+                type="text"
+                name="{{ form.login.html_name }}"
+                id="{{ form.login.id_for_label }}"
+                value="{{ form.login.value|default_if_none:'' }}"
+                class="auth-input"
+                placeholder="nom d’utilisateur ou adresse email"
+                autocomplete="username"
+                required
+            >
+        </div>
+        {{ form.login.errors }}
     </div>
 
-    <form method="post" action="{% url 'account_login' %}" class="mt-8 space-y-5">
-        {% csrf_token %}
-
-        {% if form.non_field_errors %}
-            <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {{ form.non_field_errors }}
-            </div>
-        {% endif %}
-
-        <div class="space-y-5">
-
-            <!-- EMAIL -->
-            <div class="relative">
-                <label for="id_login" class="block text-sm font-semibold text-slate-700 mb-2">
-                    Email
-                </label>
-
-                <div class="relative">
-            <span class="absolute inset-y-0 left-3 flex items-center text-slate-400">
-                <i class="fa-regular fa-envelope"></i>
+    <div class="field-group">
+        <label for="{{ form.password.id_for_label }}" class="field-label">Mot de passe</label>
+        <div class="input-shell" x-data="{ show:false }">
+            <span class="input-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16.5 10.5V7.875a4.5 4.5 0 1 0-9 0V10.5m-.75 0h10.5A1.5 1.5 0 0 1 18.75 12v6A1.5 1.5 0 0 1 17.25 19.5H6.75A1.5 1.5 0 0 1 5.25 18v-6A1.5 1.5 0 0 1 6.75 10.5Z"/>
+                </svg>
             </span>
 
-                    <input
-                            type="text"
-                            name="login"
-                            id="id_login"
-                            value="{{ form.login.value|default:'' }}"
-                            class="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm text-slate-800 shadow-soft outline-none focus:border-premium-500 focus:ring-2 focus:ring-premium-100"
-                            placeholder="Votre email"
-                    >
-                </div>
+            <input
+                x-bind:type="show ? 'text' : 'password'"
+                name="{{ form.password.html_name }}"
+                id="{{ form.password.id_for_label }}"
+                class="auth-input !pr-14"
+                placeholder="••••••••••••"
+                autocomplete="current-password"
+                required
+            >
 
-                {% if form.login.errors %}
-                    <div class="text-sm text-rose-600 mt-2">{{ form.login.errors }}</div>
-                {% endif %}
-            </div>
-
-            <!-- PASSWORD -->
-            <div class="relative">
-                <label for="id_password" class="block text-sm font-semibold text-slate-700 mb-2">
-                    Mot de passe
-                </label>
-
-                <div class="relative">
-            <span class="absolute inset-y-0 left-3 flex items-center text-slate-400">
-                <i class="fa-solid fa-lock"></i>
-            </span>
-
-                    <input
-                            type="password"
-                            name="password"
-                            id="id_password"
-                            class="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-12 text-sm text-slate-800 shadow-soft outline-none focus:border-premium-500 focus:ring-2 focus:ring-premium-100"
-                            placeholder="Votre mot de passe"
-                    >
-
-                    <!-- ICON EYE -->
-                    <button
-                            type="button"
-                            onclick="togglePassword()"
-                            class="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-700"
-                    >
-                        <i id="toggleIcon" class="fa-regular fa-eye"></i>
-                    </button>
-                </div>
-
-                {% if form.password.errors %}
-                    <div class="text-sm text-rose-600 mt-2">{{ form.password.errors }}</div>
-                {% endif %}
-            </div>
-
+            <button
+                type="button"
+                @click="show = !show"
+                class="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text3)] hover:text-[var(--accent)] transition"
+            >
+                <svg x-show="!show" xmlns="http://www.w3.org/2000/svg" class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.036 12.322a1 1 0 0 1 0-.644C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178a1 1 0 0 1 0 .644C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178Z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+                </svg>
+                <svg x-show="show" x-cloak xmlns="http://www.w3.org/2000/svg" class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m3 3 18 18M10.477 10.486A3 3 0 0 0 13.5 13.5m3.388 3.383A10.457 10.457 0 0 1 12 19.5c-4.638 0-8.573-3.007-9.964-7.178a1 1 0 0 1 0-.644A10.474 10.474 0 0 1 6.108 6.11m3.36-1.11A10.54 10.54 0 0 1 12 4.5c4.638 0 8.573 3.007 9.963 7.178a1 1 0 0 1 0 .644 10.57 10.57 0 0 1-1.62 2.96"/>
+                </svg>
+            </button>
         </div>
+        {{ form.password.errors }}
+    </div>
 
+    <div class="auth-check-row">
         {% if form.remember %}
-            <div class="flex items-center gap-3">
+            <label class="check-wrap" for="{{ form.remember.id_for_label }}">
                 {{ form.remember }}
-                <label for="{{ form.remember.id_for_label }}" class="!mb-0 !text-sm !font-medium text-slate-600">
-                    Se souvenir de moi
-                </label>
-            </div>
+                <span>Se souvenir de moi</span>
+            </label>
         {% endif %}
 
-        {% if redirect_field_value %}
-            <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
-        {% endif %}
+        <a href="{% url 'account_reset_password' %}" class="link-inline">
+            Mot de passe oublié ?
+        </a>
+    </div>
 
-        <button type="submit" class="btn-primary">
-            <i class="fa-solid fa-right-to-bracket"></i>
-            <span>Se connecter</span>
-        </button>
+    {% if redirect_field_value %}
+        <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+    {% endif %}
 
-        <div class="grid gap-3 md:grid-cols-2">
-            <a href="{% url 'account_reset_password' %}" class="btn-secondary">
-                <i class="fa-solid fa-key"></i>
-                <span>Mot de passe oublié</span>
-            </a>
-            <a href="{% url 'account_signup' %}" class="btn-secondary">
-                <i class="fa-solid fa-user-plus"></i>
-                <span>Créer un compte</span>
-            </a>
+    <button type="submit" class="btn-auth">
+        Se connecter
+    </button>
+{##}
+{#    {% get_providers as socialaccount_providers %}#}
+{#    {% if socialaccount_providers %}#}
+{#        <div class="auth-divider">ou continuer avec</div>#}
+{##}
+{#        <div class="grid gap-3">#}
+{#            {% for provider in socialaccount_providers %}#}
+{#                <a#}
+{#                    href="{% provider_login_url provider.id process='login' %}"#}
+{#                    class="h-[54px] rounded-[18px] border border-[var(--border)] bg-[var(--bg2)] hover:bg-[var(--bg3)] text-[var(--text1)] font-semibold text-sm flex items-center justify-center transition"#}
+{#                >#}
+{#                    Continuer avec {{ provider.name }}#}
+{#                </a>#}
+{#            {% endfor %}#}
+{#        </div>#}
+{#    {% endif %}#}
+
+    {% if signup_url %}
+        <div class="auth-foot">
+            Pas encore de compte ?
+            <a href="{{ signup_url }}" class="link-inline">Créer un compte</a>
         </div>
-    </form>
-    <script>
-        function togglePassword() {
-            const input = document.getElementById("id_password");
-            const icon = document.getElementById("toggleIcon");
-
-            if (input.type === "password") {
-                input.type = "text";
-                icon.classList.remove("fa-eye");
-                icon.classList.add("fa-eye-slash");
-            } else {
-                input.type = "password";
-                icon.classList.remove("fa-eye-slash");
-                icon.classList.add("fa-eye");
-            }
-        }
-    </script>
+    {% endif %}
+</form>
 {% endblock %}

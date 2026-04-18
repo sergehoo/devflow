@@ -1,0 +1,228 @@
+{% extends "layout/base.html" %}
+
+{% block title %}
+    {% if object %}Modifier élément roadmap{% else %}Créer élément roadmap{% endif %}
+{% endblock %}
+
+{% block page_title %}
+    {% if object %}Modifier élément roadmap{% else %}Créer élément roadmap{% endif %}
+{% endblock %}
+
+{% block breadcrumb %}Projet · Roadmap item · Formulaire{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- HERO -->
+    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+        <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.05)_45%,transparent_100%)]"></div>
+        <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+
+        <div class="relative p-6 lg:p-7">
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div class="max-w-3xl">
+                    <div class="mb-3">
+                        <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent)]">
+                            Roadmap item
+                        </span>
+                    </div>
+
+                    <h1 class="font-serif text-3xl font-medium tracking-[-0.03em] text-[var(--text1)] lg:text-4xl">
+                        {% if object %}
+                            Modifier l’élément de roadmap
+                        {% else %}
+                            Créer un élément de roadmap
+                        {% endif %}
+                    </h1>
+
+                    <p class="mt-3 text-sm leading-6 text-[var(--text2)]">
+                        Renseigne l’initiative, sa période, sa ligne d’affichage et son statut pour l’intégrer correctement à la timeline roadmap.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <a href="{% url 'roadmap_item_list' %}"
+                       class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                        Retour à la liste
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FORM -->
+    <form method="post" class="space-y-6">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+        <section class="rounded-[24px] border border-[var(--red-bg)] bg-[var(--red-bg)]/40 p-5 shadow-soft">
+            <h2 class="text-sm font-semibold text-[var(--red)]">Veuillez corriger les erreurs suivantes</h2>
+            <div class="mt-3 space-y-2 text-sm text-[var(--red)]">
+                {% for error in form.non_field_errors %}
+                    <div>{{ error }}</div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_.95fr]">
+
+            <!-- MAIN -->
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <div class="mb-5">
+                    <h2 class="text-lg font-semibold text-[var(--text1)]">Cadrage de l’élément</h2>
+                    <p class="mt-1 text-xs text-[var(--text3)]">
+                        Informations principales de l’initiative ou du jalon.
+                    </p>
+                </div>
+
+                <div class="space-y-5">
+                    <div>
+                        <label for="{{ form.roadmap.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                            Roadmap
+                        </label>
+                        {{ form.roadmap }}
+                        {% if form.roadmap.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">{{ form.roadmap.errors|join:", " }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label for="{{ form.title.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                            Titre
+                        </label>
+                        {{ form.title }}
+                        {% if form.title.errors %}
+                            <div class="mt-2 text-xs text-[var(--red)]">{{ form.title.errors|join:", " }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        <div>
+                            <label for="{{ form.project.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                Projet lié
+                            </label>
+                            {{ form.project }}
+                            {% if form.project.errors %}
+                                <div class="mt-2 text-xs text-[var(--red)]">{{ form.project.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label for="{{ form.milestone.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                Jalon lié
+                            </label>
+                            {{ form.milestone }}
+                            {% if form.milestone.errors %}
+                                <div class="mt-2 text-xs text-[var(--red)]">{{ form.milestone.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        <div>
+                            <label for="{{ form.start_date.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                Date de début
+                            </label>
+                            {{ form.start_date }}
+                            {% if form.start_date.errors %}
+                                <div class="mt-2 text-xs text-[var(--red)]">{{ form.start_date.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label for="{{ form.end_date.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                Date de fin
+                            </label>
+                            {{ form.end_date }}
+                            {% if form.end_date.errors %}
+                                <div class="mt-2 text-xs text-[var(--red)]">{{ form.end_date.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SIDE -->
+            <section class="space-y-6">
+                <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <div class="mb-5">
+                        <h2 class="text-lg font-semibold text-[var(--text1)]">Positionnement</h2>
+                        <p class="mt-1 text-xs text-[var(--text3)]">
+                            Statut d’exécution, couleur et ligne d’affichage.
+                        </p>
+                    </div>
+
+                    <div class="space-y-5">
+                        <div>
+                            <label for="{{ form.status.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                Statut
+                            </label>
+                            {{ form.status }}
+                            {% if form.status.errors %}
+                                <div class="mt-2 text-xs text-[var(--red)]">{{ form.status.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label for="{{ form.color.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                Couleur
+                            </label>
+                            {{ form.color }}
+                            {% if form.color.errors %}
+                                <div class="mt-2 text-xs text-[var(--red)]">{{ form.color.errors|join:", " }}</div>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label for="{{ form.row.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                Ligne
+                            </label>
+                            {{ form.row }}
+                            {% if form.row.errors %}
+                                <div class="mt-2 text-xs text-[var(--red)]">{{ form.row.errors|join:", " }}</div>
+                            {% endif %}
+                            <p class="mt-2 text-xs text-[var(--text3)]">
+                                Cette valeur détermine la ligne d’affichage dans la timeline roadmap.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <h2 class="text-lg font-semibold text-[var(--text1)]">Aide</h2>
+                    <div class="mt-4 space-y-3 text-sm text-[var(--text2)]">
+                        <p>Utilise un titre bref, orienté résultat.</p>
+                        <p>Associe l’élément à un projet ou un jalon quand c’est pertinent.</p>
+                        <p>Réserve les lignes pour éviter que les éléments se chevauchent visuellement.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ACTIONS -->
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="text-sm text-[var(--text3)]">
+                    {% if object %}
+                        Les changements mettront à jour immédiatement la roadmap et sa timeline.
+                    {% else %}
+                        L’élément sera ajouté à la roadmap sélectionnée.
+                    {% endif %}
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <a href="{% url 'roadmap_item_list' %}"
+                       class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)]">
+                        Annuler
+                    </a>
+                    <button type="submit"
+                            class="inline-flex items-center rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,111,247,0.25)] transition hover:-translate-y-0.5">
+                        {% if object %}Enregistrer les modifications{% else %}Créer l’élément{% endif %}
+                    </button>
+                </div>
+            </div>
+        </section>
+    </form>
+</div>
+{% endblock %}

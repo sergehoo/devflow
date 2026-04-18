@@ -1,10 +1,159 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+<div
+    draggable="true"
+    data-sprint-id="{{ sprint.pk }}"
+    data-status="{{ sprint.status }}"
+    @dragstart="onDragStart($event, '{{ sprint.pk }}')"
+    @dragend="onDragEnd()"
+    class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md cursor-move {% if sprint.status == 'DONE' or sprint.status == 'CANCELLED' %}opacity-70{% endif %}"
+>
+    <div class="mb-3 flex items-start justify-between gap-3">
+        <div class="min-w-0">
+            <div class="sprint-card-title truncate text-sm font-semibold {% if sprint.status == 'DONE' or sprint.status == 'CANCELLED' %}text-[var(--text3)] line-through{% else %}text-[var(--text1)]{% endif %}">
+                {{ sprint.name }}
+            </div>
+            <div class="mt-1 text-[11px] text-[var(--text3)]">
+                <a href="{% url 'project_detail' sprint.project.pk  %}">{{ sprint.project.name }}</a> 
+            </div>
+        </div>
 
-</body>
-</html>
+        {% if sprint.status == "PLANNED" %}
+            <span data-role="status-badge" class="inline-flex items-center rounded-full bg-[var(--bg3)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text2)]">
+                Planifié
+            </span>
+        {% elif sprint.status == "ACTIVE" %}
+            <span data-role="status-badge" class="inline-flex items-center rounded-full bg-[var(--accent-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--accent)]">
+                En cours
+            </span>
+        {% elif sprint.status == "REVIEW" %}
+            <span data-role="status-badge" class="inline-flex items-center rounded-full bg-[var(--amber-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--amber)]">
+                Review
+            </span>
+        {% elif sprint.status == "DONE" %}
+            <span data-role="status-badge" class="inline-flex items-center rounded-full bg-[var(--green-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--green)]">
+                Terminé
+            </span>
+        {% else %}
+            <span data-role="status-badge" class="inline-flex items-center rounded-full bg-[var(--red-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--red)]">
+                Annulé
+            </span>
+        {% endif %}
+    </div>
+
+    <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Période</div>
+                <div class="sprint-card-maintext mt-1 font-medium {% if sprint.status == 'DONE' or sprint.status == 'CANCELLED' %}text-[var(--text3)]{% else %}text-[var(--text1)]{% endif %}">
+                    {{ sprint.start_date|date:"d/m" }} → {{ sprint.end_date|date:"d/m" }}
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Jours restants</div>
+                <div class="sprint-card-maintext mt-1 font-medium {% if sprint.status == 'DONE' or sprint.status == 'CANCELLED' %}text-[var(--text3)]{% else %}text-[var(--text1)]{% endif %}">
+                    {{ sprint.remaining_days }}
+                </div>
+            </div>
+        </div>
+
+        {% if sprint.goal %}
+        <div class="sprint-card-goal line-clamp-2 text-xs leading-5 {% if sprint.status == 'DONE' or sprint.status == 'CANCELLED' %}text-[var(--text3)] line-through{% else %}text-[var(--text3)]{% endif %}">
+            {{ sprint.goal|truncatechars:120 }}
+        </div>
+        {% endif %}
+
+        <!-- KPI taches -->
+        <div class="grid grid-cols-3 gap-2 text-xs">
+            <div class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-center">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Tâches</div>
+                <div class="sprint-card-maintext mt-1 font-semibold {% if sprint.status == 'DONE' or sprint.status == 'CANCELLED' %}text-[var(--text3)]{% else %}text-[var(--text1)]{% endif %}">
+                    {{ sprint.tasks_count|default:0 }}
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-center">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Backlog</div>
+                <div class="sprint-card-maintext mt-1 font-semibold {% if sprint.status == 'DONE' or sprint.status == 'CANCELLED' %}text-[var(--text3)]{% else %}text-[var(--text1)]{% endif %}">
+                    {{ sprint.backlog_count|default:0 }}
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-center">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Équipe</div>
+                <div class="sprint-card-maintext mt-1 truncate font-semibold {% if sprint.status == 'DONE' or sprint.status == 'CANCELLED' %}text-[var(--text3)]{% else %}text-[var(--text1)]{% endif %}">
+                    {% if sprint.team %}{{ sprint.team.name }}{% else %}—{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Répartition taches -->
+        <div class="grid grid-cols-4 gap-2 text-[10px]">
+            <div class="rounded-lg bg-[var(--bg3)] px-2 py-2 text-center">
+                <div class="text-[var(--text3)]">À faire</div>
+                <div class="mt-1 font-semibold text-[var(--text1)]">{{ sprint.todo_tasks_count|default:0 }}</div>
+            </div>
+            <div class="rounded-lg bg-[var(--bg3)] px-2 py-2 text-center">
+                <div class="text-[var(--text3)]">En cours</div>
+                <div class="mt-1 font-semibold text-[var(--accent)]">{{ sprint.in_progress_tasks_count|default:0 }}</div>
+            </div>
+            <div class="rounded-lg bg-[var(--bg3)] px-2 py-2 text-center">
+                <div class="text-[var(--text3)]">Review</div>
+                <div class="mt-1 font-semibold text-[var(--amber)]">{{ sprint.review_tasks_count|default:0 }}</div>
+            </div>
+            <div class="rounded-lg bg-[var(--bg3)] px-2 py-2 text-center">
+                <div class="text-[var(--text3)]">Done</div>
+                <div class="mt-1 font-semibold text-[var(--green)]">{{ sprint.done_tasks_count|default:0 }}</div>
+            </div>
+        </div>
+
+        {% if sprint.total_story_points %}
+        <div>
+            <div class="mb-1 flex items-center justify-between text-[10px] text-[var(--text3)]">
+                <span>Progression story points</span>
+                <span>{% widthratio sprint.completed_story_points sprint.total_story_points 100 %}%</span>
+            </div>
+            <div class="h-1.5 overflow-hidden rounded-full bg-[var(--bg4)]">
+                <div
+                    class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))]"
+                    style="width:{% widthratio sprint.completed_story_points sprint.total_story_points 100 %}%"
+                ></div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- prochaine tache -->
+        {% if sprint.open_tasks_preview %}
+        <div class="rounded-xl border border-[var(--border)] bg-[linear-gradient(135deg,var(--bg3),var(--bg2))] px-3 py-3">
+            <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Prochaine tâche à traiter</div>
+            <div class="mt-1 text-sm font-medium {% if sprint.status == 'DONE' or sprint.status == 'CANCELLED' %}text-[var(--text3)]{% else %}text-[var(--text1)]{% endif %}">
+                {{ sprint.open_tasks_preview.0.title }}
+            </div>
+            <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text3)]">
+                {% if sprint.open_tasks_preview.0.assignee %}
+                    <span>{{ sprint.open_tasks_preview.0.assignee }}</span>
+                {% endif %}
+                {% if sprint.open_tasks_preview.0.due_date %}
+                    <span>• échéance {{ sprint.open_tasks_preview.0.due_date|date:"d/m/Y" }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="mt-4 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 text-[11px] text-[var(--text3)]">
+            <span class="sprint-card-number {% if sprint.status == 'DONE' or sprint.status == 'CANCELLED' %}line-through{% endif %}">
+                #{{ sprint.number }}
+            </span>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <a href="{% url 'sprint_detail' sprint.pk %}" class="text-[11px] font-semibold text-[var(--accent)] hover:underline">
+                Détail
+            </a>
+            <a href="{% url 'sprint_update' sprint.pk %}" class="text-[11px] font-semibold text-[var(--text2)] hover:text-[var(--text1)] hover:underline">
+                Modifier
+            </a>
+        </div>
+    </div>
+</div>

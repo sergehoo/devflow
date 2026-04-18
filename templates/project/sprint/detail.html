@@ -1,0 +1,144 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Sprint — {{ item.name }}{% endblock %}
+{% block page_title %}{{ item.name }}{% endblock %}
+{% block breadcrumb %}Sprint · Détail{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- HERO SPRINT -->
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+                <div class="mb-3">
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text2)]">
+                        Sprint
+                    </span>
+                </div>
+
+                <h1 class="font-serif text-3xl text-[var(--text1)]">
+                    {{ item.name }}
+                </h1>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">
+                        {{ item.get_status_display }}
+                    </span>
+
+                    <span class="inline-flex rounded-full border border-[var(--border)] bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                        Projet : {{ item.project.name }}
+                    </span>
+
+                    {% if item.team %}
+                    <span class="inline-flex rounded-full border border-[var(--border)] bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                        Équipe : {{ item.team.name }}
+                    </span>
+                    {% endif %}
+                </div>
+
+                {% if item.goal %}
+                <p class="mt-4 max-w-3xl text-sm leading-6 text-[var(--text2)]">
+                    {{ item.goal }}
+                </p>
+                {% endif %}
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 lg:w-[380px]">
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="text-xs text-[var(--text3)]">Période</div>
+                    <div class="mt-2 text-sm font-semibold text-[var(--text1)]">
+                        {{ item.start_date|date:"d/m/Y" }} → {{ item.end_date|date:"d/m/Y" }}
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="text-xs text-[var(--text3)]">Jours restants</div>
+                    <div class="mt-2 text-sm font-semibold text-[var(--text1)]">
+                        {{ item.remaining_days }}
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="text-xs text-[var(--text3)]">Story points</div>
+                    <div class="mt-2 text-sm font-semibold text-[var(--text1)]">
+                        {{ item.completed_story_points }}/{{ item.total_story_points }}
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="text-xs text-[var(--text3)]">Vélocité</div>
+                    <div class="mt-2 text-sm font-semibold text-[var(--text1)]">
+                        {{ item.velocity_completed }}/{{ item.velocity_target }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- KPI TASKS -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <div class="mb-2">
+                    <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent)]">
+                        Tâches du sprint
+                    </span>
+                </div>
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Pilotage opérationnel</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">
+                    Vue synthétique des tâches rattachées à ce sprint.
+                </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'task_create' %}?project={{ item.project.pk }}&sprint={{ item.pk }}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    Nouvelle tâche
+                </a>
+                <a href="{% url 'task_list' %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Voir toutes les tâches
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-5 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Total</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ sprint_task_stats.total|default:0 }}</div>
+            </div>
+
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">À faire</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ sprint_task_stats.todo|default:0 }}</div>
+            </div>
+
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">En cours</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ sprint_task_stats.in_progress|default:0 }}</div>
+            </div>
+
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Review</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ sprint_task_stats.review|default:0 }}</div>
+            </div>
+
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Terminées</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ sprint_task_stats.done|default:0 }}</div>
+            </div>
+
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">En retard</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ sprint_overdue_tasks|default:0 }}</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- KANBAN TASKS -->
+    {% include "project/sprint/_kanban_board.html" with tasks=sprint_tasks task_stats=sprint_task_stats sprint=item %}
+
+</div>
+{% endblock %}

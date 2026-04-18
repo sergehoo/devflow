@@ -1,0 +1,79 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+<div class="grid grid-cols-1 gap-6 xl:grid-cols-[280px_1fr]">
+    <aside class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5">
+        <h2 class="text-lg font-semibold text-[var(--text1)]">{{ chat_channel.name }}</h2>
+        <div class="mt-4 space-y-2">
+            {% for member in chat_channel.members.all %}
+            <div class="rounded-xl bg-[var(--bg3)] px-3 py-2 text-sm text-[var(--text2)]">
+                {{ member.get_full_name|default:member.username }}
+            </div>
+            {% endfor %}
+        </div>
+    </aside>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5">
+        <div id="chat-messages" class="max-h-[65vh] space-y-3 overflow-y-auto">
+            {% for message in messages %}
+            <div class="rounded-2xl bg-[var(--bg3)] p-4">
+                <div class="text-sm font-semibold text-[var(--text1)]">
+                    {{ message.author.get_full_name|default:message.author.username }}
+                </div>
+                <div class="mt-1 text-sm text-[var(--text2)]">{{ message.body }}</div>
+                <div class="mt-2 text-xs text-[var(--text3)]">{{ message.created_at|date:"d/m/Y H:i" }}</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <form id="chat-form" class="mt-4 flex gap-3">
+            <textarea id="chat-input"
+                      rows="3"
+                      class="flex-1 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm"
+                      placeholder="Écrire un message..."></textarea>
+            <button type="submit"
+                    class="rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white">
+                Envoyer
+            </button>
+        </form>
+    </section>
+</div>
+
+<script>
+    const channelId = "{{ chat_channel.id }}";
+    const chatBox = document.getElementById("chat-messages");
+    const input = document.getElementById("chat-input");
+    const form = document.getElementById("chat-form");
+
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${protocol}://${window.location.host}/ws/channels/${channelId}/`);
+
+    socket.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+
+        const el = document.createElement("div");
+        el.className = "rounded-2xl bg-[var(--bg3)] p-4";
+        el.innerHTML = `
+            <div class="text-sm font-semibold text-[var(--text1)]">${data.author}</div>
+            <div class="mt-1 text-sm text-[var(--text2)]">${data.body}</div>
+            <div class="mt-2 text-xs text-[var(--text3)]">${data.created_at}</div>
+        `;
+        chatBox.appendChild(el);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    };
+
+    form.addEventListener("submit", function(e) {
+        e.preventDefault();
+
+        const body = input.value.trim();
+        if (!body) return;
+
+        socket.send(JSON.stringify({
+            body: body
+        }));
+
+        input.value = "";
+        input.focus();
+    });
+</script>
+{% endblock %}

@@ -1,10 +1,254 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "layout/base.html" %}
 
-</body>
-</html>
+{% block title %}
+    {% if object %}Modifier roadmap{% else %}Créer roadmap{% endif %}
+{% endblock %}
+
+{% block page_title %}
+    {% if object %}Modifier roadmap{% else %}Créer roadmap{% endif %}
+{% endblock %}
+
+{% block breadcrumb %}Projet · Roadmap · Formulaire{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- HERO -->
+    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+        <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.05)_45%,transparent_100%)]"></div>
+        <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+
+        <div class="relative p-6 lg:p-7">
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div class="max-w-3xl">
+                    <div class="mb-3">
+                        <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--accent)]">
+                            Roadmap
+                        </span>
+                    </div>
+
+                    <h1 class="font-serif text-3xl font-medium tracking-[-0.03em] text-[var(--text1)] lg:text-4xl">
+                        {% if object %}
+                            Modifier la roadmap
+                        {% else %}
+                            Créer une nouvelle roadmap
+                        {% endif %}
+                    </h1>
+
+                    <p class="mt-3 text-sm leading-6 text-[var(--text2)]">
+                        Définis une feuille de route claire avec sa période, sa visibilité et son responsable afin d’aligner les initiatives du portefeuille.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <a href="{% url 'roadmap_list' %}"
+                       class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                        Retour à la liste
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FORM -->
+   <form method="post" class="space-y-6">
+    {% csrf_token %}
+
+    {% if form.errors %}
+    <section class="rounded-[24px] border border-[var(--red-bg)] bg-[var(--red-bg)]/40 p-5 shadow-soft">
+        <div class="flex items-start gap-3">
+            <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--red-bg)] text-[var(--red)]">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 9v4m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>
+                </svg>
+            </div>
+
+            <div class="min-w-0">
+                <h2 class="text-sm font-semibold text-[var(--red)]">Veuillez corriger les erreurs du formulaire</h2>
+
+                {% if form.non_field_errors %}
+                <div class="mt-3 space-y-2 text-sm text-[var(--red)]">
+                    {% for error in form.non_field_errors %}
+                        <div>{{ error }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {% for field in form %}
+                        {% if field.errors %}
+                        <div class="rounded-xl border border-[var(--red-bg)] bg-white/40 px-3 py-2 text-xs text-[var(--red)]">
+                            <div class="font-semibold">{{ field.label }}</div>
+                            <div class="mt-1">{{ field.errors|join:", " }}</div>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_.95fr]">
+
+        <!-- MAIN -->
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="mb-5">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Informations générales</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">
+                    Les informations principales de cadrage de la roadmap.
+                </p>
+            </div>
+
+            <div class="space-y-5">
+                <div>
+                    <label for="{{ form.name.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                        Nom
+                    </label>
+                    {{ form.name }}
+                    {% if form.name.help_text %}
+                        <p class="mt-2 text-xs text-[var(--text3)]">{{ form.name.help_text }}</p>
+                    {% endif %}
+                    {% if form.name.errors %}
+                        <div class="mt-2 rounded-xl border border-[var(--red-bg)] bg-[var(--red-bg)]/40 px-3 py-2 text-xs text-[var(--red)]">
+                            {{ form.name.errors|join:", " }}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="{{ form.description.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                        Description
+                    </label>
+                    {{ form.description }}
+                    {% if form.description.help_text %}
+                        <p class="mt-2 text-xs text-[var(--text3)]">{{ form.description.help_text }}</p>
+                    {% endif %}
+                    {% if form.description.errors %}
+                        <div class="mt-2 rounded-xl border border-[var(--red-bg)] bg-[var(--red-bg)]/40 px-3 py-2 text-xs text-[var(--red)]">
+                            {{ form.description.errors|join:", " }}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    <div>
+                        <label for="{{ form.start_date.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                            Date de début
+                        </label>
+                        {{ form.start_date }}
+                        {% if form.start_date.help_text %}
+                            <p class="mt-2 text-xs text-[var(--text3)]">{{ form.start_date.help_text }}</p>
+                        {% endif %}
+                        {% if form.start_date.errors %}
+                            <div class="mt-2 rounded-xl border border-[var(--red-bg)] bg-[var(--red-bg)]/40 px-3 py-2 text-xs text-[var(--red)]">
+                                {{ form.start_date.errors|join:", " }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label for="{{ form.end_date.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                            Date de fin
+                        </label>
+                        {{ form.end_date }}
+                        {% if form.end_date.help_text %}
+                            <p class="mt-2 text-xs text-[var(--text3)]">{{ form.end_date.help_text }}</p>
+                        {% endif %}
+                        {% if form.end_date.errors %}
+                            <div class="mt-2 rounded-xl border border-[var(--red-bg)] bg-[var(--red-bg)]/40 px-3 py-2 text-xs text-[var(--red)]">
+                                {{ form.end_date.errors|join:", " }}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SIDE -->
+        <section class="space-y-6">
+            <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <div class="mb-5">
+                    <h2 class="text-lg font-semibold text-[var(--text1)]">Paramètres</h2>
+                    <p class="mt-1 text-xs text-[var(--text3)]">
+                        Gouvernance et visibilité de la roadmap.
+                    </p>
+                </div>
+
+                <div class="space-y-5">
+                    <div>
+                        <label for="{{ form.owner.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                            Owner
+                        </label>
+                        {{ form.owner }}
+                        {% if form.owner.help_text %}
+                            <p class="mt-2 text-xs text-[var(--text3)]">{{ form.owner.help_text }}</p>
+                        {% endif %}
+                        {% if form.owner.errors %}
+                            <div class="mt-2 rounded-xl border border-[var(--red-bg)] bg-[var(--red-bg)]/40 px-3 py-2 text-xs text-[var(--red)]">
+                                {{ form.owner.errors|join:", " }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                            Visibilité
+                        </label>
+                        <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                            <label for="{{ form.is_public.id_for_label }}" class="flex items-start gap-3">
+                                {{ form.is_public }}
+                                <span>
+                                    <span class="block text-sm font-medium text-[var(--text1)]">Roadmap publique</span>
+                                    <span class="mt-1 block text-xs text-[var(--text3)]">
+                                        Active cette option si la feuille de route doit être visible plus largement.
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+                        {% if form.is_public.errors %}
+                            <div class="mt-2 rounded-xl border border-[var(--red-bg)] bg-[var(--red-bg)]/40 px-3 py-2 text-xs text-[var(--red)]">
+                                {{ form.is_public.errors|join:", " }}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Aide</h2>
+                <div class="mt-4 space-y-3 text-sm text-[var(--text2)]">
+                    <p>Utilise un nom clair et actionnable.</p>
+                    <p>La période doit couvrir l’ensemble des éléments roadmap attendus.</p>
+                    <p>Choisis un owner capable d’assurer le pilotage transverse.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ACTIONS -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="text-sm text-[var(--text3)]">
+                {% if object %}
+                    Les modifications seront appliquées immédiatement à la roadmap.
+                {% else %}
+                    La roadmap sera créée et disponible dans le portefeuille.
+                {% endif %}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'roadmap_list' %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)]">
+                    Annuler
+                </a>
+                <button type="submit"
+                        class="inline-flex items-center rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,111,247,0.25)] transition hover:-translate-y-0.5">
+                    {% if object %}Enregistrer les modifications{% else %}Créer la roadmap{% endif %}
+                </button>
+            </div>
+        </div>
+    </section>
+</form>
+</div>
+{% endblock %}

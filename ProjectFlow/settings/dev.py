@@ -1,5 +1,6 @@
-from .base import *
 from decouple import config
+
+from .base import *
 import os
 
 ALLOWED_HOSTS = ['*']
@@ -22,7 +23,6 @@ DATABASES = {
         'PORT': config('DB_PORT', default='5433'),
     }
 }
-MPI_API_KEY = os.environ.get('MPI_API_KEY', default='key')
 #
 
 REDIS_HOST = 'localhost'
@@ -35,8 +35,8 @@ REDIS_HOST = 'localhost'
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "").strip() or None
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "").strip() or None
 
-REDIS_PORT = config("REDIS_PORT", default="6379")
-REDIS_PASSWORD = config("REDIS_PASSWORD", default="").strip()
+REDIS_PORT = os.getenv("REDIS_PORT", default="6379")
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", default="").strip()
 
 # Détection docker: /.dockerenv existe dans les containers Docker
 IN_DOCKER = os.path.exists("/.dockerenv")
@@ -45,7 +45,7 @@ IN_DOCKER = os.path.exists("/.dockerenv")
 # - En docker-compose: service redis = urapredis (comme tu as)
 # - Hors docker: redis local = 127.0.0.1
 DEFAULT_REDIS_HOST = "urapredis" if IN_DOCKER else "127.0.0.1"
-REDIS_HOST = config("REDIS_HOST", default=DEFAULT_REDIS_HOST).strip()
+REDIS_HOST = os.getenv("REDIS_HOST", default=DEFAULT_REDIS_HOST).strip()
 
 def _redis_url(db="0"):
     if REDIS_PASSWORD:

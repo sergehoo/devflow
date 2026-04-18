@@ -1,10 +1,506 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% load humanize %}
 
-</body>
-</html>
+<div
+    x-data="taskKanban()"
+    x-init="init()"
+    class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft overflow-hidden"
+>
+    <div class="flex flex-col gap-4 border-b border-[var(--border)] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+            <div class="text-lg font-semibold text-[var(--text1)]">
+                {{ item.name }} — Board
+            </div>
+            <div class="mt-1 text-sm text-[var(--text3)]">
+                {{ item.project.name }}{% if item.team %} &amp; {{ item.team.name }}{% endif %}
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <span class="text-[11px] text-[var(--text3)]">Vue Kanban du sprint</span>
+            <a href="{% url 'task_create' %}?project={{ item.project.pk }}&sprint={{ item.pk }}"
+               class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:bg-[var(--bg4)] hover:text-[var(--text1)]">
+                Nouvelle tâche
+            </a>
+        </div>
+    </div>
+
+    <div class="overflow-x-auto">
+        <div class="grid min-w-[1100px] grid-cols-1 gap-4 p-5 lg:grid-cols-4">
+
+            <!-- TODO -->
+            <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg3)]/80 p-3"
+                 data-column="TODO"
+                 @dragover.prevent="onDragOver($event)"
+                 @drop="onDrop($event, 'TODO')"
+                 @dragleave="onDragLeave($event)">
+                <div class="mb-3 flex items-center justify-between">
+                    <div class="text-sm font-semibold text-[var(--text2)]">
+                        À faire
+                    </div>
+                    <span class="inline-flex min-w-[28px] items-center justify-center rounded-full bg-[var(--bg2)] px-2 py-1 text-[11px] font-semibold text-[var(--text2)] column-count">
+                        {{ task_stats.todo|default:0 }}
+                    </span>
+                </div>
+
+                <div class="space-y-3 column-body">
+                    {% for task in tasks %}
+                        {% if task.status == 'TODO' %}
+                        <div
+                            draggable="true"
+                            data-task-id="{{ task.pk }}"
+                            data-status="{{ task.status }}"
+                            @dragstart="onDragStart($event, '{{ task.pk }}')"
+                            @dragend="onDragEnd()"
+                            class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md cursor-move"
+                        >
+                            <div class="mb-2 flex flex-wrap items-center gap-2">
+                                {% if task.priority == 'CRITICAL' or task.priority == 'URGENT' %}
+<span data-role="status-badge" class="inline-flex items-center gap-1 rounded-full bg-[var(--red-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--red)]">                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--red)]"></span>
+                                    {{ task.get_priority_display|default:task.priority }}
+                                </span>
+                                {% elif task.priority == 'HIGH' %}
+                                <span class="inline-flex items-center rounded-full bg-[var(--amber-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--amber)]">
+                                    {{ task.get_priority_display|default:task.priority }}
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center rounded-full bg-[var(--cyan-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--cyan)]">
+                                    {{ task.get_priority_display|default:task.priority|default:"Standard" }}
+                                </span>
+                                {% endif %}
+
+                                {% if task.code %}
+                                <span class="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg3)] px-2 py-1 text-[10px] font-medium text-[var(--text3)]">
+                                    {{ task.code }}
+                                </span>
+                                {% endif %}
+                            </div>
+
+                            <div class="task-card-title text-sm font-semibold leading-5 text-[var(--text1)]">
+                                {{ task.title }}
+                            </div>
+
+                            {% if task.description %}
+                            <div class="mt-2 line-clamp-2 text-xs leading-5 text-[var(--text3)]">
+                                {{ task.description|striptags|truncatechars:110 }}
+                            </div>
+                            {% endif %}
+
+                            <div class="mt-4 flex items-center justify-between gap-2">
+                                <div class="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text3)]">
+                                    {% if task.estimate_hours %}
+                                    <span>⏱ {{ task.estimate_hours }} h</span>
+                                    {% endif %}
+                                    {% if task.due_date %}
+                                    <span>📅 {{ task.due_date|date:"d/m" }}</span>
+                                    {% endif %}
+                                </div>
+
+                                {% if task.assignee %}
+                                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-bg)] text-[11px] font-bold text-[var(--accent)]">
+                                    {{ task.assignee|stringformat:"s"|slice:":2"|upper }}
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="mt-3 flex items-center gap-3">
+                                <a href="{% url 'task_detail' task.pk %}" class="text-[11px] font-semibold text-[var(--accent)] hover:underline">
+                                    Détail
+                                </a>
+                                <a href="{% url 'task_update' task.pk %}" class="text-[11px] font-semibold text-[var(--text2)] hover:text-[var(--text1)] hover:underline">
+                                    Modifier
+                                </a>
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% empty %}
+                        <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg2)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                            Aucune tâche.
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- IN PROGRESS -->
+            <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg3)]/80 p-3"
+                 data-column="IN_PROGRESS"
+                 @dragover.prevent="onDragOver($event)"
+                 @drop="onDrop($event, 'IN_PROGRESS')"
+                 @dragleave="onDragLeave($event)">
+                <div class="mb-3 flex items-center justify-between">
+                    <div class="text-sm font-semibold text-[var(--accent)]">
+                        En cours
+                    </div>
+                    <span class="inline-flex min-w-[28px] items-center justify-center rounded-full bg-[var(--accent-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--accent)] column-count">
+                        {{ task_stats.in_progress|default:0 }}
+                    </span>
+                </div>
+
+                <div class="space-y-3 column-body">
+                    {% for task in tasks %}
+                        {% if task.status == 'IN_PROGRESS' %}
+                        <div
+                            draggable="true"
+                            data-task-id="{{ task.pk }}"
+                            data-status="{{ task.status }}"
+                            @dragstart="onDragStart($event, '{{ task.pk }}')"
+                            @dragend="onDragEnd()"
+                            class="rounded-2xl border border-[rgba(124,111,247,0.18)] bg-[var(--bg2)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md cursor-move"
+                        >
+                            <div class="mb-2 flex flex-wrap items-center gap-2">
+                                {% if task.priority == 'CRITICAL' or task.priority == 'URGENT' %}
+                                <span class="inline-flex items-center gap-1 rounded-full bg-[var(--red-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--red)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--red)]"></span>
+                                    {{ task.get_priority_display|default:task.priority }}
+                                </span>
+                                {% elif task.priority == 'HIGH' %}
+                                <span class="inline-flex items-center rounded-full bg-[var(--amber-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--amber)]">
+                                    {{ task.get_priority_display|default:task.priority }}
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center rounded-full bg-[var(--cyan-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--cyan)]">
+                                    {{ task.get_priority_display|default:task.priority|default:"Standard" }}
+                                </span>
+                                {% endif %}
+                            </div>
+
+                            <div class="task-card-title text-sm font-semibold leading-5 text-[var(--text1)]">
+                                {{ task.title }}
+                            </div>
+
+                            {% if task.progress_percent %}
+                            <div class="mt-3">
+                                <div class="mb-1 flex items-center justify-between text-[10px] text-[var(--text3)]">
+                                    <span>Progression</span>
+                                    <span>{{ task.progress_percent }}%</span>
+                                </div>
+                                <div class="h-1.5 overflow-hidden rounded-full bg-[var(--bg4)]">
+                                    <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))]" style="width: {{ task.progress_percent }}%"></div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            <div class="mt-4 flex items-center justify-between gap-2">
+                                <div class="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text3)]">
+                                    {% if task.spent_hours %}
+                                    <span>⌛ {{ task.spent_hours }} h</span>
+                                    {% endif %}
+                                    {% if task.due_date %}
+                                    <span>📅 {{ task.due_date|date:"d/m" }}</span>
+                                    {% endif %}
+                                </div>
+
+                                {% if task.assignee %}
+                                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-bg)] text-[11px] font-bold text-[var(--accent)]">
+                                    {{ task.assignee|stringformat:"s"|slice:":2"|upper }}
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="mt-3 flex items-center gap-3">
+                                <a href="{% url 'task_detail' task.pk %}" class="text-[11px] font-semibold text-[var(--accent)] hover:underline">
+                                    Détail
+                                </a>
+                                <a href="{% url 'task_update' task.pk %}" class="text-[11px] font-semibold text-[var(--text2)] hover:text-[var(--text1)] hover:underline">
+                                    Modifier
+                                </a>
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% empty %}
+                        <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg2)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                            Aucune tâche.
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- REVIEW -->
+            <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg3)]/80 p-3"
+                 data-column="REVIEW"
+                 @dragover.prevent="onDragOver($event)"
+                 @drop="onDrop($event, 'REVIEW')"
+                 @dragleave="onDragLeave($event)">
+                <div class="mb-3 flex items-center justify-between">
+                    <div class="text-sm font-semibold text-[var(--amber)]">
+                        Review
+                    </div>
+                    <span class="inline-flex min-w-[28px] items-center justify-center rounded-full bg-[var(--amber-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--amber)] column-count">
+                        {{ task_stats.review|default:0 }}
+                    </span>
+                </div>
+
+                <div class="space-y-3 column-body">
+                    {% for task in tasks %}
+                        {% if task.status == 'REVIEW' %}
+                        <div
+                            draggable="true"
+                            data-task-id="{{ task.pk }}"
+                            data-status="{{ task.status }}"
+                            @dragstart="onDragStart($event, '{{ task.pk }}')"
+                            @dragend="onDragEnd()"
+                            class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md cursor-move"
+                        >
+                            <div class="mb-2 flex flex-wrap items-center gap-2">
+                                {% if task.priority %}
+                                <span class="inline-flex items-center rounded-full bg-[var(--amber-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--amber)]">
+                                    {{ task.get_priority_display|default:task.priority }}
+                                </span>
+                                {% endif %}
+                            </div>
+
+                            <div class="task-card-title text-sm font-semibold leading-5 text-[var(--text1)]">
+                                {{ task.title }}
+                            </div>
+
+                            <div class="mt-4 flex items-center justify-between gap-2">
+                                <div class="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text3)]">
+                                    {% if task.due_date %}
+                                    <span>📅 {{ task.due_date|date:"d/m" }}</span>
+                                    {% endif %}
+                                    {% if task.reporter %}
+                                    <span>👥 {{ task.reporter }}</span>
+                                    {% endif %}
+                                </div>
+
+                                {% if task.assignee %}
+                                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--amber-bg)] text-[11px] font-bold text-[var(--amber)]">
+                                    {{ task.assignee|stringformat:"s"|slice:":2"|upper }}
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="mt-3 flex items-center gap-3">
+                                <a href="{% url 'task_detail' task.pk %}" class="text-[11px] font-semibold text-[var(--accent)] hover:underline">
+                                    Détail
+                                </a>
+                                <a href="{% url 'task_update' task.pk %}" class="text-[11px] font-semibold text-[var(--text2)] hover:text-[var(--text1)] hover:underline">
+                                    Modifier
+                                </a>
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% empty %}
+                        <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg2)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                            Aucune tâche.
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- DONE -->
+            <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg3)]/80 p-3"
+                 data-column="DONE"
+                 @dragover.prevent="onDragOver($event)"
+                 @drop="onDrop($event, 'DONE')"
+                 @dragleave="onDragLeave($event)">
+                <div class="mb-3 flex items-center justify-between">
+                    <div class="text-sm font-semibold text-[var(--green)]">
+                        Terminé
+                    </div>
+                    <span class="inline-flex min-w-[28px] items-center justify-center rounded-full bg-[var(--green-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--green)] column-count">
+                        {{ task_stats.done|default:0 }}
+                    </span>
+                </div>
+
+                <div class="space-y-3 column-body">
+                    {% for task in tasks %}
+                        {% if task.status == 'DONE' %}
+                        <div
+                            draggable="true"
+                            data-task-id="{{ task.pk }}"
+                            data-status="{{ task.status }}"
+                            @dragstart="onDragStart($event, '{{ task.pk }}')"
+                            @dragend="onDragEnd()"
+                            class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-4 opacity-70 shadow-sm transition hover:opacity-100 cursor-move"
+                        >
+                            <div class="mb-2">
+                                <span class="inline-flex items-center rounded-full bg-[var(--green-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--green)]">
+                                    Done
+                                </span>
+                            </div>
+
+                            <div class="task-card-title text-sm font-semibold leading-5 text-[var(--text3)] line-through">
+                                {{ task.title }}
+                            </div>
+
+                            <div class="mt-4 flex items-center justify-between gap-2">
+                                <div class="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text3)]">
+                                    {% if task.spent_hours %}
+                                    <span>⌛ {{ task.spent_hours }} h</span>
+                                    {% endif %}
+                                </div>
+
+                                {% if task.assignee %}
+                                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--green-bg)] text-[11px] font-bold text-[var(--green)]">
+                                    {{ task.assignee|stringformat:"s"|slice:":2"|upper }}
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="mt-3 flex items-center gap-3">
+                                <a href="{% url 'task_detail' task.pk %}" class="text-[11px] font-semibold text-[var(--accent)] hover:underline">
+                                    Détail
+                                </a>
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% empty %}
+                        <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg2)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                            Aucune tâche.
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+<script>
+function taskKanban() {
+    return {
+        draggedId: null,
+        draggedEl: null,
+
+        init() {
+            this.refreshCounts();
+        },
+
+        onDragStart(event, taskId) {
+            this.draggedId = taskId;
+            this.draggedEl = event.currentTarget;
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", taskId);
+            this.draggedEl.classList.add("opacity-50", "scale-[0.98]");
+        },
+
+        onDragEnd() {
+            if (this.draggedEl) {
+                this.draggedEl.classList.remove("opacity-50", "scale-[0.98]");
+            }
+            this.clearHighlights();
+            this.draggedId = null;
+            this.draggedEl = null;
+        },
+
+        onDragOver(event) {
+            event.currentTarget.classList.add("ring-2", "ring-[var(--accent)]", "ring-offset-2");
+        },
+
+        onDragLeave(event) {
+            event.currentTarget.classList.remove("ring-2", "ring-[var(--accent)]", "ring-offset-2");
+        },
+
+        clearHighlights() {
+            document.querySelectorAll("[data-column]").forEach(col => {
+                col.classList.remove("ring-2", "ring-[var(--accent)]", "ring-offset-2");
+            });
+        },
+
+        async onDrop(event, newStatus) {
+            const column = event.currentTarget;
+            column.classList.remove("ring-2", "ring-[var(--accent)]", "ring-offset-2");
+
+            const taskId = event.dataTransfer.getData("text/plain") || this.draggedId;
+            if (!taskId) return;
+
+            const card = document.querySelector(`[data-task-id="${taskId}"]`);
+            if (!card) return;
+
+            const oldStatus = card.dataset.status;
+            if (oldStatus === newStatus) return;
+
+            const body = column.querySelector(".column-body");
+            body.appendChild(card);
+
+            card.dataset.status = newStatus;
+            this.updateCardStatus(card, newStatus);
+            this.refreshCounts();
+
+            try {
+                const response = await fetch("{% url 'task_status_update' %}", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": this.getCsrfToken(),
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: JSON.stringify({
+                        task_id: taskId,
+                        status: newStatus
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error("Erreur serveur");
+                }
+
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.message || "Mise à jour refusée");
+                }
+            } catch (error) {
+                const oldColumn = document.querySelector(`[data-column="${oldStatus}"] .column-body`);
+                if (oldColumn) {
+                    oldColumn.appendChild(card);
+                    card.dataset.status = oldStatus;
+                    this.updateCardStatus(card, oldStatus);
+                    this.refreshCounts();
+                }
+                console.error(error);
+            }
+        },
+
+        updateCardStatus(card, status) {
+            const title = card.querySelector(".task-card-title");
+            const statusBadge = card.querySelector("[data-role='status-badge']");
+
+            card.classList.remove("opacity-70");
+
+            if (title) {
+                title.classList.remove("line-through", "text-[var(--text1)]", "text-[var(--text3)]");
+            }
+
+            if (status === "DONE") {
+                card.classList.add("opacity-70");
+                if (title) {
+                    title.classList.add("line-through", "text-[var(--text3)]");
+                }
+            } else {
+                if (title) {
+                    title.classList.add("text-[var(--text1)]");
+                }
+            }
+
+            if (statusBadge) {
+                const styles = {
+                    TODO: ["À faire", "bg-[var(--bg3)] text-[var(--text2)]"],
+                    IN_PROGRESS: ["En cours", "bg-[var(--accent-bg)] text-[var(--accent)]"],
+                    REVIEW: ["Review", "bg-[var(--amber-bg)] text-[var(--amber)]"],
+                    DONE: ["Done", "bg-[var(--green-bg)] text-[var(--green)]"],
+                };
+
+                const conf = styles[status] || styles["TODO"];
+                statusBadge.className = "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold " + conf[1];
+                statusBadge.textContent = conf[0];
+            }
+        },
+
+        refreshCounts() {
+            document.querySelectorAll("[data-column]").forEach(col => {
+                const cards = col.querySelectorAll("[data-task-id]");
+                const badge = col.querySelector(".column-count");
+                if (badge) {
+                    badge.textContent = cards.length;
+                }
+            });
+        },
+
+        getCsrfToken() {
+            const cookie = document.cookie.split("; ").find(row => row.startsWith("csrftoken="));
+            return cookie ? cookie.split("=")[1] : "";
+        }
+    }
+}
+</script>

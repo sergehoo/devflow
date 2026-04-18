@@ -1,31 +1,24 @@
 {% extends "account/base_auth.html" %}
 {% load i18n %}
 
-{% block head_title %}Déconnexion{% endblock %}
+{% block title %}Déconnexion — DevFlow{% endblock %}
 
-{% block content %}
-<div class="text-center">
-    <div class="mx-auto grid h-20 w-20 place-items-center rounded-[24px] bg-slate-100 text-slate-700">
-        <i class="fa-solid fa-right-from-bracket text-2xl"></i>
-    </div>
+{% block auth_content %}
+<div class="auth-eyebrow">Session</div>
+<h2 class="auth-title">Se déconnecter de DevFlow ?</h2>
+<p class="auth-subtitle">
+    Vous êtes sur le point de fermer votre session. Vous pourrez vous reconnecter à tout moment pour reprendre vos activités.
+</p>
 
-    <p class="mt-6 text-xs font-bold uppercase tracking-[0.22em] text-premium-600">Session</p>
-    <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900">Déconnexion</h2>
-    <p class="mt-3 text-sm leading-6 text-slate-500">
-        Êtes-vous sûr de vouloir vous déconnecter de la plateforme ?
-    </p>
-</div>
-
-<form method="post" action="{% url 'account_logout' %}" class="mt-8 space-y-4">
+<form method="post" action="{% url 'account_logout' %}" class="auth-form">
     {% csrf_token %}
-    <button type="submit" class="btn-primary">
-        <i class="fa-solid fa-power-off"></i>
-        <span>Confirmer la déconnexion</span>
+    <button type="submit" class="btn-auth">
+        Confirmer la déconnexion
     </button>
 
-    <a href="/" class="btn-secondary">
-        <i class="fa-solid fa-house"></i>
-        <span>Retour à l’accueil</span>
-    </a>
+    <div class="auth-foot">
+        Vous préférez rester connecté ?
+        <a href="/" class="link-inline">Retourner au dashboard</a>
+    </div>
 </form>
 {% endblock %}

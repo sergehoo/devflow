@@ -1,0 +1,107 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Association jalon / tâche{% endblock %}
+{% block page_title %}Association jalon / tâche{% endblock %}
+{% block breadcrumb %}Projet · Milestone task{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+                <h1 class="font-serif text-3xl text-[var(--text1)]">{{ item.task.title }}</h1>
+                <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--text3)]">
+                    <span>Jalon : {{ item.milestone.name }}</span>
+                    <span>• Projet : {{ item.milestone.project.name }}</span>
+                    {% if item.task.assignee %}<span>• Assigné à {{ item.task.assignee }}</span>{% endif %}
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'milestone_task_update' item.pk %}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                    Modifier
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Statut tâche</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.task.get_status_display }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Échéance tâche</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.task.due_date|date:"d/m/Y"|default:"—" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Sprint</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.task.sprint|default:"—" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Jalon statut</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.milestone.get_status_display }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Jalon échéance</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.milestone.due_date|date:"d/m/Y" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Progression jalon</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.milestone.progress_percent }}%</div>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <h2 class="text-lg font-semibold text-[var(--text1)]">Fiche tâche</h2>
+            <div class="mt-4 space-y-4 text-sm">
+                <div class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-3">
+                    <span class="text-[var(--text3)]">Titre</span>
+                    <span class="text-right font-medium text-[var(--text1)]">{{ item.task.title }}</span>
+                </div>
+                <div class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-3">
+                    <span class="text-[var(--text3)]">Reporter</span>
+                    <span class="text-right font-medium text-[var(--text1)]">{{ item.task.reporter|default:"—" }}</span>
+                </div>
+                <div class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-3">
+                    <span class="text-[var(--text3)]">Assigné à</span>
+                    <span class="text-right font-medium text-[var(--text1)]">{{ item.task.assignee|default:"—" }}</span>
+                </div>
+                <div class="flex items-start justify-between gap-4">
+                    <span class="text-[var(--text3)]">Retard</span>
+                    <span class="text-right font-medium text-[var(--text1)]">
+                        {% if is_task_overdue %}Oui{% else %}Non{% endif %}
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <h2 class="text-lg font-semibold text-[var(--text1)]">Fiche jalon</h2>
+            <div class="mt-4 space-y-4 text-sm">
+                <div class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-3">
+                    <span class="text-[var(--text3)]">Nom</span>
+                    <span class="text-right font-medium text-[var(--text1)]">{{ item.milestone.name }}</span>
+                </div>
+                <div class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-3">
+                    <span class="text-[var(--text3)]">Projet</span>
+                    <span class="text-right font-medium text-[var(--text1)]">{{ item.milestone.project.name }}</span>
+                </div>
+                <div class="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-3">
+                    <span class="text-[var(--text3)]">Owner</span>
+                    <span class="text-right font-medium text-[var(--text1)]">{{ item.milestone.owner|default:"—" }}</span>
+                </div>
+                <div class="flex items-start justify-between gap-4">
+                    <span class="text-[var(--text3)]">Retard</span>
+                    <span class="text-right font-medium text-[var(--text1)]">
+                        {% if is_milestone_overdue %}Oui{% else %}Non{% endif %}
+                    </span>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

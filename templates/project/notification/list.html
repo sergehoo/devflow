@@ -1,0 +1,162 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}DevFlow — Notifications{% endblock %}
+{% block page_title %}Notifications{% endblock %}
+{% block breadcrumb %}DevFlow · Notifications{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+        <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.06)_45%,transparent_100%)]"></div>
+        <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+        <div class="absolute -bottom-20 left-10 h-40 w-40 rounded-full bg-[var(--cyan-bg)] blur-3xl"></div>
+
+        <div class="relative p-6 lg:p-7">
+            <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <h1 class="font-serif text-3xl font-medium tracking-[-0.03em] text-[var(--text1)] lg:text-4xl">
+                        Centre de notifications
+                    </h1>
+                    <p class="mt-2 max-w-3xl text-sm leading-6 text-[var(--text2)]">
+                        Suivez l’activité récente, les assignations, les alertes et les événements importants de votre workspace.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                    <a href="{% url 'notification_mark_all_read' %}"
+                       class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)] transition hover:-translate-y-0.5">
+                        Tout marquer comme lu
+                    </a>
+                </div>
+            </div>
+
+            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Total</div>
+                    <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ object_list|length }}</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Non lues</div>
+                    <div class="mt-2 font-serif text-3xl text-[var(--text1)]">
+                        {{ unread_count|default:0 }}
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Workspace</div>
+                    <div class="mt-2 text-lg font-semibold text-[var(--text1)]">
+                        {{ request.workspace.name|default:"Espace de travail" }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+        <div class="mb-4 flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Notifications récentes</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Les dernières alertes et événements qui vous concernent.</p>
+            </div>
+        </div>
+
+        <div class="space-y-3">
+            {% for notif in object_list %}
+            <article class="rounded-[22px] border {% if not notif.is_read %}border-[var(--accent)]/30 bg-[var(--accent-bg)]/20{% else %}border-[var(--border)] bg-[var(--bg3)]{% endif %} p-4 transition hover:-translate-y-0.5 hover:shadow-md">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl
+                        {% if notif.notification_type == 'TASK' %}bg-[var(--cyan-bg)] text-[var(--cyan)]
+                        {% elif notif.notification_type == 'PROJECT' %}bg-[var(--accent-bg)] text-[var(--accent)]
+                        {% elif notif.notification_type == 'RISK' %}bg-[var(--red-bg)] text-[var(--red)]
+                        {% elif notif.notification_type == 'SPRINT' %}bg-[var(--amber-bg)] text-[var(--amber)]
+                        {% elif notif.notification_type == 'AI' %}bg-[var(--green-bg)] text-[var(--green)]
+                        {% else %}bg-[var(--bg2)] text-[var(--text2)]{% endif %}">
+                        {% if notif.notification_type == "TASK" %}
+                            ✓
+                        {% elif notif.notification_type == "PROJECT" %}
+                            ◈
+                        {% elif notif.notification_type == "RISK" %}
+                            ⚠
+                        {% elif notif.notification_type == "SPRINT" %}
+                            ≋
+                        {% elif notif.notification_type == "AI" %}
+                            ✦
+                        {% elif notif.notification_type == "MESSAGE" %}
+                            ✉
+                        {% else %}
+                            •
+                        {% endif %}
+                    </div>
+
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h3 class="truncate text-sm font-semibold text-[var(--text1)]">
+                                        {{ notif.title }}
+                                    </h3>
+
+                                    {% if not notif.is_read %}
+                                    <span class="inline-flex items-center rounded-full bg-[var(--accent)] px-2.5 py-1 text-[10px] font-semibold text-white">
+                                        Nouveau
+                                    </span>
+                                    {% endif %}
+
+                                    <span class="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg2)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text2)]">
+                                        {{ notif.get_notification_type_display|default:notif.notification_type }}
+                                    </span>
+                                </div>
+
+                                {% if notif.body %}
+                                <p class="mt-2 text-sm leading-6 text-[var(--text2)]">
+                                    {{ notif.body }}
+                                </p>
+                                {% endif %}
+
+                                <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-[var(--text3)]">
+                                    <span>{{ notif.created_at|date:"d/m/Y H:i" }}</span>
+                                    {% if notif.workspace %}
+                                    <span>• {{ notif.workspace.name }}</span>
+                                    {% endif %}
+                                    {% if notif.read_at %}
+                                    <span>• Lu le {{ notif.read_at|date:"d/m/Y H:i" }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <div class="flex shrink-0 flex-wrap gap-2">
+                                {% if notif.url %}
+                                <a href="{{ notif.url }}"
+                                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                                    Ouvrir
+                                </a>
+                                {% endif %}
+
+                                {% if not notif.is_read %}
+                                <a href="{% url 'notification_mark_read' notif.pk %}"
+                                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg2)] px-3 py-2 text-xs font-semibold text-[var(--text2)]">
+                                    Marquer comme lu
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </article>
+            {% empty %}
+            <div class="rounded-[22px] border border-dashed border-[var(--border)] bg-[var(--bg3)] px-6 py-12 text-center">
+                <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg2)] text-[var(--text3)]">
+                    🔔
+                </div>
+                <h3 class="mt-4 text-base font-semibold text-[var(--text1)]">Aucune notification</h3>
+                <p class="mt-1 text-sm text-[var(--text3)]">
+                    Les nouvelles notifications apparaîtront ici.
+                </p>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

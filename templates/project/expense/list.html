@@ -1,0 +1,465 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}DevFlow — Dépenses projet{% endblock %}
+{% block page_title %}Dépenses projet{% endblock %}
+{% block breadcrumb %}Projet · Dépenses{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- HERO -->
+    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+        <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.06)_45%,transparent_100%)]"></div>
+        <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+        <div class="absolute -bottom-20 left-10 h-40 w-40 rounded-full bg-[var(--cyan-bg)] blur-3xl"></div>
+
+        <div class="relative p-6 lg:p-7">
+            <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--accent),var(--accent2))] text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)]">
+                            <i class="fa-solid fa-receipt text-xl"></i>
+                        </div>
+
+                        <div>
+                            <h1 class="font-serif text-3xl font-medium tracking-[-0.03em] text-[var(--text1)] lg:text-4xl">
+                                Dépenses projet
+                            </h1>
+                            <p class="mt-2 text-sm text-[var(--text2)]">
+                                Suivi budgétaire des charges, engagements et paiements.
+                            </p>
+                            {% if project_obj %}
+                            <div class="mt-2 inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                                Projet : {{ project_obj.name }}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    {% if project_obj %}
+                    <a href="{% url 'project_expense_create' %}?project={{ project_obj.pk }}"
+                       class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)] transition hover:-translate-y-0.5 hover:opacity-95">
+                        <i class="fa-solid fa-plus"></i>
+                        Nouvelle dépense
+                    </a>
+
+                    <a href="{% url 'project_detail' project_obj.pk %}?tab=depenses"
+                       class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
+                        <i class="fa-solid fa-arrow-left"></i>
+                        Retour projet
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- KPI -->
+            <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Total dépenses</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">
+                        {{ stats.total_amount|default:0|floatformat:0|intcomma }}
+                    </div>
+                    <div class="mt-2 text-xs text-[var(--text3)]">{{ stats.total_count|default:0 }} ligne(s)</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Brouillons</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">
+                        {{ stats.draft_amount|default:0|floatformat:0|intcomma }}
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Engagé</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">
+                        {{ stats.committed_amount|default:0|floatformat:0|intcomma }}
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Décaissé</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">
+                        {{ stats.paid_amount|default:0|floatformat:0|intcomma }}
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Validé</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">
+                        {{ stats.validated_amount|default:0|floatformat:0|intcomma }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FILTRES -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+        <form method="get" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            {% if project_obj %}
+            <input type="hidden" name="project" value="{{ project_obj.pk }}">
+            {% endif %}
+
+            <div>
+                <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-[var(--text3)]">
+                    Recherche
+                </label>
+                <input
+                    type="text"
+                    name="q"
+                    value="{{ request.GET.q|default:'' }}"
+                    placeholder="Titre, vendor, référence..."
+                    class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm text-[var(--text1)] outline-none transition placeholder:text-[var(--text3)] focus:border-[var(--accent)]"
+                >
+            </div>
+
+            <div>
+                <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-[var(--text3)]">
+                    Statut
+                </label>
+                <select
+                    name="status"
+                    class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm text-[var(--text1)] outline-none transition focus:border-[var(--accent)]"
+                >
+                    <option value="">Tous les statuts</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-[var(--text3)]">
+                    Validation
+                </label>
+                <select
+                    name="approval_state"
+                    class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm text-[var(--text1)] outline-none transition focus:border-[var(--accent)]"
+                >
+                    <option value="">Tous les états</option>
+                    {% for value, label in approval_state_choices %}
+                    <option value="{{ value }}" {% if current_approval_state == value %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-[var(--text3)]">
+                    Catégorie
+                </label>
+                <select
+                    name="category"
+                    class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm text-[var(--text1)] outline-none transition focus:border-[var(--accent)]"
+                >
+                    <option value="">Toutes les catégories</option>
+                    {% for category in categories %}
+                    <option value="{{ category.pk }}" {% if current_category == category.pk|stringformat:"s" %}selected{% endif %}>
+                        {{ category.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="flex items-end gap-2">
+                <button
+                    type="submit"
+                    class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-95"
+                >
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    Filtrer
+                </button>
+
+                <a
+                    href="{% url 'project_expense_list' %}{% if project_obj %}?project={{ project_obj.pk }}{% endif %}"
+                    class="inline-flex items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]"
+                >
+                    Reset
+                </a>
+            </div>
+        </form>
+    </section>
+
+    <!-- TABLEAU -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Liste des dépenses</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Contrôle des coûts projet avec workflow de validation</p>
+            </div>
+        </div>
+
+      <div class="overflow-hidden rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+    <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+            <thead class="bg-[var(--bg3)]/70">
+                <tr class="border-b border-[var(--border)] text-left text-[11px] uppercase tracking-[0.14em] text-[var(--text3)]">
+                    <th class="px-4 py-4 font-semibold">Date</th>
+                    <th class="px-4 py-4 font-semibold">Libellé</th>
+                    <th class="px-4 py-4 font-semibold">Projet</th>
+                    <th class="px-4 py-4 font-semibold">Etat</th>
+                    <th class="px-4 py-4 font-semibold">Validation</th>
+                    <th class="px-4 py-4 text-right font-semibold">Montant</th>
+                    <th class="px-4 py-4 text-right font-semibold">Actions</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for expense in items %}
+                <tr class="border-b border-[var(--border)] align-top transition hover:bg-[var(--accent-bg)]/20">
+                    <!-- Date -->
+                    <td class="px-4 py-4 whitespace-nowrap text-[var(--text2)]">
+                        <div class="font-medium text-[var(--text1)]">
+                            {% if expense.created_at %}
+                        <div class="text-xs">
+                        {{ expense.created_at|date:"d/m/Y" }}<br>
+                        {{ expense.created_at|date:"H:i" }}
+                        </div>
+                        {% endif %}
+                        </div>
+
+                    </td>
+
+                    <!-- Libellé -->
+                    <td class="px-4 py-4 min-w-[240px]">
+                        <div class="flex items-start gap-3">
+                            <div class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent-bg)] text-[var(--accent)]">
+                                <i class="fa-solid fa-file-invoice-dollar text-sm"></i>
+                            </div>
+
+                            <div class="min-w-0">
+                                <div class="truncate font-semibold text-[var(--text1)]">
+                                    {{ expense.title }}
+                                </div>
+
+                                {% if expense.description %}
+                                <div class="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text3)]">
+                                    {{ expense.description|striptags|truncatechars:90 }}
+                                </div>
+                                {% endif %}
+
+                                <div class="mt-2 flex flex-wrap items-center gap-2">
+                                    {% if expense.reference %}
+                                    <span class="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg3)] px-2.5 py-1 text-[10px] font-medium text-[var(--text2)]">
+                                        Réf. {{ expense.reference }}
+                                    </span>
+                                    {% endif %}
+
+                                    {% if expense.is_direct_cost %}
+                                    <span class="inline-flex items-center rounded-full bg-[var(--cyan-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--cyan)]">
+                                        Coût direct
+                                    </span>
+                                    {% endif %}
+
+                                    {% if expense.is_labor_cost %}
+                                    <span class="inline-flex items-center rounded-full bg-[var(--amber-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--amber)]">
+                                        RH
+                                    </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+
+                    <!-- Projet -->
+                    <td class="px-4 py-4 whitespace-nowrap text-[var(--text2)]">
+                        <div class="font-medium text-[var(--text1)]">
+                            {{ expense.project.name|default:"—" }}
+                        </div>
+                        {% if expense.project.code %}
+                        <div class="mt-1 text-xs text-[var(--text3)]">
+                            {{ expense.project.code }}
+                        </div>
+                        {% endif %}
+                    </td>
+
+                    <!-- Statut -->
+                    <td class="px-4 py-4 whitespace-nowrap">
+                        {% if expense.status == "PAID" %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">
+                                <span class="h-1.5 w-1.5 rounded-full bg-[var(--green)]"></span>
+                                {{ expense.get_status_display }}
+                            </span>
+                        {% elif expense.status == "COMMITTED" %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">
+                                <span class="h-1.5 w-1.5 rounded-full bg-[var(--amber)]"></span>
+                                {{ expense.get_status_display }}
+                            </span>
+                        {% elif expense.status == "ACCRUED" %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--cyan-bg)] px-3 py-1 text-xs font-semibold text-[var(--cyan)]">
+                                <span class="h-1.5 w-1.5 rounded-full bg-[var(--cyan)]"></span>
+                                {{ expense.get_status_display }}
+                            </span>
+                        {% elif expense.status == "REJECTED" %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">
+                                <span class="h-1.5 w-1.5 rounded-full bg-[var(--red)]"></span>
+                                {{ expense.get_status_display }}
+                            </span>
+                        {% elif expense.status == "VALIDATED" %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">
+                                <span class="h-1.5 w-1.5 rounded-full bg-[var(--green)]"></span>
+                                {{ expense.get_status_display }}
+                            </span>
+                        {% elif expense.status == "DRAFT" %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">
+                                <span class="h-1.5 w-1.5 rounded-full bg-[var(--text3)]"></span>
+                                {{ expense.get_status_display }}
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">
+                                <span class="h-1.5 w-1.5 rounded-full bg-[var(--text3)]"></span>
+                                {{ expense.get_status_display }}
+                            </span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Validation -->
+                    <td class="px-4 py-4 whitespace-nowrap">
+                        {% if expense.approval_state == "APPROVED_L2" or expense.approval_state == "FULLY_APPROVED" %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">
+                                <i class="fa-solid fa-badge-check"></i>
+                                {{ expense.get_approval_state_display }}
+                            </span>
+                        {% elif expense.approval_state == "APPROVED_L1" or expense.approval_state == "LEVEL1_APPROVED" %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--cyan-bg)] px-3 py-1 text-xs font-semibold text-[var(--cyan)]">
+                                <i class="fa-solid fa-user-check"></i>
+                                {{ expense.get_approval_state_display }}
+                            </span>
+                        {% elif expense.approval_state == "REJECTED" %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">
+                                <i class="fa-solid fa-circle-xmark"></i>
+                                {{ expense.get_approval_state_display }}
+                            </span>
+                        {% elif expense.get_approval_state_display %}
+                            <span class="inline-flex items-center gap-2 rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">
+                                <i class="fa-solid fa-clock"></i>
+                                {{ expense.get_approval_state_display }}
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">
+                                —
+                            </span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Montant -->
+                    <td class="px-4 py-4 text-right whitespace-nowrap">
+                        <div class="font-serif text-xl font-medium text-[var(--text1)]">
+                            {{ expense.amount|floatformat:0|intcomma }}
+                        </div>
+                        <div class="mt-1 text-xs text-[var(--text3)]">
+                            {{ expense.currency|default:"XOF" }}
+                        </div>
+                    </td>
+
+                    <!-- Actions -->
+                    <td class="px-4 py-4">
+                        <div class="flex flex-col items-end gap-2">
+                            <div class="flex flex-wrap justify-end gap-2">
+                                <a
+                                    href="{% url 'project_expense_detail' expense.pk %}"
+                                    class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:bg-[var(--bg4)] hover:text-[var(--text1)]"
+                                >
+                                    <i class="fa-solid fa-eye"></i>
+                                    Voir
+                                </a>
+
+                                {% if expense.can_be_edited %}
+<a
+    href="{% url 'project_expense_update' expense.pk %}"
+    class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:bg-[var(--bg4)] hover:text-[var(--text1)]"
+>
+    <i class="fa-solid fa-pen"></i>
+    Modifier
+</a>
+{% endif %}
+                            </div>
+
+                         {% if expense.user_can_validate_l1 %}
+<form method="post" action="{% url 'project_expense_approve_level1' expense.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="btn-main">
+        Valider N+1
+    </button>
+</form>
+{% endif %}
+
+{% if expense.user_can_validate_l2 %}
+<form method="post" action="{% url 'project_expense_approve_level2' expense.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="btn-main">
+        Valider N+2
+    </button>
+</form>
+{% endif %}
+
+{% if expense.user_can_reject %}
+<form method="post" action="{% url 'project_expense_reject' expense.pk %}" class="flex items-center gap-2">
+    {% csrf_token %}
+    <input type="text" name="reason" placeholder="Motif du rejet" class="form-control">
+    <button type="submit" class="btn-soft text-red-600">
+        Rejeter
+    </button>
+</form>
+{% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="9" class="px-4 py-12 text-center">
+                        <div class="mx-auto flex max-w-md flex-col items-center">
+                            <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg3)] text-[var(--text3)]">
+                                <i class="fa-solid fa-receipt text-lg"></i>
+                            </div>
+                            <div class="mt-4 text-sm font-semibold text-[var(--text1)]">
+                                Aucune dépense trouvée
+                            </div>
+                            <div class="mt-1 text-sm text-[var(--text3)]">
+                                Essaie de modifier les filtres ou ajoute une nouvelle dépense.
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+        <!-- PAGINATION -->
+        {% if is_paginated %}
+        <div class="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
+            <div class="text-sm text-[var(--text3)]">
+                Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}
+            </div>
+
+            <div class="flex items-center gap-2">
+                {% if page_obj.has_previous %}
+                <a
+                    href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_approval_state %}&approval_state={{ current_approval_state }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if project_obj %}&project={{ project_obj.pk }}{% endif %}"
+                    class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-sm font-medium text-[var(--text2)] transition hover:text-[var(--text1)]"
+                >
+                    Précédent
+                </a>
+                {% endif %}
+
+                {% if page_obj.has_next %}
+                <a
+                    href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_approval_state %}&approval_state={{ current_approval_state }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if project_obj %}&project={{ project_obj.pk }}{% endif %}"
+                    class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white transition hover:opacity-95"
+                >
+                    Suivant
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

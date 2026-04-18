@@ -1,0 +1,143 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Élément roadmap — {{ item.title }}{% endblock %}
+{% block page_title %}{{ item.title }}{% endblock %}
+{% block breadcrumb %}Projet · Élément roadmap{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="inline-flex h-3 w-3 rounded-full" style="background: {{ item.color }};"></span>
+                    <h1 class="font-serif text-3xl text-[var(--text1)]">{{ item.title }}</h1>
+
+                    {% if item.status == "PLANNED" %}
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">Planifié</span>
+                    {% elif item.status == "IN_PROGRESS" %}
+                    <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">En cours</span>
+                    {% elif item.status == "DONE" %}
+                    <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">Terminé</span>
+                    {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">À risque</span>
+                    {% endif %}
+
+                    {% if is_overdue %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">En retard</span>
+                    {% endif %}
+                </div>
+
+                <div class="mt-3 flex flex-wrap items-center gap-2 text-sm text-[var(--text2)]">
+                    <span>Roadmap : {{ item.roadmap.name }}</span>
+                    {% if item.project %}<span>• Projet : {{ item.project.name }}</span>{% endif %}
+                    {% if item.milestone %}<span>• Jalon : {{ item.milestone.name }}</span>{% endif %}
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'roadmap_item_update' item.pk %}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white">
+                    Modifier
+                </a>
+                <a href="{% url 'roadmap_item_list' %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)]">
+                    Retour
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Début</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.start_date|date:"d/m/Y" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Fin</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.end_date|date:"d/m/Y" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Durée</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ duration_days }} jour(s)</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Ligne</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.row }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Projet</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.project|default:"—" }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Jalon</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ item.milestone|default:"—" }}</div>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_.95fr]">
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <h2 class="text-lg font-semibold text-[var(--text1)]">Résumé opérationnel</h2>
+            <p class="mt-1 text-xs text-[var(--text3)]">Positionnement de l’initiative dans la roadmap.</p>
+
+            <div class="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-5">
+                <div class="flex items-center gap-3">
+                    <span class="inline-flex h-4 w-4 rounded-full" style="background: {{ item.color }};"></span>
+                    <div class="text-sm font-semibold text-[var(--text1)]">{{ item.title }}</div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-[var(--text3)]">Période</div>
+                        <div class="mt-1 text-sm text-[var(--text1)]">{{ item.start_date|date:"d/m/Y" }} → {{ item.end_date|date:"d/m/Y" }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-[var(--text3)]">Statut</div>
+                        <div class="mt-1 text-sm text-[var(--text1)]">{{ item.get_status_display }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-[var(--text3)]">Roadmap</div>
+                        <div class="mt-1 text-sm text-[var(--text1)]">{{ item.roadmap.name }}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs uppercase tracking-wide text-[var(--text3)]">Ligne</div>
+                        <div class="mt-1 text-sm text-[var(--text1)]">{{ item.row }}</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <h2 class="text-lg font-semibold text-[var(--text1)]">Autres éléments liés</h2>
+            <p class="mt-1 text-xs text-[var(--text3)]">Aperçu des autres éléments de la même roadmap.</p>
+
+            <div class="mt-5 space-y-3">
+                {% for related in related_items %}
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex h-3 w-3 rounded-full" style="background: {{ related.color }};"></span>
+                                <div class="truncate text-sm font-semibold text-[var(--text1)]">{{ related.title }}</div>
+                            </div>
+                            <div class="mt-1 text-xs text-[var(--text3)]">
+                                {{ related.start_date|date:"d/m/Y" }} → {{ related.end_date|date:"d/m/Y" }}
+                            </div>
+                        </div>
+                        <a href="{% url 'roadmap_item_detail' related.pk %}" class="text-xs font-semibold text-[var(--accent)] hover:underline">
+                            Ouvrir
+                        </a>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                    Aucun autre élément sur cette roadmap.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

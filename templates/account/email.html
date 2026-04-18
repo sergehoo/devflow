@@ -1,40 +1,80 @@
 {% extends "account/base_auth.html" %}
+{% load i18n %}
 
-{% block head_title %}Adresses e-mail{% endblock %}
+{% block title %}Gestion des emails — DevFlow{% endblock %}
 
-{% block content %}
-<div>
-    <p class="text-xs font-bold uppercase tracking-[0.22em] text-premium-600">Compte utilisateur</p>
-    <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900">Adresses e-mail</h2>
-    <p class="mt-2 text-sm leading-6 text-slate-500">
-        Gérez vos adresses e-mail associées à votre compte.
-    </p>
-</div>
+{% block auth_content %}
+<div class="auth-eyebrow">Compte</div>
+<h2 class="auth-title">Vos adresses email</h2>
+<p class="auth-subtitle">
+    Gérez vos adresses associées à votre compte DevFlow et définissez votre email principal.
+</p>
 
-<div class="mt-8 space-y-4">
-    {% if user.emailaddress_set.all %}
-        {% for emailaddress in user.emailaddress_set.all %}
-            <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                <div class="flex items-center justify-between gap-4">
-                    <div>
-                        <p class="font-semibold text-slate-900">{{ emailaddress.email }}</p>
-                        <div class="mt-2 flex flex-wrap gap-2 text-xs">
-                            {% if emailaddress.verified %}
-                                <span class="rounded-full bg-emerald-100 px-3 py-1 font-bold text-emerald-700">Vérifiée</span>
-                            {% else %}
-                                <span class="rounded-full bg-amber-100 px-3 py-1 font-bold text-amber-700">Non vérifiée</span>
-                            {% endif %}
-                            {% if emailaddress.primary %}
-                                <span class="rounded-full bg-sky-100 px-3 py-1 font-bold text-sky-700">Principale</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
+{% if messages %}
+    <div class="msg-list">
+        {% for message in messages %}
+            <div class="msg-item
+                {% if 'success' in message.tags %}msg-success
+                {% elif 'error' in message.tags %}msg-error
+                {% elif 'warning' in message.tags %}msg-warning
+                {% else %}msg-info{% endif %}">
+                {{ message }}
             </div>
         {% endfor %}
+    </div>
+{% endif %}
+
+<div class="mt-6 space-y-4">
+    {% if user.emailaddress_set.all %}
+        <form method="post" action="{% url 'account_email' %}" class="space-y-4">
+            {% csrf_token %}
+
+            <div class="space-y-3">
+                {% for emailaddress in user.emailaddress_set.all %}
+                    <label class="block rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-4 hover:bg-[var(--bg3)] transition cursor-pointer">
+                        <div class="flex items-start gap-3">
+                            <input type="radio" name="email" value="{{ emailaddress.email }}"
+                                   {% if emailaddress.primary %}checked{% endif %}
+                                   class="mt-1 accent-[var(--accent)]">
+                            <div class="flex-1">
+                                <div class="font-semibold text-[var(--text1)]">{{ emailaddress.email }}</div>
+                                <div class="mt-1 flex flex-wrap gap-2 text-[11px]">
+                                    {% if emailaddress.verified %}
+                                        <span class="px-2 py-1 rounded-full bg-[var(--green-bg)] text-[var(--green)] font-semibold">Vérifié</span>
+                                    {% else %}
+                                        <span class="px-2 py-1 rounded-full bg-[var(--amber-bg)] text-[var(--amber)] font-semibold">Non vérifié</span>
+                                    {% endif %}
+
+                                    {% if emailaddress.primary %}
+                                        <span class="px-2 py-1 rounded-full bg-[var(--accent-bg)] text-[var(--accent)] font-semibold">Principal</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </label>
+                {% endfor %}
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+                <button class="h-[48px] rounded-2xl border border-[var(--border)] hover:bg-[var(--bg3)] transition font-semibold"
+                        type="submit" name="action_primary">
+                    Définir principal
+                </button>
+
+                <button class="h-[48px] rounded-2xl border border-[var(--border)] hover:bg-[var(--bg3)] transition font-semibold"
+                        type="submit" name="action_send">
+                    Renvoyer confirmation
+                </button>
+
+                <button class="h-[48px] rounded-2xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition font-semibold"
+                        type="submit" name="action_remove">
+                    Supprimer
+                </button>
+            </div>
+        </form>
     {% else %}
-        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-            Aucune adresse e-mail enregistrée.
+        <div class="msg-item msg-info">
+            Aucune adresse email n’est encore associée à votre compte.
         </div>
     {% endif %}
 </div>

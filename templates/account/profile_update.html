@@ -1,0 +1,132 @@
+{% extends "layout/base.html" %}
+{% load static %}
+
+{% block title %}Modifier mon profil — DevFlow{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+    <section class="rounded-[22px] border border-devborder bg-devbg2 shadow-soft p-6 lg:p-8">
+        <div class="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">Profile update</p>
+                <h1 class="mt-2 text-3xl font-serif text-devtext1">Modifier mon profil</h1>
+                <p class="mt-2 text-sm text-devtext2">Mets à jour tes informations personnelles, de capacité et de facturation.</p>
+            </div>
+            <div class="flex gap-3">
+                <a href="{% url 'profile_detail' %}" class="btn-soft">Retour profil</a>
+                <a href="{% url 'profile_password_change' %}" class="btn-soft">Changer mot de passe</a>
+            </div>
+        </div>
+    </section>
+
+    <form method="post" enctype="multipart/form-data" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {% csrf_token %}
+
+        <div class="xl:col-span-2 card">
+            <div class="card-head">
+                <div>
+                    <div class="card-title">Informations utilisateur</div>
+                    <div class="card-sub">Compte + profil métier</div>
+                </div>
+            </div>
+
+            <div class="p-6 space-y-6">
+                {% if form.non_field_errors or account_form.non_field_errors %}
+                    <div class="rounded-[14px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                        {{ form.non_field_errors }}
+                        {{ account_form.non_field_errors }}
+                    </div>
+                {% endif %}
+
+                <div>
+                    <div class="text-sm font-semibold text-devtext1 mb-4">Compte utilisateur</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        {% for field in account_form %}
+                            <div>
+                                <label for="{{ field.id_for_label }}" class="block text-sm font-semibold text-devtext2 mb-2">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.errors %}
+                                    <div class="mt-2 text-sm text-red-600">{{ field.errors }}</div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div>
+                    <div class="text-sm font-semibold text-devtext1 mb-4">Profil</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        {% for field in form %}
+                            <div class="{% if field.name == 'avatar' %}md:col-span-2{% endif %}">
+                                <label for="{{ field.id_for_label }}" class="block text-sm font-semibold text-devtext2 mb-2">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}
+                                    <p class="mt-2 text-xs text-devtext3">{{ field.help_text }}</p>
+                                {% endif %}
+                                {% if field.errors %}
+                                    <div class="mt-2 text-sm text-red-600">{{ field.errors }}</div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-5 border-t border-devborder flex justify-end gap-3">
+                <a href="{% url 'profile_detail' %}" class="btn-soft">Annuler</a>
+                <button type="submit" class="btn-main">Enregistrer</button>
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Aperçu</div>
+                        <div class="card-sub">Profil actuel</div>
+                    </div>
+                </div>
+                <div class="p-6 text-center">
+                    {% if profile.avatar %}
+                        <img src="{{ profile.avatar.url }}" alt="{{ request.user }}" class="w-24 h-24 rounded-full object-cover mx-auto border border-devborder">
+                    {% else %}
+                        <div class="w-24 h-24 rounded-full bg-[var(--accent-bg)] text-devaccent flex items-center justify-center text-2xl font-bold mx-auto">
+                            {{ request.user.get_full_name|default:request.user.username|slice:":2"|upper }}
+                        </div>
+                    {% endif %}
+
+                    <div class="mt-4 text-base font-semibold text-devtext1">
+                        {{ request.user.get_full_name|default:request.user.username }}
+                    </div>
+                    <div class="mt-1 text-sm text-devtext2">
+                        {{ profile.job_title|default:"Aucun poste" }}
+                    </div>
+                    <div class="mt-3 flex justify-center gap-2 flex-wrap">
+                        <span class="badge b-purple">{{ profile.get_seniority_display }}</span>
+                        <span class="badge b-cyan">{{ profile.workspace.name }}</span>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("form input, form select, form textarea").forEach((el) => {
+        if (el.type !== "checkbox" && el.type !== "radio" && el.type !== "file") {
+            el.classList.add(
+                "w-full", "rounded-[12px]", "border", "border-devborder", "bg-devbg3",
+                "px-4", "py-3", "text-sm", "text-devtext1", "outline-none",
+                "focus:border-devaccent", "focus:ring-4", "focus:ring-[var(--accent-bg)]"
+            );
+        }
+        if (el.tagName === "TEXTAREA") {
+            el.classList.add("min-h-[120px]");
+        }
+    });
+});
+</script>
+{% endblock %}
