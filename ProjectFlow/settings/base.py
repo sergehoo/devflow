@@ -26,13 +26,14 @@ SECRET_KEY = 'django-insecure-9uzaef-rpxlqoxg!juy_7x3z*a9!y7%mhtajqaamyp9x(#0qr8
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    'datarium-dev.com',
+    'www.flow.datarium-dev.com',
+    'flow.datarium-dev.com',
     'localhost',
     '127.0.0.1'
 ]
 CSRF_TRUSTED_ORIGINS=[
-    'https://datarium-dev.com',
-    'http://datarium-dev.com',
+    'https://flow.datarium-dev.com',
+    'http://flow.datarium-dev.com',
 ]
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 # Application definition
