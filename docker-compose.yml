@@ -1,4 +1,4 @@
-version: "3.9"
+
 
 services:
   devflowweb:
@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: devflowweb
     command: >
-       gunicorn ProjectFlow.wsgi:application
+      gunicorn ProjectFlow.wsgi:application
       --bind 0.0.0.0:8000
       --workers 3
       --threads 2
