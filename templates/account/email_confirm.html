@@ -1,0 +1,41 @@
+{% extends "account/base_auth.html" %}
+{% load account %}
+
+{% block head_title %}Confirmation de l’e-mail{% endblock %}
+
+{% block content %}
+<div class="text-center">
+    <div class="mx-auto grid h-20 w-20 place-items-center rounded-[24px] bg-sky-100 text-sky-700">
+        <i class="fa-solid fa-envelope-open-text text-2xl"></i>
+    </div>
+
+    <p class="mt-6 text-xs font-bold uppercase tracking-[0.22em] text-premium-600">Validation</p>
+    <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900">Confirmer votre adresse e-mail</h2>
+
+    {% if confirmation %}
+        <p class="mt-3 text-sm leading-6 text-slate-500">
+            Veuillez confirmer l’adresse
+            <span class="font-semibold text-slate-800">{{ confirmation.email_address.email }}</span>.
+        </p>
+
+        <form method="post" action="{% url 'account_confirm_email' confirmation.key %}" class="mt-8">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary">
+                <i class="fa-solid fa-check"></i>
+                <span>Confirmer l’adresse</span>
+            </button>
+        </form>
+    {% else %}
+        <p class="mt-3 text-sm leading-6 text-slate-500">
+            Ce lien de confirmation est invalide ou a expiré.
+        </p>
+
+        <div class="mt-8">
+            <a href="{% url 'account_email' %}" class="btn-secondary">
+                <i class="fa-solid fa-envelope"></i>
+                <span>Gérer mes e-mails</span>
+            </a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

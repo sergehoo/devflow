@@ -1,0 +1,377 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block head_title %}Authentification{% endblock %}</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background:
+                radial-gradient(circle at 0% 0%, rgba(249,115,22,.16), transparent 30%),
+                radial-gradient(circle at 100% 0%, rgba(14,165,233,.11), transparent 26%),
+                radial-gradient(circle at 50% 100%, rgba(168,85,247,.08), transparent 30%),
+                linear-gradient(180deg, #f8fafc 0%, #fff7ed 100%);
+            min-height: 100vh;
+        }
+
+        .glass {
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+        }
+
+        .panel {
+            background: rgba(255,255,255,.72);
+            border: 1px solid rgba(255,255,255,.60);
+            box-shadow: 0 24px 70px rgba(15,23,42,.10);
+        }
+
+        .soft-ring {
+            box-shadow:
+                0 0 0 1px rgba(255,255,255,.58),
+                0 14px 32px rgba(15,23,42,.06);
+        }
+
+        .premium-gradient {
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 50%, #c2410c 100%);
+        }
+
+        .dark-gradient {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 45%, #7c2d12 100%);
+        }
+
+        .field-control {
+            width: 100%;
+            border-radius: 1rem;
+            border: 1px solid rgba(226, 232, 240, 1);
+            background: rgba(255,255,255,.96);
+            padding: .95rem 1rem;
+            font-size: .95rem;
+            color: #0f172a;
+            outline: none;
+            transition: all .25s ease;
+        }
+
+        .field-control:focus {
+            border-color: #f97316;
+            box-shadow: 0 0 0 4px rgba(249,115,22,.12);
+            background: rgba(255,255,255,1);
+        }
+
+        .btn-primary {
+            display: inline-flex;
+            width: 100%;
+            align-items: center;
+            justify-content: center;
+            gap: .65rem;
+            border-radius: 1rem;
+            padding: 1rem 1.25rem;
+            font-size: .95rem;
+            font-weight: 800;
+            color: white;
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+            box-shadow: 0 18px 40px rgba(234,88,12,.24);
+            transition: .22s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            opacity: .98;
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            width: 100%;
+            align-items: center;
+            justify-content: center;
+            gap: .65rem;
+            border-radius: 1rem;
+            padding: 1rem 1.25rem;
+            font-size: .95rem;
+            font-weight: 700;
+            color: #334155;
+            background: rgba(255,255,255,.95);
+            border: 1px solid rgba(226,232,240,1);
+            transition: .22s ease;
+        }
+
+        .btn-secondary:hover {
+            background: #fff7ed;
+            color: #9a3412;
+        }
+
+        .help-text ul,
+        .errorlist {
+            margin-top: .5rem;
+            padding-left: 1rem;
+            font-size: .85rem;
+            color: #dc2626;
+        }
+
+        label {
+            display: block;
+            margin-bottom: .45rem;
+            font-size: .88rem;
+            font-weight: 700;
+            color: #334155;
+        }
+
+        .auth-card {
+            border-radius: 2rem;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .hero-shell {
+            position: relative;
+            overflow: hidden;
+            border-radius: 2.2rem;
+            min-height: 720px;
+            box-shadow: 0 28px 80px rgba(15,23,42,.18);
+        }
+
+        .hero-shell::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(140deg, rgba(15,23,42,.88) 0%, rgba(15,23,42,.55) 36%, rgba(124,45,18,.48) 100%);
+            z-index: 1;
+        }
+
+        .hero-shell::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(251,146,60,.22), transparent 20%),
+                radial-gradient(circle at 80% 25%, rgba(255,255,255,.10), transparent 18%),
+                radial-gradient(circle at 75% 80%, rgba(14,165,233,.14), transparent 18%);
+            z-index: 2;
+        }
+
+        .hero-bg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 3;
+        }
+
+        .floating-badge {
+            background: rgba(255,255,255,.10);
+            border: 1px solid rgba(255,255,255,.14);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 14px 35px rgba(0,0,0,.16);
+        }
+
+        .mini-stat {
+            background: rgba(255,255,255,.10);
+            border: 1px solid rgba(255,255,255,.12);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+        }
+
+        .auth-card::before {
+            content: "";
+            position: absolute;
+            top: -90px;
+            right: -90px;
+            width: 220px;
+            height: 220px;
+            border-radius: 999px;
+            background: radial-gradient(circle, rgba(249,115,22,.14), transparent 65%);
+            pointer-events: none;
+        }
+
+        .auth-card::after {
+            content: "";
+            position: absolute;
+            bottom: -80px;
+            left: -80px;
+            width: 220px;
+            height: 220px;
+            border-radius: 999px;
+            background: radial-gradient(circle, rgba(14,165,233,.10), transparent 65%);
+            pointer-events: none;
+        }
+
+        .brand-bar {
+            background: rgba(255,255,255,.66);
+            border: 1px solid rgba(255,255,255,.55);
+            box-shadow: 0 18px 50px rgba(15,23,42,.08);
+        }
+
+        .top-chip {
+            background: rgba(255,255,255,.82);
+            border: 1px solid rgba(255,255,255,.65);
+            box-shadow: 0 8px 25px rgba(15,23,42,.05);
+        }
+    </style>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        premium: {
+                            50: '#fff7ed',
+                            100: '#ffedd5',
+                            200: '#fed7aa',
+                            300: '#fdba74',
+                            400: '#fb923c',
+                            500: '#f97316',
+                            600: '#ea580c',
+                            700: '#c2410c',
+                            800: '#9a3412',
+                            900: '#7c2d12'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="min-h-screen text-slate-800">
+    <div class="min-h-screen px-4 py-6 lg:px-8">
+        <div class="mx-auto max-w-7xl">
+
+            <!-- Top brand bar -->
+            <div class="brand-bar glass rounded-[30px] px-5 py-5 lg:px-7">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="grid h-14 w-14 place-items-center rounded-2xl premium-gradient text-white shadow-lg">
+                            <i class="fa-solid fa-city text-xl"></i>
+                        </div>
+                        <div>
+                            <img src="{% static 'logo/logo_kaydanG_B.png' %}" width="150" alt="Logo">
+                            <p class="mt-1 text-xs font-medium text-slate-500">Gestion parcellaire & immobilière</p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="top-chip rounded-2xl px-4 py-2 text-sm font-medium text-slate-600">
+                            Sécurité des accès
+                        </div>
+                        <div class="top-chip rounded-2xl px-4 py-2 text-sm font-medium text-slate-600">
+                            Authentification sécurisée
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main -->
+            <div class="mt-6 grid min-h-[calc(100vh-170px)] items-center gap-6 xl:grid-cols-[1.18fr_.82fr]">
+
+                <!-- Hero -->
+                <div class="hero-shell hidden xl:block">
+                    <img
+                        src="{% static 'VILLA-6pieces.jpg' %}"
+                        alt="Programme immobilier"
+                        class="hero-bg"
+                    >
+
+                    <div class="hero-content flex h-full flex-col justify-between p-10 text-white">
+                        <div>
+                            <div class="floating-badge inline-flex items-center gap-3 rounded-full px-5 py-3 text-sm font-semibold text-white/95">
+                                <span class="inline-block h-2.5 w-2.5 rounded-full bg-orange-400"></span>
+                                Espace sécurisé • Plateforme immobilière premium
+                            </div>
+
+                            <h1 class="mt-8 max-w-3xl text-5xl font-black leading-tight tracking-tight">
+                                Plateforme de Gestion des Programmes Immobiliers
+                            </h1>
+
+                            <p class="mt-5 max-w-2xl text-base leading-8 text-white/80">
+                                Accédez à un environnement professionnel dédié au pilotage des projets,
+                                programmes, parcelles, réservations, ventes et chantiers à travers une
+                                interface centralisée, moderne et orientée décision.
+                            </p>
+
+                            <div class="mt-8 flex flex-wrap gap-3">
+                                <div class="floating-badge rounded-2xl px-5 py-3 text-sm font-semibold text-white/90">
+                                    <i class="fa-solid fa-draw-polygon mr-2"></i>
+                                    Parcelles & lots
+                                </div>
+                                <div class="floating-badge rounded-2xl px-5 py-3 text-sm font-semibold text-white/90">
+                                    <i class="fa-solid fa-handshake mr-2"></i>
+                                    Clients & ventes
+                                </div>
+                                <div class="floating-badge rounded-2xl px-5 py-3 text-sm font-semibold text-white/90">
+                                    <i class="fa-solid fa-helmet-safety mr-2"></i>
+                                    Suivi chantier
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-4">
+                            <div class="mini-stat rounded-[24px] p-5">
+                                <p class="text-xs uppercase tracking-[0.18em] text-white/60">Fonciers</p>
+                                <p class="mt-2 text-xl font-bold">Parcelles & lots</p>
+                                <p class="mt-1 text-sm text-white/70">Inventaire structuré</p>
+                            </div>
+                            <div class="mini-stat rounded-[24px] p-5">
+                                <p class="text-xs uppercase tracking-[0.18em] text-white/60">Commercial</p>
+                                <p class="mt-2 text-xl font-bold">Clients & ventes</p>
+                                <p class="mt-1 text-sm text-white/70">Pilotage opérationnel</p>
+                            </div>
+                            <div class="mini-stat rounded-[24px] p-5">
+                                <p class="text-xs uppercase tracking-[0.18em] text-white/60">Construction</p>
+                                <p class="mt-2 text-xl font-bold">Suivi chantier</p>
+                                <p class="mt-1 text-sm text-white/70">Progression & photos</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Auth card -->
+                <div class="panel glass auth-card mx-auto w-full max-w-2xl p-6 md:p-8 lg:p-10">
+                    <div class="relative z-10">
+                        <div class="mb-8">
+                            <div class="inline-flex items-center gap-2 rounded-full bg-premium-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.20em] text-premium-700">
+                                <span class="inline-block h-2 w-2 rounded-full bg-premium-500"></span>
+                                Accès utilisateur
+                            </div>
+                        </div>
+
+                        {% if messages %}
+                            <div class="mb-6 space-y-3">
+                                {% for message in messages %}
+                                    <div class="rounded-2xl border px-4 py-3 text-sm
+                                        {% if message.tags == 'error' %}
+                                            border-rose-200 bg-rose-50 text-rose-700
+                                        {% elif message.tags == 'success' %}
+                                            border-emerald-200 bg-emerald-50 text-emerald-700
+                                        {% else %}
+                                            border-sky-200 bg-sky-50 text-sky-700
+                                        {% endif %}
+                                    ">
+                                        {{ message }}
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        {% block content %}{% endblock %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

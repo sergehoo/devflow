@@ -1,0 +1,51 @@
+{% extends 'devflow/layout/base.html' %}
+
+{% block title %}DevFlow — Projets{% endblock %}
+{% block page_title %}Projets{% endblock %}
+{% block breadcrumb %}Pilotage · Liste des projets{% endblock %}
+
+{% block content %}
+<div class="card" style="overflow:hidden;">
+    <div class="card-head">
+        <div>
+            <div class="card-title">Tous les projets</div>
+            <div class="card-sub">Portefeuille actuel</div>
+        </div>
+        <a href="{% url 'devflow:project_create' %}" class="btn-main">+ Nouveau projet</a>
+    </div>
+
+    <table class="tbl">
+        <thead>
+            <tr>
+                <th>Projet</th>
+                <th>Équipe</th>
+                <th>Progression</th>
+                <th>Statut</th>
+                <th>Deadline</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for project in items %}
+            <tr>
+                <td>
+                    <div class="proj-name">{{ project.name }}</div>
+                    <div class="proj-tech">{{ project.tech_stack }}</div>
+                </td>
+                <td>{{ project.team|default:'—' }}</td>
+                <td>
+                    <div class="prog" style="height:4px;min-width:120px;">
+                        <div class="prog-fill pf-grape" style="width:{{ project.progress_percent }}%"></div>
+                    </div>
+                </td>
+                <td><span class="badge b-purple">{{ project.get_status_display }}</span></td>
+                <td>{{ project.target_date|default:'—' }}</td>
+                <td><a class="btn-soft" href="{% url 'devflow:project_detail' project.pk %}">Voir</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6">Aucun projet trouvé.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

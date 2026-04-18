@@ -1,0 +1,13 @@
+Bonjour {{ recipient.get_full_name|default:recipient.username }},
+
+Une nouvelle tâche vous a été assignée dans DevFlow.
+
+Tâche : {{ task.title }}
+Projet : {{ project.name }}
+{% if assigned_by %}Assignée par : {{ assigned_by.get_full_name|default:assigned_by.username }}{% endif %}
+
+Consulter :
+/tasks/{{ task.pk }}/
+
+Cordialement,
+DevFlow

@@ -1,0 +1,217 @@
+services:
+  parcelaireweb:
+    build: .
+    container_name: parcelaireweb
+    command: gunicorn parcelaireKG.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - ./media:/app/media
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - DJANGO_SETTINGS_MODULE=parcelaireKG.settings
+      - STATIC_ROOT=/app/staticfiles
+      - MEDIA_ROOT=/app/media
+
+      # Base de données
+      - DB_ENGINE=django.contrib.gis.db.backends.postgis
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=parcelairedb
+      - DB_PORT=5432
+
+      # Redis / Celery
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+      # API CRM externe
+      - EXTERNAL_LOTS_API_URL=${EXTERNAL_LOTS_API_URL}
+      - EXTERNAL_LOTS_API_KEY=${EXTERNAL_LOTS_API_KEY}
+      - EXTERNAL_LOTS_API_USERNAME=${EXTERNAL_LOTS_API_USERNAME}
+      - EXTERNAL_LOTS_API_PASSWORD=${EXTERNAL_LOTS_API_PASSWORD}
+
+      # Django
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS}
+      - SITE_ID=${SITE_ID:-1}
+      - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
+    env_file:
+      - .env
+    depends_on:
+      - parcelairedb
+      - redis
+    networks:
+      - proxy
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+
+      # Router HTTPS principal
+      - "traefik.http.routers.parcelaire.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.parcelaire.entrypoints=websecure"
+      - "traefik.http.routers.parcelaire.tls.certresolver=lets"
+
+      # Service interne gunicorn
+      - "traefik.http.services.parcelaire.loadbalancer.server.port=8000"
+
+      # Middlewares
+      - "traefik.http.middlewares.parcelaire-compress.compress=true"
+      - "traefik.http.middlewares.parcelaire-sec.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.parcelaire-sec.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.parcelaire-sec.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.parcelaire-sec.headers.frameDeny=true"
+      - "traefik.http.middlewares.parcelaire-sec.headers.contentTypeNosniff=true"
+      - "traefik.http.routers.parcelaire.middlewares=parcelaire-compress,parcelaire-sec"
+
+    restart: unless-stopped
+
+  parcelairecelery:
+    build: .
+    container_name: parcelairecelery
+    command: celery -A parcelaire.celery:app worker -l info
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+      - static_volume:/app/staticfiles
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - DJANGO_SETTINGS_MODULE=parcelaireKG.settings
+      - STATIC_ROOT=/app/staticfiles
+      - MEDIA_ROOT=/app/media
+
+      # Base de données
+      - DB_ENGINE=django.contrib.gis.db.backends.postgis
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=parcelairedb
+      - DB_PORT=5432
+
+      # Redis / Celery
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+      # API CRM externe
+      - EXTERNAL_LOTS_API_URL=${EXTERNAL_LOTS_API_URL}
+      - EXTERNAL_LOTS_API_KEY=${EXTERNAL_LOTS_API_KEY}
+      - EXTERNAL_LOTS_API_USERNAME=${EXTERNAL_LOTS_API_USERNAME}
+      - EXTERNAL_LOTS_API_PASSWORD=${EXTERNAL_LOTS_API_PASSWORD}
+
+      - SECRET_KEY=${SECRET_KEY}
+      - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
+    env_file:
+      - .env
+    depends_on:
+      - parcelairedb
+      - redis
+    networks:
+      - default
+    restart: unless-stopped
+
+  parcelairebeat:
+    build: .
+    container_name: parcelairebeat
+    command: celery -A parcelaire.celery:app beat -l info
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+      - static_volume:/app/staticfiles
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - DJANGO_SETTINGS_MODULE=parcelaireKG.settings
+      - STATIC_ROOT=/app/staticfiles
+      - MEDIA_ROOT=/app/media
+
+      # Base de données
+      - DB_ENGINE=django.contrib.gis.db.backends.postgis
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=parcelairedb
+      - DB_PORT=5432
+
+      # Redis / Celery
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+      # API CRM externe
+      - EXTERNAL_LOTS_API_URL=${EXTERNAL_LOTS_API_URL}
+      - EXTERNAL_LOTS_API_KEY=${EXTERNAL_LOTS_API_KEY}
+      - EXTERNAL_LOTS_API_USERNAME=${EXTERNAL_LOTS_API_USERNAME}
+      - EXTERNAL_LOTS_API_PASSWORD=${EXTERNAL_LOTS_API_PASSWORD}
+
+      - SECRET_KEY=${SECRET_KEY}
+      - TIME_ZONE=${TIME_ZONE:-Africa/Abidjan}
+    env_file:
+      - .env
+    depends_on:
+      - parcelairedb
+      - redis
+    networks:
+      - default
+    restart: unless-stopped
+
+  parcelairedb:
+    image: postgis/postgis:15-3.4
+    container_name: parcelairedb
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - TZ=${TIME_ZONE:-Africa/Abidjan}
+      - PGTZ=${TIME_ZONE:-Africa/Abidjan}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5437:5432"
+    networks:
+      - default
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: parcelaire-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - default
+    restart: unless-stopped
+  parcelaireadminer:
+    image: adminer:4
+    container_name: parcelaire-adminer
+    restart: unless-stopped
+    depends_on:
+      - parcelairedb
+    ports:
+      - "8081:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=parcelairedb
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.parcelaireadminer.rule=Host(`adminer.${DOMAIN}`)"
+      - "traefik.http.routers.parcelaireadminer.entrypoints=websecure"
+      - "traefik.http.routers.parcelaireadminer.tls=true"
+      - "traefik.http.routers.parcelaireadminer.tls.certresolver=lets"
+      - "traefik.http.services.parcelaireadminer.loadbalancer.server.port=8080"
+      - "traefik.http.services.parcelaireadminer.loadbalancer.server.scheme=http"
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_volume:
+  media_volume:
+
+networks:
+  proxy:
+    external: true
