@@ -234,26 +234,103 @@ class DevflowDetailView(WorkspaceSecurityMixin, DevflowBaseMixin, DetailView):
 
 
 class DevflowCreateView(WorkspaceSecurityMixin, DevflowBaseMixin, CreateView):
+
     template_name = "project/create.html"
 
     def get_success_url(self):
+
         return reverse_lazy(self.success_list_url_name)
 
+    def get_form_kwargs(self):
+
+        kwargs = super().get_form_kwargs()
+
+        if hasattr(self, "get_current_workspace"):
+
+            kwargs["current_workspace"] = self.get_current_workspace()
+
+        if hasattr(self, "get_user_workspaces"):
+
+            kwargs["allowed_workspaces"] = self.get_user_workspaces()
+
+        kwargs["request"] = self.request
+
+        return kwargs
+
+    def get_form(self, form_class=None):
+
+        form = super().get_form(form_class)
+
+        current_workspace = self.get_current_workspace() if hasattr(self, "get_current_workspace") else None
+
+        allowed_workspaces = self.get_user_workspaces() if hasattr(self, "get_user_workspaces") else None
+
+        if "workspace" in form.fields:
+
+            if allowed_workspaces is not None:
+
+                form.fields["workspace"].queryset = allowed_workspaces
+
+            if current_workspace:
+
+                form.fields["workspace"].initial = current_workspace.pk
+
+                form.initial.setdefault("workspace", current_workspace.pk)
+
+                # si le workspace est déjà déterminé par le contexte,
+
+                # on évite de bloquer la validation
+
+                form.fields["workspace"].required = False
+
+                # optionnel : masquer si un seul workspace
+
+                if allowed_workspaces is not None and allowed_workspaces.count() == 1:
+
+                    form.fields["workspace"].widget = forms.HiddenInput()
+
+        return form
+
     def form_valid(self, form):
+
         self.object = form.save(commit=False)
 
         if hasattr(self.object, "slug") and not getattr(self.object, "slug", None):
+
             source = getattr(self.object, "name", None) or getattr(self.object, "title", None)
+
             if source:
+
                 self.object.slug = slugify(source)
 
         if hasattr(self.object, "workspace_id"):
-            ensure_workspace(self.object, user=self.request.user)
+
+            workspace = None
+
+            if "workspace" in form.cleaned_data:
+
+                workspace = form.cleaned_data.get("workspace")
+
+            if not workspace and hasattr(self, "get_current_workspace"):
+
+                workspace = self.get_current_workspace()
+
+            if not workspace:
+
+                form.add_error("workspace", "Ce champ est obligatoire.")
+
+                form.add_error(None, "Aucun workspace actif n'a pu être déterminé.")
+
+                return self.form_invalid(form)
+
+            self.object.workspace = workspace
 
         self.object.save()
+
         form.save_m2m()
 
         messages.success(self.request, f"{self.model._meta.verbose_name.title()} créé avec succès.")
+
         return redirect(self.get_success_url())
 
 

@@ -1449,33 +1449,40 @@ class ReleaseForm(BaseStyledModelForm):
 class RoadmapForm(BaseStyledModelForm):
     class Meta:
         model = Roadmap
-        fields = [
-            "workspace",
-            "name",
-            "description",
-            "start_date",
-            "end_date",
-            "is_public",
-            "owner",
-        ]
+        fields = ["workspace", "name", "description", "start_date", "end_date", "is_public", "owner"]
         widgets = {
-            "start_date": forms.DateInput(
-                format="%Y-%m-%d",
-                attrs={"type": "date"},
-            ),
-            "end_date": forms.DateInput(
-                format="%Y-%m-%d",
-                attrs={"type": "date"},
-            ),
+            "start_date": forms.DateInput(attrs={"type": "date"}),
+            "end_date": forms.DateInput(attrs={"type": "date"}),
+            "description": forms.Textarea(attrs={"rows": 5}),
         }
 
-    def clean(self):
-        cleaned_data = super().clean()
-        start_date = cleaned_data.get("start_date")
-        end_date = cleaned_data.get("end_date")
-        if start_date and end_date and end_date < start_date:
-            self.add_error("end_date", "La date de fin doit être postérieure à la date de début.")
-        return cleaned_data
+    def __init__(self, *args, **kwargs):
+        self.current_workspace = kwargs.pop("current_workspace", None)
+        self.allowed_workspaces = kwargs.pop("allowed_workspaces", None)
+        self.request = kwargs.pop("request", None)
+        super().__init__(*args, **kwargs)
+
+        if "workspace" in self.fields:
+            if self.allowed_workspaces is not None:
+                self.fields["workspace"].queryset = self.allowed_workspaces
+
+            if self.current_workspace:
+                self.fields["workspace"].initial = self.current_workspace
+                self.fields["workspace"].required = False
+
+                if self.allowed_workspaces is not None and self.allowed_workspaces.count() == 1:
+                    self.fields["workspace"].widget = forms.HiddenInput()
+
+    def clean_workspace(self):
+        workspace = self.cleaned_data.get("workspace")
+
+        if workspace:
+            return workspace
+
+        if self.current_workspace:
+            return self.current_workspace
+
+        raise forms.ValidationError("Ce champ est obligatoire.")
 
 
 class RoadmapItemForm(BaseStyledModelForm):
