@@ -6002,7 +6002,7 @@ class RoadmapCreateView(DevflowCreateView):
     template_name = "project/roadmap/form.html"
     section = "project"
     page_title = "Créer roadmap"
-    success_list_url_name = "project:roadmap_list"
+    success_list_url_name = "roadmap_list"
 
     def get_initial(self):
         initial = super().get_initial()
