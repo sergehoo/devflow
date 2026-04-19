@@ -33,7 +33,7 @@
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tippy.js@6/dist/tippy.css">
     <script src="https://cdn.jsdelivr.net/npm/tippy.js@6/dist/tippy-bundle.umd.min.js"></script>
@@ -41,10 +41,10 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 
     {#    <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/7/tinymce.min.js" referrerpolicy="origin"></script>#}
-    <script src="https://cdn.tiny.cloud/1/1lcxjc4jbnrr5xa6q1ntsugjfdx3gk6rq4rkkwkg8mb621lf/tinymce/8/tinymce.min.js"
+    <script src="https://cdn.tiny.cloud/1/vsz92wq4xem5tx0kkfvjabldemki0g8980eow2j7x9aqug7f/tinymce/8/tinymce.min.js"
             referrerpolicy="origin" crossorigin="anonymous"></script>
     {#<script src="https://cdn.tiny.cloud/1/YOUR_API_KEY/tinymce/7/tinymce.min.js"></script>#}
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
     <script>
         tailwind.config = {
             theme: {
@@ -174,10 +174,11 @@
             transition: background .3s, color .3s;
             overflow-x: hidden;
         }
+
         .stat-icon-wrap i {
-    font-size: 36px;
-    line-height: 1;
-}
+            font-size: 36px;
+            line-height: 1;
+        }
 
         a {
             text-decoration: none
@@ -205,50 +206,52 @@
             background: var(--bg4);
             border-radius: 999px
         }
-.select2-container .select2-selection--single,
-.select2-container .select2-selection--multiple {
-    min-height: 50px !important;
-    border-radius: 14px !important;
-    border: 1px solid var(--border) !important;
-    background: var(--bg3) !important;
-    color: var(--text1) !important;
-    padding: 8px 10px !important;
-    display: flex !important;
-    align-items: center !important;
-}
 
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-    color: var(--text1) !important;
-    line-height: 32px !important;
-    padding-left: 4px !important;
-}
+        .select2-container .select2-selection--single,
+        .select2-container .select2-selection--multiple {
+            min-height: 50px !important;
+            border-radius: 14px !important;
+            border: 1px solid var(--border) !important;
+            background: var(--bg3) !important;
+            color: var(--text1) !important;
+            padding: 8px 10px !important;
+            display: flex !important;
+            align-items: center !important;
+        }
 
-.select2-container--default .select2-selection--single .select2-selection__arrow {
-    height: 100% !important;
-    right: 10px !important;
-}
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            color: var(--text1) !important;
+            line-height: 32px !important;
+            padding-left: 4px !important;
+        }
 
-.select2-dropdown {
-    border: 1px solid var(--border2) !important;
-    border-radius: 12px !important;
-    background: var(--bg2) !important;
-    box-shadow: var(--shadow-lg) !important;
-    overflow: hidden !important;
-}
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 100% !important;
+            right: 10px !important;
+        }
 
-.select2-search__field {
-    background: var(--bg2) !important;
-    color: var(--text1) !important;
-}
+        .select2-dropdown {
+            border: 1px solid var(--border2) !important;
+            border-radius: 12px !important;
+            background: var(--bg2) !important;
+            box-shadow: var(--shadow-lg) !important;
+            overflow: hidden !important;
+        }
 
-.select2-results__option {
-    color: var(--text1) !important;
-}
+        .select2-search__field {
+            background: var(--bg2) !important;
+            color: var(--text1) !important;
+        }
 
-.select2-container--default .select2-results__option--highlighted.select2-results__option--selectable {
-    background: var(--accent) !important;
-    color: #fff !important;
-}
+        .select2-results__option {
+            color: var(--text1) !important;
+        }
+
+        .select2-container--default .select2-results__option--highlighted.select2-results__option--selectable {
+            background: var(--accent) !important;
+            color: #fff !important;
+        }
+
         /* Layout */
         .app-shell {
             min-height: 100vh
@@ -2131,7 +2134,7 @@
 
     </style>
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-[var(--bg)] text-[var(--text1)]">
@@ -2648,77 +2651,77 @@
         }
     }
 
-   
+
 </script>
 {% if messages %}
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    {% for message in messages %}
-        (function () {
-            let msg = "{{ message|escapejs }}";
-            let tag = "{{ message.tags }}";
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            {% for message in messages %}
+                (function () {
+                    let msg = "{{ message|escapejs }}";
+                    let tag = "{{ message.tags }}";
 
-            let color = "#34A853"; // default success
+                    let color = "#34A853"; // default success
 
-            if (tag.includes("success")) {
-                color = "#34A853";
-            } else if (tag.includes("warning")) {
-                color = "#E8950A";
-            } else if (tag.includes("error")) {
-                color = "#E8453C";
-            } else {
-                color = "#ff4e00";
-            }
+                    if (tag.includes("success")) {
+                        color = "#34A853";
+                    } else if (tag.includes("warning")) {
+                        color = "#E8950A";
+                    } else if (tag.includes("error")) {
+                        color = "#E8453C";
+                    } else {
+                        color = "#ff4e00";
+                    }
 
-            showToast(msg, color);
-        })();
-    {% endfor %}
-});
-</script>
+                    showToast(msg, color);
+                })();
+            {% endfor %}
+        });
+    </script>
 {% endif %}
 
 {% if messages %}
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    {% for message in messages %}
-        (function () {
-            const msg = "{{ message|escapejs }}";
-            const tags = "{{ message.tags }}";
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            {% for message in messages %}
+                (function () {
+                    const msg = "{{ message|escapejs }}";
+                    const tags = "{{ message.tags }}";
 
-            let title = "Information";
-            let icon = "info";
-            let confirmButtonColor = "#ff4e00";
+                    let title = "Information";
+                    let icon = "info";
+                    let confirmButtonColor = "#ff4e00";
 
-            if (tags.includes("success")) {
-                title = "Félicitations !";
-                icon = "success";
-                confirmButtonColor = "#34A853";
-            } else if (tags.includes("warning")) {
-                title = "Attention";
-                icon = "warning";
-                confirmButtonColor = "#E8950A";
-            } else if (tags.includes("error")) {
-                title = "Erreur";
-                icon = "error";
-                confirmButtonColor = "#E8453C";
-            }
+                    if (tags.includes("success")) {
+                        title = "Félicitations !";
+                        icon = "success";
+                        confirmButtonColor = "#34A853";
+                    } else if (tags.includes("warning")) {
+                        title = "Attention";
+                        icon = "warning";
+                        confirmButtonColor = "#E8950A";
+                    } else if (tags.includes("error")) {
+                        title = "Erreur";
+                        icon = "error";
+                        confirmButtonColor = "#E8453C";
+                    }
 
-            Swal.fire({
-                title: title,
-                text: msg,
-                icon: icon,
-                confirmButtonColor: confirmButtonColor,
-                background: getComputedStyle(document.documentElement).getPropertyValue('--bg2').trim(),
-                color: getComputedStyle(document.documentElement).getPropertyValue('--text1').trim(),
-                customClass: {
-                    popup: "rounded-[20px] shadow-lg",
-                    confirmButton: "font-semibold"
-                }
-            });
-        })();
-    {% endfor %}
-});
-</script>
+                    Swal.fire({
+                        title: title,
+                        text: msg,
+                        icon: icon,
+                        confirmButtonColor: confirmButtonColor,
+                        background: getComputedStyle(document.documentElement).getPropertyValue('--bg2').trim(),
+                        color: getComputedStyle(document.documentElement).getPropertyValue('--text1').trim(),
+                        customClass: {
+                            popup: "rounded-[20px] shadow-lg",
+                            confirmButton: "font-semibold"
+                        }
+                    });
+                })();
+            {% endfor %}
+        });
+    </script>
 {% endif %}
 <script>
     function initSelect2Fields() {
@@ -2751,34 +2754,34 @@ document.addEventListener("DOMContentLoaded", function () {
 </script>
 
 <script>
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== "") {
-        const cookies = document.cookie.split(";");
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + "=")) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== "") {
+            const cookies = document.cookie.split(";");
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + "=")) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
             }
         }
+        return cookieValue;
     }
-    return cookieValue;
-}
 
-function markAllRead() {
-    fetch("/notifications/mark-all-read/", {
-        method: "POST",
-        headers: {
-            "X-CSRFToken": getCookie("csrftoken"),
-            "X-Requested-With": "XMLHttpRequest",
-        }
-    }).then(response => {
-        if (response.ok) {
-            window.location.reload();
-        }
-    });
-}
+    function markAllRead() {
+        fetch("/notifications/mark-all-read/", {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": getCookie("csrftoken"),
+                "X-Requested-With": "XMLHttpRequest",
+            }
+        }).then(response => {
+            if (response.ok) {
+                window.location.reload();
+            }
+        });
+    }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>

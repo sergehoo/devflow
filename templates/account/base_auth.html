@@ -282,8 +282,8 @@
             content: "";
             position: absolute;
             inset: 0;
-            background: url("{% static 'img/branding/1179.jpg' %}") center/cover no-repeat;
-            opacity: .10;
+            background: url("{% static 'img/branding/projetc_advisor.jpg' %}") center/cover no-repeat;
+            opacity: .80;
             mix-blend-mode: screen;
             pointer-events: none;
         }
@@ -345,7 +345,7 @@
             gap: 8px;
             padding: 8px 12px;
             border-radius: 999px;
-            background: rgba(255, 255, 255, .12);
+            background: rgba(0, 0, 0, 0.82);
             border: 1px solid rgba(255, 255, 255, .16);
             font-size: 11px;
             font-weight: 700;
@@ -385,6 +385,7 @@
             backdrop-filter: blur(16px);
             box-shadow: 0 14px 30px rgba(0, 0, 0, .16);
             animation: riseIn .8s ease both;
+            color: rgba(0, 0, 0, 0.7);
         }
 
         .metric-card:nth-child(2) {
@@ -397,7 +398,7 @@
 
         .metric-label {
             font-size: 11px;
-            color: rgba(255, 255, 255, .70);
+            color: rgba(0, 0, 0, 0.7);
         }
 
         .metric-value {
@@ -915,7 +916,8 @@
     </button>
 
     <div class="auth-container">
-        <section class="visual-side">
+
+ <section class="visual-side">
             <div class="visual-card">
                 <div class="visual-content">
                     <div>
@@ -925,8 +927,8 @@
 {% else %}
     <img src="{% static 'img/logo_datarium-black.png' %}" alt="Logo" class="brand-logo-img">
 {% endif %}
-                        
-                       
+
+
                             <div>
                                 <div class="brand-name">Dev'Flow</div>
                                 <div class="brand-sub">Project workspace intelligence</div>
@@ -936,9 +938,7 @@
 
                     <div class="visual-hero">
                         <div class="hero-kicker">Pilotage · Exécution · Visibilité</div>
-                        <h1 class="hero-title">
-                            Donnez à vos projets un espace de travail plus premium, plus stratégique, plus vivant.
-                        </h1>
+
                         <p class="hero-text">
                             Centralisez vos équipes, vos livrables, vos sprints et vos décisions dans une expérience
                             moderne,
@@ -966,7 +966,6 @@
                 </div>
             </div>
         </section>
-
         <section class="signin-side">
             <div class="form-wrap">
                 <div class="company-logo-top">
@@ -995,12 +994,13 @@
                         {% block auth_content %}{% endblock %}
 
                         <div class="auth-bottom-note">
-                            Expérience sécurisée · Design premium · Accès centralisé
+                            Expérience sécurisée · Accès centralisé
                         </div>
                     </div>
                 </div>
             </div>
         </section>
+    
     </div>
 </div>
 
