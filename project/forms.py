@@ -331,128 +331,311 @@ class TeamMembershipForm(BaseStyledModelForm):
 # PROJECTS
 # =============================================================================
 class ProjectForm(BaseStyledModelForm):
+
     class Meta:
+
         model = Project
+
         fields = [
+
             "workspace",
+
+            "category",
+
             "team",
+
             "name",
+
             "code",
+
             "description",
+
             "tech_stack",
+
             "owner",
+
             "product_manager",
+
             "status",
+
             "priority",
+
             "health_status",
+
             "progress_percent",
+
             "ai_risk_label",
+
             "start_date",
+
             "target_date",
+
             "delivered_at",
+
             "budget",
+
             "is_favorite",
+
+            "image",
+
         ]
+
         widgets = {
-            "start_date":forms.DateInput(
+
+            "start_date": forms.DateInput(
+
                 format="%Y-%m-%d",
+
                 attrs={"type": "date"},
+
             ),
+
             "target_date": forms.DateInput(
+
                 format="%Y-%m-%d",
+
                 attrs={"type": "date"},
+
             ),
+
             "delivered_at": forms.DateInput(
+
                 format="%Y-%m-%d",
+
                 attrs={"type": "date"},
+
             ),
-            "description": forms.Textarea(attrs={"data-tinymce": "1", "data-editor-height": "320"}),
+
+            "description": forms.Textarea(
+
+                attrs={
+
+                    "data-tinymce": "1",
+
+                    "data-editor-height": "320",
+
+                }
+
+            ),
+
         }
 
     def __init__(self, *args, **kwargs):
+
         super().__init__(*args, **kwargs)
 
+        if "workspace" in self.fields:
+
+            self.fields["workspace"].required = False
+
+            self.fields["workspace"].help_text = "Le workspace peut être injecté automatiquement selon le contexte."
+
+        if "category" in self.fields:
+
+            self.fields["category"].required = False
+
+            self.fields["category"].empty_label = "Sélectionner une catégorie"
+
+            self.fields["category"].help_text = "Permet de classer le projet par typologie."
+
+        if "team" in self.fields:
+
+            self.fields["team"].required = False
+
+            self.fields["team"].empty_label = "Sélectionner une équipe"
+
+        if "owner" in self.fields:
+
+            self.fields["owner"].required = False
+
+            self.fields["owner"].empty_label = "Sélectionner un responsable"
+
+        if "product_manager" in self.fields:
+
+            self.fields["product_manager"].required = False
+
+            self.fields["product_manager"].empty_label = "Sélectionner un product manager"
+
         if "name" in self.fields:
+
             self.fields["name"].widget.attrs["placeholder"] = "Ex: Plateforme Bestepargne"
 
         if "code" in self.fields:
-            self.fields["code"].widget.attrs["placeholder"] = "Ex: BEST-001"
+
+            self.fields["code"].required = False
+
+            self.fields["code"].widget.attrs["placeholder"] = "Ex: BEST-001 ou vide pour génération auto"
+
+            self.fields["code"].help_text = "Laisser vide pour une génération automatique."
 
         if "tech_stack" in self.fields:
+
             self.fields["tech_stack"].widget.attrs["placeholder"] = "Django, Alpine.js, PostgreSQL..."
 
         if "description" in self.fields:
+
             self.fields["description"].widget.attrs["placeholder"] = (
+
                 "Décrivez le périmètre, les objectifs, les parties prenantes et les livrables attendus."
+
             )
 
         if "progress_percent" in self.fields:
-            self.fields["progress_percent"].widget.attrs.update({"min": 0, "max": 100, "placeholder": "0"})
+
+            self.fields["progress_percent"].widget.attrs.update(
+
+                {
+
+                    "min": 0,
+
+                    "max": 100,
+
+                    "placeholder": "0",
+
+                }
+
+            )
+
+        if "ai_risk_label" in self.fields:
+
+            self.fields["ai_risk_label"].required = False
+
+            self.fields["ai_risk_label"].widget.attrs["placeholder"] = "Ex: Faible, Moyen, Élevé"
 
         if "budget" in self.fields:
+
+            self.fields["budget"].required = False
+
             self.fields["budget"].widget.attrs["placeholder"] = "Montant en XOF"
 
+        if "image" in self.fields:
+
+            self.fields["image"].required = False
+
     def clean_progress_percent(self):
+
         value = self.cleaned_data.get("progress_percent")
+
         if value in [None, ""]:
+
             return 0
+
         if value < 0 or value > 100:
+
             raise ValidationError("Le pourcentage doit être entre 0 et 100.")
+
         return value
 
     def clean_budget(self):
+
         value = self.cleaned_data.get("budget")
+
         if value is not None and value < 0:
+
             raise ValidationError("Le budget ne peut pas être négatif.")
+
+        return value
+
+    def clean_code(self):
+
+        value = self.cleaned_data.get("code")
+
+        if value:
+
+            return value.strip().upper()
+
+        return value
+
+    def clean_name(self):
+
+        value = self.cleaned_data.get("name")
+
+        if value:
+
+            return value.strip()
+
         return value
 
     def clean(self):
+
         cleaned = super().clean()
 
         start = cleaned.get("start_date")
+
         target = cleaned.get("target_date")
+
         delivered = cleaned.get("delivered_at")
+
         progress = cleaned.get("progress_percent") or 0
 
+        status = cleaned.get("status")
+
         if start and target and target < start:
+
             self.add_error("target_date", "La date cible doit être postérieure à la date de début.")
 
         if delivered and start and delivered < start:
+
             self.add_error("delivered_at", "La date de livraison ne peut pas être avant la date de début.")
 
         if delivered and progress < 100:
+
             self.add_error("progress_percent", "Un projet livré doit être à 100%.")
 
         if progress == 100 and not delivered:
+
+            self.add_error("delivered_at", "Veuillez renseigner la date de livraison pour un projet terminé.")
+
+        if status == Project.Status.DONE and not delivered:
+
             self.add_error("delivered_at", "Veuillez renseigner la date de livraison pour un projet terminé.")
 
         if target and target < timezone.now().date() and progress < 100:
+
             self.add_error("target_date", "Ce projet est en retard par rapport à sa date cible.")
 
         return cleaned
 
     def save(self, commit=True):
+
         obj = super().save(commit=False)
 
         progress = obj.progress_percent or 0
+
         risk_score = getattr(obj, "risk_score", 0) or 0
 
         if hasattr(obj, "status"):
+
             if progress >= 100:
+
                 obj.status = Project.Status.DONE
+
             elif progress > 0 and obj.status == Project.Status.PLANNED:
+
                 obj.status = Project.Status.IN_PROGRESS
 
         if hasattr(obj, "health_status"):
+
             if risk_score >= 70:
+
                 obj.health_status = Project.HealthStatus.RED
+
             elif risk_score >= 40:
+
                 obj.health_status = Project.HealthStatus.AMBER
+
             elif risk_score > 0:
+
                 obj.health_status = Project.HealthStatus.GREEN
 
+            else:
+
+                obj.health_status = Project.HealthStatus.GRAY
+
         if commit:
+
             obj.save()
+
             self.save_m2m()
 
         return obj

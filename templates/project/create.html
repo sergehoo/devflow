@@ -30,7 +30,7 @@
         </div>
     </section>
 
-    <form method="post" novalidate class="space-y-6">
+    <form method="post" enctype="multipart/form-data" novalidate class="space-y-6">
         {% csrf_token %}
 
         {% if form.non_field_errors %}
@@ -56,7 +56,7 @@
                     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                         <div class="md:col-span-2">
                             <label for="{{ form.name.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.name.field.required %} <strong style="color: orangered">(*)</strong>{% endif %}Nom du projet
+                                {% if form.name.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Nom du projet
                             </label>
                             {{ form.name }}
                             {% include "components/forms/field_errors.html" with field=form.name %}
@@ -64,42 +64,61 @@
 
                         <div>
                             <label for="{{ form.code.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.code.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Code projet
+                                {% if form.code.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Code projet
                             </label>
                             {{ form.code }}
                             {% include "components/forms/field_errors.html" with field=form.code %}
                         </div>
 
                         <div>
+                            <label for="{{ form.category.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.category.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Catégorie projet
+                            </label>
+                            {{ form.category }}
+                            {% include "components/forms/field_errors.html" with field=form.category %}
+                        </div>
+
+                        <div>
                             <label for="{{ form.team.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.team.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Équipe
+                                {% if form.team.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Équipe
                             </label>
                             {{ form.team }}
                             {% include "components/forms/field_errors.html" with field=form.team %}
                         </div>
 
                         <div>
-                            <label for="{{ form.tech_stack.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.tech_stack.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Stack technique
-                            </label>
-                            {{ form.tech_stack }}
-                            {% include "components/forms/field_errors.html" with field=form.tech_stack %}
-                        </div>
-                          <div>
-                            <label for="{{ form.tech_stack.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.workspace.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Environnement 
+                            <label for="{{ form.workspace.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.workspace.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Workspace
                             </label>
                             {{ form.workspace }}
                             {% include "components/forms/field_errors.html" with field=form.workspace %}
                         </div>
 
                         <div class="md:col-span-2">
+                            <label for="{{ form.tech_stack.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.tech_stack.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Stack technique
+                            </label>
+                            {{ form.tech_stack }}
+                            {% include "components/forms/field_errors.html" with field=form.tech_stack %}
+                        </div>
+
+                        <div class="md:col-span-2">
                             <label for="{{ form.description.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.description.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Description
+                                {% if form.description.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Description
                             </label>
                             {{ form.description }}
                             {% include "components/forms/field_errors.html" with field=form.description %}
                         </div>
+
+                        {% if form.image %}
+                        <div class="md:col-span-2">
+                            <label for="{{ form.image.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.image.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Image / couverture
+                            </label>
+                            {{ form.image }}
+                            {% include "components/forms/field_errors.html" with field=form.image %}
+                        </div>
+                        {% endif %}
                     </div>
                 </section>
 
@@ -115,7 +134,7 @@
                     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                         <div>
                             <label for="{{ form.owner.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.owner.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Owner
+                                {% if form.owner.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Owner
                             </label>
                             {{ form.owner }}
                             {% include "components/forms/field_errors.html" with field=form.owner %}
@@ -123,7 +142,7 @@
 
                         <div>
                             <label for="{{ form.product_manager.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.product_manager.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Product manager
+                                {% if form.product_manager.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Product manager
                             </label>
                             {{ form.product_manager }}
                             {% include "components/forms/field_errors.html" with field=form.product_manager %}
@@ -131,7 +150,7 @@
 
                         <div>
                             <label for="{{ form.status.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.status.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Statut
+                                {% if form.status.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Statut
                             </label>
                             {{ form.status }}
                             {% include "components/forms/field_errors.html" with field=form.status %}
@@ -139,7 +158,7 @@
 
                         <div>
                             <label for="{{ form.priority.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.priority.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Priorité
+                                {% if form.priority.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Priorité
                             </label>
                             {{ form.priority }}
                             {% include "components/forms/field_errors.html" with field=form.priority %}
@@ -147,7 +166,7 @@
 
                         <div>
                             <label for="{{ form.health_status.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.health_status.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Santé projet
+                                {% if form.health_status.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Santé projet
                             </label>
                             {{ form.health_status }}
                             {% include "components/forms/field_errors.html" with field=form.health_status %}
@@ -155,7 +174,7 @@
 
                         <div>
                             <label for="{{ form.ai_risk_label.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.ai_risk_label.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Libellé risque IA
+                                {% if form.ai_risk_label.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Libellé risque IA
                             </label>
                             {{ form.ai_risk_label }}
                             {% include "components/forms/field_errors.html" with field=form.ai_risk_label %}
@@ -175,7 +194,7 @@
                     <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                         <div>
                             <label for="{{ form.start_date.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.start_date.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Date de début
+                                {% if form.start_date.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Date de début
                             </label>
                             {{ form.start_date }}
                             {% include "components/forms/field_errors.html" with field=form.start_date %}
@@ -183,7 +202,7 @@
 
                         <div>
                             <label for="{{ form.target_date.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.target_date.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Date cible
+                                {% if form.target_date.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Date cible
                             </label>
                             {{ form.target_date }}
                             {% include "components/forms/field_errors.html" with field=form.target_date %}
@@ -191,7 +210,7 @@
 
                         <div>
                             <label for="{{ form.delivered_at.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.delivered_at.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Date de livraison
+                                {% if form.delivered_at.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Date de livraison
                             </label>
                             {{ form.delivered_at }}
                             {% include "components/forms/field_errors.html" with field=form.delivered_at %}
@@ -199,7 +218,7 @@
 
                         <div>
                             <label for="{{ form.budget.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.budget.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Budget
+                                {% if form.budget.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Budget
                             </label>
                             {{ form.budget }}
                             {% include "components/forms/field_errors.html" with field=form.budget %}
@@ -207,7 +226,7 @@
 
                         <div class="md:col-span-2">
                             <label for="{{ form.progress_percent.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.progress_percent.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Progression initiale
+                                {% if form.progress_percent.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Progression initiale
                             </label>
                             {{ form.progress_percent }}
                             {% include "components/forms/field_errors.html" with field=form.progress_percent %}
@@ -215,7 +234,7 @@
 
                         <div class="md:col-span-2">
                             <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.is_favorite.field.required %}<strong style="color: orangered">(*) </strong> {% endif %}Favori
+                                {% if form.is_favorite.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Favori
                             </label>
                             <div class="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3">
                                 {{ form.is_favorite }}
@@ -232,10 +251,21 @@
                 <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
                     <h3 class="text-base font-semibold text-[var(--text1)]">Conseils de saisie</h3>
                     <div class="mt-4 space-y-4 text-sm text-[var(--text2)]">
-                        <div class="rounded-2xl bg-[var(--bg3)] p-4">Donne un nom clair, métier et identifiable.</div>
-                        <div class="rounded-2xl bg-[var(--bg3)] p-4">Renseigne la stack pour faciliter la lecture portefeuille.</div>
-                        <div class="rounded-2xl bg-[var(--bg3)] p-4">Affecte un owner et un product manager dès la création.</div>
-                        <div class="rounded-2xl bg-[var(--bg3)] p-4">Fixe une date cible réaliste pour un meilleur pilotage.</div>
+                        <div class="rounded-2xl bg-[var(--bg3)] p-4">
+                            Donne un nom clair, métier et identifiable.
+                        </div>
+                        <div class="rounded-2xl bg-[var(--bg3)] p-4">
+                            Classe le projet dans une catégorie pour faciliter la lecture portefeuille.
+                        </div>
+                        <div class="rounded-2xl bg-[var(--bg3)] p-4">
+                            Renseigne la stack pour améliorer le pilotage technique.
+                        </div>
+                        <div class="rounded-2xl bg-[var(--bg3)] p-4">
+                            Affecte un owner et un product manager dès la création.
+                        </div>
+                        <div class="rounded-2xl bg-[var(--bg3)] p-4">
+                            Fixe une date cible réaliste pour un meilleur suivi d’exécution.
+                        </div>
                     </div>
                 </section>
 
