@@ -182,13 +182,7 @@ class BaseStyledModelForm(forms.ModelForm):
                 widget.attrs.setdefault("placeholder", field.label or name.replace("_", " ").title())
 
             widget.attrs.setdefault("autocomplete", "off")
-    def clean_workspace(self):
-        workspace = self.cleaned_data.get("workspace")
-        if workspace:
-            return workspace
-        if self.current_workspace:
-            return self.current_workspace
-        raise forms.ValidationError("Ce champ est obligatoire.")
+
 
 
 # =============================================================================
