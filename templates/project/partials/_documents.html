@@ -1,0 +1,109 @@
+<div class="space-y-6">
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-[var(--text1)]">Documents projet</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Lecture intégrée, consultation et import des fichiers projet</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="/project-imports/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    Importer un document
+                </a>
+                <a href="{% url 'project_document_import_list' %}" class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Voir Tous 
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Total documents</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ project_imports|length|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">PDF</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">
+                {% with count=0 %}
+                {{ project_imports|length }}
+                {% endwith %}
+            </div>
+            <div class="mt-1 text-xs text-[var(--text3)]">Volume global importé</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Traitement terminé</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ import_summary.completed|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Échecs</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ import_summary.failed|default:0 }}</div>
+        </div>
+    </div>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Bibliothèque documentaire</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Clique sur un document pour l’ouvrir dans la visionneuse intégrée</p>
+            </div>
+        </div>
+
+        <div class="mt-5 overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-[var(--border)] text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                        <th class="py-3 text-left">Document</th>
+                        <th class="py-3 text-left">Type</th>
+                        <th class="py-3 text-left">Statut</th>
+                        <th class="py-3 text-left">Uploadé par</th>
+                        <th class="py-3 text-left">Date</th>
+                        <th class="py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for import_item in project_imports %}
+                    <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/40">
+                        <td class="py-3">
+                            <div class="min-w-0">
+                                <div class="truncate font-medium text-[var(--text1)]">{{ import_item.file.name|default:'Document' }}</div>
+                                {% if import_item.extracted_text %}
+                                <div class="mt-1 text-xs text-[var(--text3)]">Texte extrait disponible</div>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="py-3 text-[var(--text2)]"
+                            x-text="documentTypeLabel('{{ import_item.file.name|escapejs }}')">
+                            Fichier
+                        </td>
+                        <td class="py-3 text-[var(--text2)]">{{ import_item.get_status_display|default:import_item.status }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ import_item.uploaded_by|default:'—' }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ import_item.created_at|date:'d/m/Y H:i'|default:'—' }}</td>
+                        <td class="py-3 text-right">
+                            <div class="flex flex-wrap justify-end gap-2">
+                                {% if import_item.file %}
+                                <button type="button"
+                                        @click="openDocument('{{ import_item.file.url|escapejs }}', '{{ import_item.file.name|escapejs }}')"
+                                        class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:bg-[var(--bg4)] hover:text-[var(--text1)]">
+                                    Lire
+                                </button>
+                                <a href="{{ import_item.file.url }}" target="_blank"
+                                   class="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                                    Télécharger
+                                </a>
+                                {% else %}
+                                <span class="inline-flex items-center rounded-xl bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text3)]">Indisponible</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="py-10 text-center text-[var(--text3)]">Aucun document projet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

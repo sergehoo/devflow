@@ -1,0 +1,315 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}DevFlow — Documents projet{% endblock %}
+{% block page_title %}Documents projet{% endblock %}
+{% block breadcrumb %}Projet · Documents{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- HERO -->
+    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+        <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.06)_45%,transparent_100%)]"></div>
+        <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+        <div class="absolute -bottom-20 left-10 h-40 w-40 rounded-full bg-[var(--cyan-bg)] blur-3xl"></div>
+
+        <div class="relative p-6 lg:p-7">
+            <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-4">
+                        <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--accent),var(--accent2))] text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)]">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 7V5a2 2 0 012-2h6l4 4v12a2 2 0 01-2 2H9a2 2 0 01-2-2V7z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h1 class="font-serif text-3xl font-medium tracking-[-0.03em] text-[var(--text1)] lg:text-4xl">
+                                Documents projet
+                            </h1>
+                            <p class="mt-2 max-w-3xl text-sm leading-6 text-[var(--text2)]">
+                                Centralise les imports documentaires, suis leur statut de traitement et accède rapidement aux pièces liées aux projets.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex shrink-0 flex-wrap gap-2">
+                    <a href="{% url 'project_document_import_create' %}"
+                       class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(124,111,247,0.34)]">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 4v16m8-8H4"/>
+                        </svg>
+                        Importer un document
+                    </a>
+                </div>
+            </div>
+
+            <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Total</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">{{ stats.total|default:0 }}</div>
+                    <div class="mt-2 text-xs text-[var(--text3)]">Documents suivis</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Uploadés</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">{{ stats.uploaded|default:0 }}</div>
+                    <div class="mt-2 text-xs text-[var(--text3)]">En attente</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">En traitement</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">{{ stats.processing|default:0 }}</div>
+                    <div class="mt-2 text-xs text-[var(--text3)]">Analyse en cours</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Terminés</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--green)]">{{ stats.completed|default:0 }}</div>
+                    <div class="mt-2 text-xs text-[var(--text3)]">Disponibles</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Échecs</div>
+                    <div class="mt-2 font-serif text-3xl leading-none text-[var(--red)]">{{ stats.failed|default:0 }}</div>
+                    <div class="mt-2 text-xs text-[var(--text3)]">À corriger</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FILTRES -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+        <form method="get" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div>
+                <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-[var(--text3)]">
+                    Recherche
+                </label>
+                <input type="text"
+                       name="q"
+                       value="{{ filters.q }}"
+                       placeholder="Nom fichier, projet, texte extrait..."
+                       class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm text-[var(--text1)] outline-none transition placeholder:text-[var(--text3)] focus:border-[var(--accent)]">
+            </div>
+
+            <div>
+                <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-[var(--text3)]">
+                    Workspace
+                </label>
+                <select name="workspace"
+                        class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm text-[var(--text1)] outline-none transition focus:border-[var(--accent)]">
+                    <option value="">Tous les workspaces</option>
+                    {% for workspace in workspace_list %}
+                    <option value="{{ workspace.pk }}" {% if filters.workspace == workspace.pk|stringformat:"s" %}selected{% endif %}>
+                        {{ workspace.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-[var(--text3)]">
+                    Projet
+                </label>
+                <select name="project"
+                        class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm text-[var(--text1)] outline-none transition focus:border-[var(--accent)]">
+                    <option value="">Tous les projets</option>
+                    {% for project in project_list %}
+                    <option value="{{ project.pk }}" {% if filters.project == project.pk|stringformat:"s" %}selected{% endif %}>
+                        {{ project.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-[var(--text3)]">
+                    Statut
+                </label>
+                <select name="status"
+                        class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm text-[var(--text1)] outline-none transition focus:border-[var(--accent)]">
+                    <option value="">Tous les statuts</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="flex items-end gap-2">
+                <button type="submit"
+                        class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-95">
+                    Filtrer
+                </button>
+                <a href="{% url 'project_document_import_list' %}"
+                   class="inline-flex items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Reset
+                </a>
+            </div>
+        </form>
+    </section>
+
+    <!-- TABLE -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft overflow-hidden">
+        <div class="border-b border-[var(--border)] px-6 py-5">
+            <h2 class="text-lg font-semibold text-[var(--text1)]">Liste des imports</h2>
+            <p class="mt-1 text-sm text-[var(--text3)]">
+                Historique des documents importés et de leur état de traitement.
+            </p>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-[var(--bg3)]/70">
+                    <tr class="text-left text-[11px] uppercase tracking-[0.14em] text-[var(--text3)]">
+                        <th class="px-6 py-4 font-semibold">Document</th>
+                        <th class="px-6 py-4 font-semibold">Projet</th>
+                        <th class="px-6 py-4 font-semibold">Workspace</th>
+                        <th class="px-6 py-4 font-semibold">Statut</th>
+                        <th class="px-6 py-4 font-semibold">Uploadé par</th>
+                        <th class="px-6 py-4 font-semibold">Date</th>
+                        <th class="px-6 py-4 text-right font-semibold">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in imports %}
+                    <tr class="border-t border-[var(--border)] align-top transition hover:bg-[var(--accent-bg)]/20">
+                        <td class="px-6 py-4 min-w-[280px]">
+                            <div class="flex items-start gap-3">
+                                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--bg3)] text-[var(--accent)]">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 7V5a2 2 0 012-2h6l4 4v12a2 2 0 01-2 2H9a2 2 0 01-2-2V7z"/>
+                                    </svg>
+                                </div>
+
+                                <div class="min-w-0">
+                                    <div class="truncate font-semibold text-[var(--text1)]">
+                                        {{ item.file.name|default:"Document"|cut:"devflow/project_imports/" }}
+                                    </div>
+
+                                    {% if item.error_message %}
+                                    <div class="mt-1 line-clamp-2 text-xs text-[var(--red)]">
+                                        {{ item.error_message|truncatechars:90 }}
+                                    </div>
+                                    {% elif item.extracted_text %}
+                                    <div class="mt-1 line-clamp-2 text-xs text-[var(--text3)]">
+                                        {{ item.extracted_text|striptags|truncatechars:100 }}
+                                    </div>
+                                    {% else %}
+                                    <div class="mt-1 text-xs text-[var(--text3)]">
+                                        Aucun aperçu disponible
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+
+                        <td class="px-6 py-4 whitespace-nowrap text-[var(--text2)]">
+                            {% if item.project %}
+                                <div class="font-medium text-[var(--text1)]"><a href="{% url 'project_detail' item.project.pk %}"> {{ item.project.name }} </a></div>
+                                {% if item.project.code %}
+                                <div class="mt-1 text-xs text-[var(--text3)]">{{ item.project.code }}</div>
+                                {% endif %}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+
+                        <td class="px-6 py-4 whitespace-nowrap text-[var(--text2)]">
+                            {{ item.workspace.name|default:"—" }}
+                        </td>
+
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if item.status == "COMPLETED" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--green)]"></span>
+                                    {{ item.get_status_display }}
+                                </span>
+                            {% elif item.status == "PROCESSING" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--cyan-bg)] px-3 py-1 text-xs font-semibold text-[var(--cyan)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--cyan)]"></span>
+                                    {{ item.get_status_display }}
+                                </span>
+                            {% elif item.status == "FAILED" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--red)]"></span>
+                                    {{ item.get_status_display }}
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--amber)]"></span>
+                                    {{ item.get_status_display }}
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td class="px-6 py-4 whitespace-nowrap text-[var(--text2)]">
+                            {{ item.uploaded_by|default:"—" }}
+                        </td>
+
+                        <td class="px-6 py-4 whitespace-nowrap text-[var(--text2)]">
+                            <div>{{ item.created_at|date:"d/m/Y" }}</div>
+                            <div class="mt-1 text-xs text-[var(--text3)]">{{ item.created_at|date:"H:i" }}</div>
+                        </td>
+
+                        <td class="px-6 py-4">
+                            <div class="flex justify-end gap-2">
+                                <a href="{% url 'project_document_import_detail' item.pk %}"
+                                   class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:bg-[var(--bg4)] hover:text-[var(--text1)]">
+                                    Voir
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-14 text-center">
+                            <div class="mx-auto flex max-w-md flex-col items-center">
+                                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg3)] text-[var(--text3)]">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 7V5a2 2 0 012-2h6l4 4v12a2 2 0 01-2 2H9a2 2 0 01-2-2V7z"/>
+                                    </svg>
+                                </div>
+                                <div class="mt-4 text-sm font-semibold text-[var(--text1)]">
+                                    Aucun document trouvé
+                                </div>
+                                <div class="mt-1 text-sm text-[var(--text3)]">
+                                    Essaie de modifier les filtres ou ajoute un nouvel import.
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if is_paginated %}
+        <div class="border-t border-[var(--border)] px-6 py-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="text-sm text-[var(--text3)]">
+                    Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}
+                </div>
+
+                <div class="flex items-center gap-2">
+                    {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}{% if filters.q %}&q={{ filters.q }}{% endif %}{% if filters.workspace %}&workspace={{ filters.workspace }}{% endif %}{% if filters.project %}&project={{ filters.project }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                       class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                        Précédent
+                    </a>
+                    {% endif %}
+
+                    {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if filters.q %}&q={{ filters.q }}{% endif %}{% if filters.workspace %}&workspace={{ filters.workspace }}{% endif %}{% if filters.project %}&project={{ filters.project }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                       class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                        Suivant
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

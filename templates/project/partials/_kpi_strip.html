@@ -1,0 +1,56 @@
+{% load humanize %}
+<section class="mt-0">
+    <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+            <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Avancement</div>
+            <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">{{ project_obj.progress_percent|default:0 }}%</div>
+            <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--bg3)]">
+                <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))]" style="width: {{ project_obj.progress_percent|default:0 }}%"></div>
+            </div>
+        </div>
+
+        <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+            <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Risque</div>
+            <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">{{ project_obj.risk_score|default:0 }}</div>
+            <div class="mt-2 text-xs text-[var(--text3)]">Indice global projet</div>
+        </div>
+
+        <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+            <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Tâches</div>
+            <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">{{ task_stats.total|default:0 }}</div>
+            <div class="mt-2 text-xs text-[var(--text3)]">Backlog opérationnel</div>
+        </div>
+
+        <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+            <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Membres</div>
+            <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">{{ members.count|default:0 }}</div>
+            <div class="mt-2 text-xs text-[var(--text3)]">Équipe projet</div>
+        </div>
+
+        {% if can_view_financials %}
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+            <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Coût réel</div>
+            <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">{{ financial_overview.actual_cost|default:0|floatformat:0|intcomma }}</div>
+            <div class="mt-2 text-xs text-[var(--text3)]">{{ financial_overview.currency|default:"XOF" }}</div>
+        </div>
+
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+            <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">CA encaissé</div>
+            <div class="mt-2 font-serif text-3xl leading-none text-[var(--text1)]">{{ financial_overview.received_revenue|default:0|floatformat:0|intcomma }}</div>
+            <div class="mt-2 text-xs text-[var(--text3)]">{{ financial_overview.currency|default:"XOF" }}</div>
+        </div>
+        {% else %}
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+            <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Finance</div>
+            <div class="mt-2 font-serif text-2xl leading-none text-[var(--text1)]">••••</div>
+            <div class="mt-2 text-xs text-[var(--text3)]">Accès restreint</div>
+        </div>
+
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)]/80 p-4 backdrop-blur-sm">
+            <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Rentabilité</div>
+            <div class="mt-2 font-serif text-2xl leading-none text-[var(--text1)]">••••</div>
+            <div class="mt-2 text-xs text-[var(--text3)]">Accès restreint</div>
+        </div>
+        {% endif %}
+    </div>
+</section>

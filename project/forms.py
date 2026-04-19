@@ -53,7 +53,7 @@ from .models import (
     Workspace,
     WorkspaceInvitation,
     WorkspaceSettings,
-    UserProfile,
+    UserProfile, ProjectDocumentImport,
 )
 
 User = get_user_model()
@@ -354,9 +354,18 @@ class ProjectForm(BaseStyledModelForm):
             "is_favorite",
         ]
         widgets = {
-            "start_date": forms.DateInput(attrs={"data-calendar": "1"}),
-            "target_date": forms.DateInput(attrs={"data-calendar": "1"}),
-            "delivered_at": forms.DateInput(attrs={"data-calendar": "1"}),
+            "start_date":forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"type": "date"},
+            ),
+            "target_date": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"type": "date"},
+            ),
+            "delivered_at": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"type": "date"},
+            ),
             "description": forms.Textarea(attrs={"data-tinymce": "1", "data-editor-height": "320"}),
         }
 
@@ -448,6 +457,47 @@ class ProjectForm(BaseStyledModelForm):
 
         return obj
 
+class ProjectDocumentImportForm(BaseStyledModelForm):
+    class Meta:
+        model = ProjectDocumentImport
+        fields = [
+            "project",
+            "file",
+            "status",
+        ]
+        widgets = {
+            "project": forms.Select(),
+            "file": forms.ClearableFileInput(),
+            "status": forms.Select(),
+        }
+
+    def __init__(self, *args, **kwargs):
+        workspace = kwargs.pop("workspace", None)
+        project = kwargs.pop("project", None)
+        super().__init__(*args, **kwargs)
+
+        self.fields["status"].required = False
+
+        if workspace is not None:
+            self.fields["project"].queryset = (
+                Project.objects.filter(workspace=workspace, is_archived=False)
+                .select_related("workspace", "team", "owner", "product_manager", "category")
+                .order_by("name")
+            )
+        else:
+            self.fields["project"].queryset = (
+                Project.objects.filter(is_archived=False)
+                .select_related("workspace", "team", "owner", "product_manager", "category")
+                .order_by("name")
+            )
+
+        if project is not None:
+            self.fields["project"].initial = project
+            self.fields["project"].widget.attrs["readonly"] = True
+
+    def clean_status(self):
+        status = self.cleaned_data.get("status")
+        return status or ProjectDocumentImport.ImportStatus.UPLOADED
 
 class ProjectMemberForm(BaseStyledModelForm):
     class Meta:

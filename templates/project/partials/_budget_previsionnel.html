@@ -1,0 +1,134 @@
+{% load humanize %}
+<div class="space-y-6">
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-[var(--text1)]">Actions rapides · Budget prévisionnel</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Pilote la rentabilité et les prévisions de revenus</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="/project-revenues/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    Ajouter revenu prévisionnel
+                </a>
+                <a href="/project-budgets/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Réviser budget
+                </a>
+                <a href="{% url 'project_update' project_obj.pk %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Mettre à jour projet
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Budget approuvé</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ financial_overview.approved_budget|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Revenus attendus</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ financial_overview.planned_revenue|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Dépenses validées</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ financial_overview.actual_cost|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Marge prévisionnelle</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ financial_overview.forecast_margin|default:0|floatformat:0|intcomma }}</div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Taux de marge cible</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">
+                {% if budget_obj %}
+                    {{ budget_obj.target_margin_percent|default:0 }}%
+                {% else %}
+                    0%
+                {% endif %}
+            </div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Taux de marge estimé</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ financial_overview.profit_margin_percent|default:0 }}%</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Consommation budget</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ financial_overview.expense_ratio_percent|default:0 }}%</div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Facturé</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ revenue_stats.invoiced_revenue|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Encaissé</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ revenue_stats.received_revenue|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Reste à facturer</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ revenue_stats.remaining_to_invoice|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Reste à encaisser</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ revenue_stats.remaining_to_collect|default:0|floatformat:0|intcomma }}</div>
+        </div>
+    </div>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div>
+            <h3 class="text-lg font-semibold text-[var(--text1)]">Prévisions de revenus</h3>
+            <p class="mt-1 text-xs text-[var(--text3)]">Encaissements attendus par source</p>
+        </div>
+
+        <div class="mt-5 overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-[var(--border)] text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                        <th class="py-3 text-left">Libellé</th>
+                        <th class="py-3 text-left">Type</th>
+                        <th class="py-3 text-right">Montant</th>
+                        <th class="py-3 text-right">Facturé</th>
+                        <th class="py-3 text-right">Encaissé</th>
+                        <th class="py-3 text-left">Date prévue</th>
+                        <th class="py-3 text-left">Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for revenue in revenues %}
+                    <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/40">
+                        <td class="py-3 font-medium text-[var(--text1)]">{{ revenue.title }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ revenue.get_revenue_type_display|default:revenue.revenue_type|default:"—" }}</td>
+                        <td class="py-3 text-right font-medium text-[var(--text1)]">{{ revenue.amount|default:0|floatformat:0|intcomma }}</td>
+                        <td class="py-3 text-right text-[var(--text2)]">{{ revenue.invoiced_amount|default:0|floatformat:0|intcomma }}</td>
+                        <td class="py-3 text-right text-[var(--text2)]">{{ revenue.received_amount|default:0|floatformat:0|intcomma }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ revenue.expected_date|date:"d/m/Y"|default:"—" }}</td>
+                        <td class="py-3">
+                            {% if revenue.is_received %}
+                            <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">
+                                Reçu
+                            </span>
+                            {% else %}
+                            <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">
+                                En attente
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="py-8 text-center text-[var(--text3)]">Aucune prévision de revenu.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

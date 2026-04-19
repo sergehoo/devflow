@@ -43,7 +43,7 @@ from .forms import (
     WorkspaceInvitationForm, IntegrationForm, WebhookForm, ReactionForm,
     MessageAttachmentForm, SprintReviewForm, SprintRetrospectiveForm,
     APIKeyForm, WorkspaceSettingsForm, ObjectiveForm, KeyResultForm, DevFlowPasswordChangeForm, UserAccountForm,
-    UserProfileForm, TaskCommentQuickForm,
+    UserProfileForm, TaskCommentQuickForm, ProjectDocumentImportForm,
 )
 from .services.budget import ProjectBudgetService
 from .utils.workspaces import ensure_workspace
@@ -1771,6 +1771,9 @@ class ProjectBudgetExportExcelView(LoginRequiredMixin, View):
         return response
 
 
+
+
+
 class ProjectDetailView(DevflowDetailView):
     model = dm.Project
     template_name = "project/detail.html"
@@ -1784,6 +1787,7 @@ class ProjectDetailView(DevflowDetailView):
                 "team",
                 "owner",
                 "product_manager",
+                "category",
             ).prefetch_related(
                 Prefetch(
                     "members",
@@ -1795,62 +1799,79 @@ class ProjectDetailView(DevflowDetailView):
                 ),
                 Prefetch(
                     "board_columns",
-                    queryset=dm.BoardColumn.objects.order_by("position"),
+                    queryset=dm.BoardColumn.objects.order_by("position", "id"),
                 ),
                 Prefetch(
                     "tasks",
-                    queryset=dm.Task.objects.filter(is_archived=False)
-                    .select_related("assignee", "reporter", "sprint", "backlog_item", "parent")
-                    .prefetch_related(
-                        "labels__label",
-                        "assignments__user",
-                        "checklists__items",
-                        "attachments",
-                        "comments__author",
-                        "incoming_dependencies__from_task",
-                        "outgoing_dependencies__to_task",
-                        "releases",
-                        "milestones",
-                    )
-                    .order_by("-created_at"),
+                    queryset=(
+                        dm.Task.objects.filter(is_archived=False)
+                        .select_related("assignee", "reporter", "sprint", "backlog_item", "parent", "workspace")
+                        .prefetch_related(
+                            "labels__label",
+                            "assignments__user",
+                            "checklists__items",
+                            "attachments",
+                            "comments__author",
+                            "incoming_dependencies__from_task",
+                            "outgoing_dependencies__to_task",
+                            "releases",
+                            "milestones",
+                        )
+                        .order_by("-created_at")
+                    ),
                 ),
                 Prefetch(
                     "sprints",
-                    queryset=dm.Sprint.objects.filter(is_archived=False)
-                    .select_related("team")
-                    .prefetch_related(
-                        "metrics",
-                        "review",
-                        "retrospective",
-                        "financial_snapshots",
-                    )
-                    .order_by("-start_date", "-created_at"),
+                    queryset=(
+                        dm.Sprint.objects.filter(is_archived=False)
+                        .select_related("team", "workspace", "project")
+                        .prefetch_related(
+                            "metrics",
+                            "financial_snapshots",
+                        )
+                        .order_by("-start_date", "-created_at")
+                    ),
                 ),
                 Prefetch(
                     "backlog_items",
-                    queryset=dm.BacklogItem.objects.filter(is_archived=False)
-                    .select_related("sprint", "parent", "reporter")
-                    .prefetch_related("children", "tasks", "financial_snapshots")
-                    .order_by("rank", "-created_at"),
+                    queryset=(
+                        dm.BacklogItem.objects.filter(is_archived=False)
+                        .select_related("sprint", "parent", "reporter", "workspace", "project")
+                        .prefetch_related(
+                            "children",
+                            "tasks",
+                            "financial_snapshots",
+                        )
+                        .order_by("rank", "-created_at")
+                    ),
                 ),
                 Prefetch(
                     "milestones",
-                    queryset=dm.Milestone.objects.filter(is_archived=False)
-                    .select_related("owner")
-                    .prefetch_related("milestone_tasks__task", "roadmap_items")
-                    .order_by("due_date", "created_at"),
+                    queryset=(
+                        dm.Milestone.objects.filter(is_archived=False)
+                        .select_related("owner", "workspace", "project")
+                        .prefetch_related(
+                            "milestone_tasks__task",
+                            "roadmap_items",
+                        )
+                        .order_by("due_date", "created_at")
+                    ),
                 ),
                 Prefetch(
                     "releases",
-                    queryset=dm.Release.objects.filter(is_archived=False)
-                    .prefetch_related("tasks", "sprints")
-                    .order_by("-release_date", "-created_at"),
+                    queryset=(
+                        dm.Release.objects.filter(is_archived=False)
+                        .prefetch_related("tasks", "sprints")
+                        .order_by("-release_date", "-created_at")
+                    ),
                 ),
                 Prefetch(
                     "risks",
-                    queryset=dm.Risk.objects.filter(is_archived=False)
-                    .select_related("owner", "task")
-                    .order_by("-created_at"),
+                    queryset=(
+                        dm.Risk.objects.filter(is_archived=False)
+                        .select_related("owner", "task", "workspace", "project")
+                        .order_by("-created_at")
+                    ),
                 ),
                 Prefetch(
                     "pull_requests",
@@ -1866,39 +1887,46 @@ class ProjectDetailView(DevflowDetailView):
                 ),
                 Prefetch(
                     "timesheet_entries",
-                    queryset=dm.TimesheetEntry.objects.select_related(
-                        "user",
-                        "task",
-                        "approved_by",
-                    ).prefetch_related("cost_snapshot").order_by("-entry_date", "-created_at"),
+                    queryset=(
+                        dm.TimesheetEntry.objects.select_related(
+                            "user",
+                            "task",
+                            "approved_by",
+                            "cost_snapshot",
+                        ).order_by("-entry_date", "-created_at")
+                    ),
                 ),
                 Prefetch(
                     "estimate_lines",
-                    queryset=dm.ProjectEstimateLine.objects.select_related(
-                        "category",
-                        "task",
-                        "sprint",
-                        "milestone",
-                        "created_by",
-                    ).order_by("budget_stage", "label"),
+                    queryset=(
+                        dm.ProjectEstimateLine.objects.select_related(
+                            "category",
+                            "task",
+                            "sprint",
+                            "milestone",
+                            "created_by",
+                        ).order_by("budget_stage", "label", "id")
+                    ),
                 ),
                 Prefetch(
                     "expenses",
-                    queryset=dm.ProjectExpense.objects.select_related(
-                        "category",
-                        "task",
-                        "sprint",
-                        "milestone",
-                        "created_by",
-                        "validated_by",
-                        "level1_approved_by",
-                        "level2_approved_by",
-                        "rejected_by",
-                    ).order_by("-expense_date", "-created_at"),
+                    queryset=(
+                        dm.ProjectExpense.objects.select_related(
+                            "category",
+                            "task",
+                            "sprint",
+                            "milestone",
+                            "created_by",
+                            "validated_by",
+                            "level1_approved_by",
+                            "level2_approved_by",
+                            "rejected_by",
+                        ).order_by("-expense_date", "-created_at")
+                    ),
                 ),
                 Prefetch(
                     "revenues",
-                    queryset=dm.ProjectRevenue.objects.order_by("expected_date", "title"),
+                    queryset=dm.ProjectRevenue.objects.order_by("expected_date", "title", "id"),
                 ),
                 Prefetch(
                     "source_imports",
@@ -1906,16 +1934,17 @@ class ProjectDetailView(DevflowDetailView):
                 ),
                 Prefetch(
                     "kpis",
-                    queryset=dm.ProjectKPI.objects.order_by("module_name", "name"),
+                    queryset=dm.ProjectKPI.objects.order_by("module_name", "name", "id"),
                 ),
                 Prefetch(
                     "module_rois",
-                    queryset=dm.ProjectModuleROI.objects.order_by("module_name"),
+                    queryset=dm.ProjectModuleROI.objects.order_by("module_name", "id"),
                 ),
                 Prefetch(
                     "roadmap_items",
-                    queryset=dm.RoadmapItem.objects.select_related("roadmap", "milestone").order_by(
-                        "start_date", "row", "title"
+                    queryset=(
+                        dm.RoadmapItem.objects.select_related("roadmap", "milestone", "project")
+                        .order_by("start_date", "row", "title", "id")
                     ),
                 ),
             )
@@ -1973,21 +2002,21 @@ class ProjectDetailView(DevflowDetailView):
         budget = getattr(project, "budgetestimatif", None)
 
         dependency_qs = (
-            dm.TaskDependency.objects.filter(
-                from_task__project=project
-            )
+            dm.TaskDependency.objects.filter(from_task__project=project)
             .select_related("from_task", "to_task", "created_by")
             .order_by("-created_at")
         )
 
         dependency_summary = {
             "count": dependency_qs.count(),
-            "blocking": dependency_qs.filter(dependency_type=dm.TaskDependency.DependencyType.BLOCKS).count(),
-            "related": dependency_qs.filter(dependency_type=dm.TaskDependency.DependencyType.RELATES_TO).count(),
+            "blocking": dependency_qs.filter(
+                dependency_type=dm.TaskDependency.DependencyType.BLOCKS
+            ).count(),
+            "related": dependency_qs.filter(
+                dependency_type=dm.TaskDependency.DependencyType.RELATES_TO
+            ).count(),
         }
-        # =========================
-        # TASK STATS
-        # =========================
+
         task_stats = tasks_qs.aggregate(
             total=Count("id"),
             todo=Count("id", filter=Q(status=dm.Task.Status.TODO)),
@@ -2013,9 +2042,6 @@ class ProjectDetailView(DevflowDetailView):
             ),
         )
 
-        # =========================
-        # PLANNING
-        # =========================
         planning_stats = {
             "milestones_count": milestones_qs.count(),
             "releases_count": releases_qs.count(),
@@ -2023,10 +2049,10 @@ class ProjectDetailView(DevflowDetailView):
             "backlog_count": backlog_qs.count(),
             "roadmap_items_count": roadmap_items_qs.count(),
             "planning_items_count": (
-                    milestones_qs.count()
-                    + releases_qs.count()
-                    + sprints_qs.count()
-                    + roadmap_items_qs.count()
+                milestones_qs.count()
+                + releases_qs.count()
+                + sprints_qs.count()
+                + roadmap_items_qs.count()
             ),
         }
 
@@ -2045,9 +2071,6 @@ class ProjectDetailView(DevflowDetailView):
             .order_by("team__name")
         )
 
-        # =========================
-        # EVOLUTION / IA
-        # =========================
         evolution_summary = {
             "activities_count": activity_qs.count(),
             "pull_requests_count": prs_qs.count(),
@@ -2063,9 +2086,6 @@ class ProjectDetailView(DevflowDetailView):
             high=Count("id", filter=Q(severity=dm.AInsight.Severity.HIGH)),
         )
 
-        # =========================
-        # TIMESHEETS
-        # =========================
         timesheet_stats = timesheets_qs.aggregate(
             total_entries=Count("id"),
             total_hours=Coalesce(Sum("hours"), Value(Decimal("0.00")), output_field=hours_field),
@@ -2081,9 +2101,6 @@ class ProjectDetailView(DevflowDetailView):
             ),
         )
 
-        # =========================
-        # KPI / ROI
-        # =========================
         kpi_summary = {
             "count": kpis_qs.count(),
             "modules_count": kpis_qs.exclude(module_name="").values("module_name").distinct().count(),
@@ -2100,9 +2117,6 @@ class ProjectDetailView(DevflowDetailView):
             else Decimal("0.00")
         )
 
-        # =========================
-        # IMPORTS DOCUMENTS
-        # =========================
         import_summary = {
             "count": imports_qs.count(),
             "completed": imports_qs.filter(status=dm.ProjectDocumentImport.ImportStatus.COMPLETED).count(),
@@ -2110,9 +2124,6 @@ class ProjectDetailView(DevflowDetailView):
             "failed": imports_qs.filter(status=dm.ProjectDocumentImport.ImportStatus.FAILED).count(),
         }
 
-        # =========================
-        # FINANCES
-        # =========================
         expenses_qs = dm.ProjectExpense.objects.none()
         estimate_lines_qs = dm.ProjectEstimateLine.objects.none()
         revenues_qs = dm.ProjectRevenue.objects.none()
@@ -2197,6 +2208,45 @@ class ProjectDetailView(DevflowDetailView):
             "total_estimated_revenue": Decimal("0.00"),
             "global_roi_percent": Decimal("0.00"),
         }
+
+        sprint_financial_snapshots_qs = dm.SprintFinancialSnapshot.objects.filter(
+            sprint__project=project
+        ).select_related("sprint")
+
+        feature_financial_snapshots_qs = dm.FeatureFinancialSnapshot.objects.filter(
+            backlog_item__project=project
+        ).select_related("backlog_item")
+
+        sprint_financial_summary = sprint_financial_snapshots_qs.aggregate(
+            count=Count("id"),
+            total_estimated_cost=Coalesce(
+                Sum("estimated_cost"),
+                Value(Decimal("0.00")),
+                output_field=money_field,
+            ),
+        )
+
+        feature_financial_summary = feature_financial_snapshots_qs.aggregate(
+            count=Count("id"),
+            total_estimated_cost=Coalesce(
+                Sum("estimated_cost"),
+                Value(Decimal("0.00")),
+                output_field=money_field,
+            ),
+            total_estimated_revenue=Coalesce(
+                Sum("estimated_revenue"),
+                Value(Decimal("0.00")),
+                output_field=money_field,
+            ),
+        )
+        feature_financial_summary["global_roi_percent"] = (
+            (
+                (feature_financial_summary["total_estimated_revenue"] - feature_financial_summary["total_estimated_cost"])
+                / feature_financial_summary["total_estimated_cost"]
+            ) * Decimal("100")
+            if feature_financial_summary["total_estimated_cost"] > 0
+            else Decimal("0.00")
+        )
 
         if can_view_financials:
             expenses_qs = project.expenses.all()
@@ -2317,7 +2367,6 @@ class ProjectDetailView(DevflowDetailView):
                     output_field=money_field,
                 ),
             )
-
             estimate_stats = {**estimate_agg}
 
             estimate_labor = Decimal("0.00")
@@ -2327,7 +2376,6 @@ class ProjectDetailView(DevflowDetailView):
             for line in estimate_lines_qs:
                 amount = line.cost_amount or Decimal("0.00")
                 category = getattr(line, "category", None)
-
                 if category and getattr(category, "is_labor_category", False):
                     estimate_labor += amount
                 elif category and getattr(category, "is_direct_cost_category", False):
@@ -2417,135 +2465,73 @@ class ProjectDetailView(DevflowDetailView):
             forecast_margin_amount = forecast_margin
             budget_remaining = remaining_budget
 
-            sprint_financial_snapshots_qs = dm.SprintFinancialSnapshot.objects.filter(
-                sprint__project=project
-            ).select_related("sprint")
-
-            sprint_financial_summary = sprint_financial_snapshots_qs.aggregate(
-                count=Count("id"),
-                total_estimated_cost=Coalesce(
-                    Sum("estimated_cost"),
-                    Value(Decimal("0.00")),
-                    output_field=money_field,
-                ),
-            )
-
-            feature_financial_snapshots_qs = dm.FeatureFinancialSnapshot.objects.filter(
-                backlog_item__project=project
-            ).select_related("backlog_item")
-
-            feature_financial_summary = feature_financial_snapshots_qs.aggregate(
-                count=Count("id"),
-                total_estimated_cost=Coalesce(
-                    Sum("estimated_cost"),
-                    Value(Decimal("0.00")),
-                    output_field=money_field,
-                ),
-                total_estimated_revenue=Coalesce(
-                    Sum("estimated_revenue"),
-                    Value(Decimal("0.00")),
-                    output_field=money_field,
-                ),
-            )
-
-            feature_financial_summary["global_roi_percent"] = (
-                (
-                        (feature_financial_summary["total_estimated_revenue"] - feature_financial_summary[
-                            "total_estimated_cost"])
-                        / feature_financial_summary["total_estimated_cost"]
-                ) * Decimal("100")
-                if feature_financial_summary["total_estimated_cost"] > 0
-                else Decimal("0.00")
-            )
-
         quick_actions = {
             "planification": [
-                {"label": "Nouveau sprint", "url": f"/sprints/create/?project={project.pk}", "style": "primary",
-                 "icon": "calendar"},
-                {"label": "Nouveau jalon", "url": f"/milestones/create/?project={project.pk}", "style": "soft",
-                 "icon": "flag"},
-                {"label": "Nouvelle release", "url": f"/releases/create/?project={project.pk}", "style": "soft",
-                 "icon": "rocket"},
-                {"label": "Ajouter backlog item", "url": f"/backlog-items/create/?project={project.pk}",
-                 "style": "soft", "icon": "list"},
+                {"label": "Nouveau sprint", "url": f"/sprints/create/?project={project.pk}", "style": "primary", "icon": "calendar"},
+                {"label": "Nouveau jalon", "url": f"/milestones/create/?project={project.pk}", "style": "soft", "icon": "flag"},
+                {"label": "Nouvelle release", "url": f"/releases/create/?project={project.pk}", "style": "soft", "icon": "rocket"},
+                {"label": "Ajouter backlog item", "url": f"/backlog-items/create/?project={project.pk}", "style": "soft", "icon": "list"},
             ],
             "budget_estimatif": [],
             "budget_previsionnel": [],
             "depenses": [],
             "equipes": [
-                {"label": "Ajouter membre projet", "url": f"/project-members/create/?project={project.pk}",
-                 "style": "primary", "icon": "users"},
-                {"label": "Associer une équipe", "url": f"/projects/{project.pk}/update/", "style": "soft",
-                 "icon": "layers"},
+                {"label": "Ajouter membre projet", "url": f"/project-members/create/?project={project.pk}", "style": "primary", "icon": "users"},
+                {"label": "Associer une équipe", "url": f"/projects/{project.pk}/update/", "style": "soft", "icon": "layers"},
             ],
             "evolution": [
-                {"label": "Ajouter activité", "url": f"/activity-logs/create/?project={project.pk}", "style": "primary",
-                 "icon": "pulse"},
-                {"label": "Nouveau risque", "url": f"/risks/create/?project={project.pk}", "style": "soft",
-                 "icon": "alert"},
-                {"label": "Nouvel insight IA", "url": f"/ai-insights/create/?project={project.pk}", "style": "soft",
-                 "icon": "sparkles"},
+                {"label": "Ajouter activité", "url": f"/activity-logs/create/?project={project.pk}", "style": "primary", "icon": "pulse"},
+                {"label": "Nouveau risque", "url": f"/risks/create/?project={project.pk}", "style": "soft", "icon": "alert"},
+                {"label": "Nouvel insight IA", "url": f"/ai-insights/create/?project={project.pk}", "style": "soft", "icon": "sparkles"},
             ],
             "taches": [
-                {"label": "Nouvelle tâche", "url": f"/tasks/create/?project={project.pk}", "style": "primary",
-                 "icon": "check-square"},
+                {"label": "Nouvelle tâche", "url": f"/tasks/create/?project={project.pk}", "style": "primary", "icon": "check-square"},
                 {"label": "Voir board", "url": f"/boards/?project={project.pk}", "style": "soft", "icon": "columns"},
-                {"label": "Voir toutes les tâches", "url": f"/tasks/?project={project.pk}", "style": "soft",
-                 "icon": "list"},
+                {"label": "Voir toutes les tâches", "url": f"/tasks/?project={project.pk}", "style": "soft", "icon": "list"},
             ],
             "ia_import": [
-                {"label": "Importer un document", "url": f"/project-imports/create/?project={project.pk}",
-                 "style": "primary", "icon": "upload"},
+                {"label": "Importer un document", "url": f"/project-imports/create/?project={project.pk}", "style": "primary", "icon": "upload"},
             ],
-            "kpi_roi": [],
+            "kpi_roi": [
+                {"label": "Ajouter KPI", "url": f"/project-kpis/create/?project={project.pk}", "style": "primary", "icon": "chart-line"},
+                {"label": "Ajouter ROI module", "url": f"/project-module-rois/create/?project={project.pk}", "style": "soft", "icon": "percent"},
+            ],
         }
 
         if can_view_financials:
             quick_actions["budget_estimatif"] = [
-                {"label": "Créer / éditer budget estimatif", "url": f"/project-budgets/create/?project={project.pk}",
-                 "style": "primary", "icon": "calculator"},
-                {"label": "Ajouter ligne d'estimation", "url": f"/project-estimate-lines/create/?project={project.pk}",
-                 "style": "soft", "icon": "plus"},
+                {"label": "Créer / éditer budget estimatif", "url": f"/project-budgets/create/?project={project.pk}", "style": "primary", "icon": "calculator"},
+                {"label": "Ajouter ligne d'estimation", "url": f"/project-estimate-lines/create/?project={project.pk}", "style": "soft", "icon": "plus"},
             ]
             quick_actions["budget_previsionnel"] = [
-                {"label": "Ajouter prévision de revenu", "url": f"/project-revenues/create/?project={project.pk}",
-                 "style": "primary", "icon": "banknote"},
-                {"label": "Réviser budget", "url": f"/project-budgets/create/?project={project.pk}", "style": "soft",
-                 "icon": "refresh"},
+                {"label": "Ajouter prévision de revenu", "url": f"/project-revenues/create/?project={project.pk}", "style": "primary", "icon": "banknote"},
+                {"label": "Réviser budget", "url": f"/project-budgets/create/?project={project.pk}", "style": "soft", "icon": "refresh"},
             ]
             quick_actions["depenses"] = [
-                {"label": "Nouvelle dépense", "url": f"/project-expenses/create/?project={project.pk}",
-                 "style": "primary", "icon": "receipt"},
-                {"label": "Voir toutes les dépenses", "url": f"/project-expenses/?project={project.pk}",
-                 "style": "soft", "icon": "table"},
-            ]
-            quick_actions["kpi_roi"] = [
-                {"label": "Ajouter KPI", "url": f"/project-kpis/create/?project={project.pk}", "style": "primary",
-                 "icon": "chart-line"},
-                {"label": "Ajouter ROI module", "url": f"/project-module-rois/create/?project={project.pk}",
-                 "style": "soft", "icon": "percent"},
+                {"label": "Nouvelle dépense", "url": f"/project-expenses/create/?project={project.pk}", "style": "primary", "icon": "receipt"},
+                {"label": "Voir toutes les dépenses", "url": f"/project-expenses/?project={project.pk}", "style": "soft", "icon": "table"},
             ]
 
         tabs = [
-            {"key": "planification", "label": "Planification", "count": planning_stats["planning_items_count"]},
+            {"key": "planification", "label": "Plan", "count": planning_stats["planning_items_count"]},
             {"key": "equipes", "label": "Équipes", "count": members_qs.count()},
             {"key": "evolution", "label": "Évolution", "count": evolution_summary["activities_count"]},
             {"key": "taches", "label": "Tâches", "count": task_stats["total"]},
-            {"key": "ia_import", "label": "Imports IA", "count": import_summary["count"]},
+            # {"key": "ia_import", "label": "Imports IA", "count": import_summary["count"]},
             {"key": "kpi_roi", "label": "KPI & ROI", "count": kpi_summary["count"] + roi_summary["count"]},
         ]
 
         if can_view_financials:
-            tabs.insert(1, {"key": "budget_estimatif", "label": "Budget estimatif",
-                            "count": estimate_stats["total_estimate_lines"]})
-            tabs.insert(2, {"key": "budget_previsionnel", "label": "Budget prévisionnel", "count": revenues_qs.count()})
+            tabs.insert(1, {"key": "budget_estimatif", "label": "Bu.estimatif", "count": estimate_stats["total_estimate_lines"]})
+            tabs.insert(2, {"key": "budget_previsionnel", "label": "Bu. prévisionnel", "count": revenues_qs.count()})
             tabs.insert(3, {"key": "depenses", "label": "Dépenses", "count": expenses_qs.count()})
 
         active_tab = self.request.GET.get("tab", "planification")
         if active_tab in {"budget_estimatif", "budget_previsionnel", "depenses"} and not can_view_financials:
             active_tab = "planification"
 
-        if active_tab not in {tab["key"] for tab in tabs}:
+        valid_tab_keys = {tab["key"] for tab in tabs}
+        if active_tab not in valid_tab_keys:
             active_tab = "planification"
 
         planning_ai_insights = ai_insights_qs.filter(
@@ -2557,10 +2543,12 @@ class ProjectDetailView(DevflowDetailView):
             ],
             is_dismissed=False,
         ).order_by("-detected_at")
+
         ctx.update({
             "project_obj": project,
             "workspace_obj": project.workspace,
             "planning_ai_insights": planning_ai_insights[:10],
+
             "members": members_qs,
             "sprints": sprint_summary,
             "all_sprints": sprints_qs,
@@ -2583,9 +2571,12 @@ class ProjectDetailView(DevflowDetailView):
             "all_ai_insights": ai_insights_qs,
             "timesheets": timesheets_qs[:50],
             "all_timesheets": timesheets_qs,
+
             "project_imports": imports_qs,
             "project_kpis": kpis_qs,
             "project_module_rois": module_rois_qs,
+            "sprint_financial_snapshots": sprint_financial_snapshots_qs,
+            "feature_financial_snapshots": feature_financial_snapshots_qs,
 
             "expenses": expenses_qs[:50] if can_view_financials else [],
             "all_expenses": expenses_qs if can_view_financials else [],
@@ -2594,8 +2585,8 @@ class ProjectDetailView(DevflowDetailView):
 
             "budget_obj": budget if can_view_financials else None,
             "financial_overview": overview,
-            "sprint_financial_summary": sprint_financial_summary if can_view_financials else {},
-            "feature_financial_summary": feature_financial_summary if can_view_financials else {},
+            "sprint_financial_summary": sprint_financial_summary,
+            "feature_financial_summary": feature_financial_summary,
 
             "task_stats": task_stats,
             "planning_stats": planning_stats,
@@ -2626,7 +2617,6 @@ class ProjectDetailView(DevflowDetailView):
         })
         ctx["active_quick_actions"] = quick_actions.get(active_tab, [])
         return ctx
-
 
 class ProjectCreateView(DevflowCreateView):
     model = dm.Project
@@ -2714,6 +2704,237 @@ class ProjectCreateView(DevflowCreateView):
         return redirect(reverse_lazy(self.success_list_url_name))
 
 
+
+class ProjectDocumentImportListView(DevflowListView):
+    model = dm.ProjectDocumentImport
+    template_name = "project/document_import/list.html"
+    context_object_name = "imports"
+    paginate_by = 20
+    section = "project"
+    page_title = "Documents projet"
+
+    def get_queryset(self):
+        qs = (
+            dm.ProjectDocumentImport.objects.select_related(
+                "workspace",
+                "uploaded_by",
+                "project",
+                "project__team",
+                "project__owner",
+                "project__product_manager",
+                "project__category",
+            )
+            .order_by("-created_at", "-id")
+        )
+
+        workspace_id = self.request.GET.get("workspace")
+        project_id = self.request.GET.get("project")
+        status = self.request.GET.get("status")
+        q = (self.request.GET.get("q") or "").strip()
+
+        if workspace_id:
+            qs = qs.filter(workspace_id=workspace_id)
+
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+
+        if status:
+            qs = qs.filter(status=status)
+
+        if q:
+            qs = qs.filter(
+                Q(file__icontains=q)
+                | Q(extracted_text__icontains=q)
+                | Q(error_message__icontains=q)
+                | Q(project__name__icontains=q)
+                | Q(project__code__icontains=q)
+                | Q(workspace__name__icontains=q)
+                | Q(uploaded_by__username__icontains=q)
+                | Q(uploaded_by__first_name__icontains=q)
+                | Q(uploaded_by__last_name__icontains=q)
+            )
+
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        qs = self.object_list
+
+        workspace_id = self.request.GET.get("workspace")
+        project_id = self.request.GET.get("project")
+        status = self.request.GET.get("status")
+        q = (self.request.GET.get("q") or "").strip()
+
+        stats = qs.aggregate(
+            total=Count("id"),
+            uploaded=Count("id", filter=Q(status=dm.ProjectDocumentImport.ImportStatus.UPLOADED)),
+            processing=Count("id", filter=Q(status=dm.ProjectDocumentImport.ImportStatus.PROCESSING)),
+            completed=Count("id", filter=Q(status=dm.ProjectDocumentImport.ImportStatus.COMPLETED)),
+            failed=Count("id", filter=Q(status=dm.ProjectDocumentImport.ImportStatus.FAILED)),
+        )
+
+        ctx.update(
+            {
+                "stats": stats,
+                "status_choices": dm.ProjectDocumentImport.ImportStatus.choices,
+                "workspace_list": dm.Workspace.objects.filter(is_archived=False).order_by("name"),
+                "project_list": (
+                    dm.Project.objects.filter(is_archived=False)
+                    .select_related("workspace")
+                    .order_by("name")
+                ),
+                "filters": {
+                    "workspace": workspace_id or "",
+                    "project": project_id or "",
+                    "status": status or "",
+                    "q": q,
+                },
+            }
+        )
+        return ctx
+
+
+class ProjectDocumentImportDetailView(DevflowDetailView):
+    model = dm.ProjectDocumentImport
+    template_name = "project/document_import/detail.html"
+    context_object_name = "import_obj"
+    section = "project"
+    page_title = "Détail document projet"
+
+    def get_queryset(self):
+        return (
+            dm.ProjectDocumentImport.objects.select_related(
+                "workspace",
+                "uploaded_by",
+                "project",
+                "project__workspace",
+                "project__team",
+                "project__owner",
+                "project__product_manager",
+                "project__category",
+            )
+            .order_by("-created_at", "-id")
+        )
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        import_obj = self.object
+
+        file_name = ""
+        file_url = ""
+        file_ext = ""
+
+        if import_obj.file:
+            file_name = import_obj.file.name.split("/")[-1]
+            file_url = import_obj.file.url
+            if "." in file_name:
+                file_ext = file_name.rsplit(".", 1)[-1].lower()
+
+        related_imports = (
+            dm.ProjectDocumentImport.objects.filter(project=import_obj.project)
+            .exclude(pk=import_obj.pk)
+            .select_related("uploaded_by", "project")
+            .order_by("-created_at")[:10]
+            if import_obj.project_id
+            else dm.ProjectDocumentImport.objects.none()
+        )
+
+        ctx.update(
+            {
+                "file_name": file_name,
+                "file_url": file_url,
+                "file_ext": file_ext,
+                "related_imports": related_imports,
+                "has_extracted_text": bool(import_obj.extracted_text),
+                "has_ai_payload": bool(import_obj.ai_payload),
+                "has_error": bool(import_obj.error_message),
+            }
+        )
+        return ctx
+
+
+class ProjectDocumentImportCreateView(DevflowCreateView):
+    model = dm.ProjectDocumentImport
+    form_class = ProjectDocumentImportForm
+    template_name = "project/document_import/form.html"
+    section = "project"
+    page_title = "Importer un document projet"
+
+    def get_project(self):
+        project_id = self.request.GET.get("project") or self.request.POST.get("project")
+        if not project_id:
+            return None
+        return get_object_or_404(
+            dm.Project.objects.select_related("workspace"),
+            pk=project_id,
+            is_archived=False,
+        )
+
+    def get_workspace(self):
+        project = self.get_project()
+        if project:
+            return project.workspace
+
+        workspace_id = self.request.GET.get("workspace") or self.request.POST.get("workspace")
+        if workspace_id:
+            return get_object_or_404(dm.Workspace, pk=workspace_id, is_archived=False)
+
+        return None
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["workspace"] = self.get_workspace()
+        kwargs["project"] = self.get_project()
+        return kwargs
+
+    def get_initial(self):
+        initial = super().get_initial()
+        project = self.get_project()
+
+        if project:
+            initial["project"] = project
+        initial.setdefault("status", dm.ProjectDocumentImport.ImportStatus.UPLOADED)
+        return initial
+
+    def form_valid(self, form):
+        project = form.cleaned_data.get("project") or self.get_project()
+        workspace = self.get_workspace()
+
+        if project and workspace is None:
+            workspace = project.workspace
+
+        if workspace is None:
+            form.add_error("project", "Le projet ou le workspace est requis pour l'import.")
+            return self.form_invalid(form)
+
+        obj = form.save(commit=False)
+        obj.workspace = workspace
+        obj.project = project
+        obj.uploaded_by = self.request.user if self.request.user.is_authenticated else None
+
+        if not obj.status:
+            obj.status = dm.ProjectDocumentImport.ImportStatus.UPLOADED
+
+        obj.save()
+        self.object = obj
+
+        messages.success(self.request, "Le document a été importé avec succès.")
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        if self.object.project_id:
+            return reverse("project_document_import_detail", kwargs={"pk": self.object.pk})
+        return reverse("project_document_import_list")
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(
+            {
+                "project_obj": self.get_project(),
+                "workspace_obj": self.get_workspace(),
+            }
+        )
+        return ctx
 # class ProjectUpdateView(DevflowUpdateView):
 #     model = dm.Project
 #     form_class = ProjectForm

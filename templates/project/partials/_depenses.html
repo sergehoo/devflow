@@ -1,0 +1,271 @@
+{% load humanize %}
+<div class="space-y-6">
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-[var(--text1)]">Actions rapides · Dépenses</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Enregistre et contrôle rapidement les charges projet</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="/project-expenses/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    Nouvelle dépense
+                </a>
+                <a href="{% url 'project_expense_list' %}?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Voir toutes les dépenses
+                </a>
+                <a href="{% url 'project_budget_export_excel' project_obj.pk %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Exporter
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Estimatif</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ expense_stats.estimated_expenses|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Engagé</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ expense_stats.committed_expenses|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Constaté</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ expense_stats.accrued_expenses|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Réel payé</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ expense_stats.paid_expenses|default:0|floatformat:0|intcomma }}</div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Coût RH</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ expense_stats.labor_cost|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Coût direct</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ expense_stats.direct_cost|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Autres coûts</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ expense_stats.other_cost|default:0|floatformat:0|intcomma }}</div>
+        </div>
+    </div>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Liste des dépenses</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Suivi des charges engagées sur le projet</p>
+            </div>
+
+            <a href="{% url 'project_budget_export_excel' project_obj.pk %}"
+               class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(124,111,247,0.34)]">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 16V4m0 12l-4-4m4 4l4-4M4 20h16"/>
+                </svg>
+                Export Excel
+            </a>
+        </div>
+
+        <div class="mt-5 overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-[var(--bg3)]/70">
+                    <tr class="border-b border-[var(--border)] text-left text-[11px] uppercase tracking-[0.14em] text-[var(--text3)]">
+                        <th class="px-4 py-4 font-semibold">Date</th>
+                        <th class="px-4 py-4 font-semibold">Libellé</th>
+                        <th class="px-4 py-4 font-semibold">Projet</th>
+                        <th class="px-4 py-4 font-semibold">Etat</th>
+                        <th class="px-4 py-4 font-semibold">Validation</th>
+                        <th class="px-4 py-4 text-right font-semibold">Montant</th>
+                        <th class="px-4 py-4 text-right font-semibold">Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for expense in all_expenses %}
+                    <tr class="border-b border-[var(--border)] align-top transition hover:bg-[var(--accent-bg)]/20">
+                        <td class="px-4 py-4 whitespace-nowrap text-[var(--text2)]">
+                            <div class="font-medium text-[var(--text1)]">
+                                {{ expense.expense_date|date:"d/m/Y"|default:"—" }}
+                            </div>
+                            {% if expense.created_at %}
+                            <div class="text-xs">
+                                {{ expense.created_at|date:"H:i" }}
+                            </div>
+                            {% endif %}
+                        </td>
+
+                        <td class="px-4 py-4 min-w-[240px]">
+                            <div class="flex items-start gap-3">
+                                <div class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent-bg)] text-[var(--accent)]">
+                                    <i class="fa-solid fa-file-invoice-dollar text-sm"></i>
+                                </div>
+
+                                <div class="min-w-0">
+                                    <div class="truncate font-semibold text-[var(--text1)]">
+                                        {{ expense.title }}
+                                    </div>
+
+                                    {% if expense.description %}
+                                    <div class="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text3)]">
+                                        {{ expense.description|striptags|truncatechars:90 }}
+                                    </div>
+                                    {% endif %}
+
+                                    <div class="mt-2 flex flex-wrap items-center gap-2">
+                                        {% if expense.reference %}
+                                        <span class="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg3)] px-2.5 py-1 text-[10px] font-medium text-[var(--text2)]">
+                                            Réf. {{ expense.reference }}
+                                        </span>
+                                        {% endif %}
+
+                                        {% if expense.is_direct_cost %}
+                                        <span class="inline-flex items-center rounded-full bg-[var(--cyan-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--cyan)]">
+                                            Coût direct
+                                        </span>
+                                        {% endif %}
+
+                                        {% if expense.is_labor_cost %}
+                                        <span class="inline-flex items-center rounded-full bg-[var(--amber-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--amber)]">
+                                            RH
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td class="px-4 py-4 whitespace-nowrap text-[var(--text2)]">
+                            <div class="font-medium text-[var(--text1)]">
+                                {{ expense.project.name|default:"—" }}
+                            </div>
+                            {% if expense.project.code %}
+                            <div class="mt-1 text-xs text-[var(--text3)]">
+                                {{ expense.project.code }}
+                            </div>
+                            {% endif %}
+                        </td>
+
+                        <td class="px-4 py-4 whitespace-nowrap">
+                            {% if expense.status == "PAID" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--green)]"></span>
+                                    {{ expense.get_status_display }}
+                                </span>
+                            {% elif expense.status == "COMMITTED" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--amber)]"></span>
+                                    {{ expense.get_status_display }}
+                                </span>
+                            {% elif expense.status == "ACCRUED" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--cyan-bg)] px-3 py-1 text-xs font-semibold text-[var(--cyan)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--cyan)]"></span>
+                                    {{ expense.get_status_display }}
+                                </span>
+                            {% elif expense.status == "REJECTED" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--red)]"></span>
+                                    {{ expense.get_status_display }}
+                                </span>
+                            {% elif expense.status == "VALIDATED" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--green)]"></span>
+                                    {{ expense.get_status_display }}
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--text3)]"></span>
+                                    {{ expense.get_status_display }}
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td class="px-4 py-4 whitespace-nowrap">
+                            {% if expense.approval_state == "APPROVED_L2" or expense.approval_state == "LEVEL2_APPROVED" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">
+                                    <i class="fa-solid fa-user-check"></i>
+                                    {{ expense.get_approval_state_display }}
+                                </span>
+                            {% elif expense.approval_state == "APPROVED_L1" or expense.approval_state == "LEVEL1_APPROVED" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--cyan-bg)] px-3 py-1 text-xs font-semibold text-[var(--cyan)]">
+                                    <i class="fa-solid fa-user-check"></i>
+                                    {{ expense.get_approval_state_display }}
+                                </span>
+                            {% elif expense.approval_state == "REJECTED" %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">
+                                    <i class="fa-solid fa-circle-xmark"></i>
+                                    {{ expense.get_approval_state_display }}
+                                </span>
+                            {% elif expense.get_approval_state_display %}
+                                <span class="inline-flex items-center gap-2 rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">
+                                    <i class="fa-solid fa-clock"></i>
+                                    {{ expense.get_approval_state_display }}
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">
+                                    —
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td class="px-4 py-4 text-right whitespace-nowrap">
+                            <div class="font-serif text-xl font-medium text-[var(--text1)]">
+                                {{ expense.amount|default:0|floatformat:0|intcomma }}
+                            </div>
+                            <div class="mt-1 text-xs text-[var(--text3)]">
+                                {{ expense.currency|default:"XOF" }}
+                            </div>
+                        </td>
+
+                        <td class="px-4 py-4">
+                            <div class="flex flex-col items-end gap-2">
+                                <div class="flex flex-wrap justify-end gap-2">
+                                    <a
+                                        href="{% url 'project_expense_detail' expense.pk %}"
+                                        class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:bg-[var(--bg4)] hover:text-[var(--text1)]"
+                                    >
+                                        <i class="fa-solid fa-eye"></i>
+                                        Voir
+                                    </a>
+
+                                    {% if expense.can_be_edited %}
+                                    <a
+                                        href="{% url 'project_expense_update' expense.pk %}"
+                                        class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:bg-[var(--bg4)] hover:text-[var(--text1)]"
+                                    >
+                                        <i class="fa-solid fa-pen"></i>
+                                        Modifier
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="px-4 py-12 text-center">
+                            <div class="mx-auto flex max-w-md flex-col items-center">
+                                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg3)] text-[var(--text3)]">
+                                    <i class="fa-solid fa-receipt text-lg"></i>
+                                </div>
+                                <div class="mt-4 text-sm font-semibold text-[var(--text1)]">
+                                    Aucune dépense trouvée
+                                </div>
+                                <div class="mt-1 text-sm text-[var(--text3)]">
+                                    Essaie de modifier les filtres ou ajoute une nouvelle dépense.
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

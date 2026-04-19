@@ -1,0 +1,179 @@
+{% load humanize %}
+<div class="space-y-6">
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-[var(--text1)]">Aperçu Budget estimatif</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Structure ton chiffrage et mets à jour les lignes d’estimation</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="/project-budgets/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    Créer / éditer budget
+                </a>
+                <a href="/project-estimate-lines/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Ajouter ligne d’estimation
+                </a>
+                <a href="{% url 'project_budget_export_excel' project_obj.pk %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--green-bg)] px-3.5 py-2 text-xs font-semibold text-[var(--green)] transition hover:opacity-95">
+                    Exporter chiffrage
+                </a>
+                {% if budget_obj %}
+                <a href="{% url 'project_budget_detail' budget_obj.pk %}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    Tout voir
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Coût MO estimé</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">
+                {% if budget_obj %}
+                    {{ budget_obj.estimated_labor_cost|default:0|floatformat:0|intcomma }}
+                {% else %}
+                    {{ estimate_stats.labor_cost|default:0|floatformat:0|intcomma }}
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Logiciels</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">
+                {% if budget_obj %}
+                    {{ budget_obj.estimated_software_cost|default:0|floatformat:0|intcomma }}
+                {% else %}
+                    0
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Infrastructure</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">
+                {% if budget_obj %}
+                    {{ budget_obj.estimated_infra_cost|default:0|floatformat:0|intcomma }}
+                {% else %}
+                    0
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Sous-traitance</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">
+                {% if budget_obj %}
+                    {{ budget_obj.estimated_subcontract_cost|default:0|floatformat:0|intcomma }}
+                {% else %}
+                    0
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Total estimé</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ financial_overview.estimated_cost|default:0|floatformat:0|intcomma }}</div>
+        </div>
+    </div>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Lignes détaillées d’estimation</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Base de chiffrage et export client</p>
+            </div>
+
+            <a href="{% url 'project_budget_export_excel' project_obj.pk %}"
+               class="inline-flex items-center gap-2 rounded-2xl bg-[var(--green)] px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:opacity-95">
+                Exporter pour facturation
+            </a>
+        </div>
+
+        <div class="mb-5 grid grid-cols-1 gap-4 md:grid-cols-4">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Majoration projet</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">
+                    {% if budget_obj %}
+                        {{ budget_obj.markup_percent|default:0 }}%
+                    {% else %}
+                        0%
+                    {% endif %}
+                </div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Vente projetée</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ estimate_stats.total_estimated_sale|default:0|floatformat:0|intcomma }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Revenu attendu</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ financial_overview.planned_revenue|default:0|floatformat:0|intcomma }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Marge estimée</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ estimate_stats.total_estimated_margin|default:0|floatformat:0|intcomma }}</div>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-[var(--border)] text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                        <th class="py-3 text-left">Libellé</th>
+                        <th class="py-3 text-left">Catégorie</th>
+                        <th class="py-3 text-left">Stage</th>
+                        <th class="py-3 text-left">Source</th>
+                        <th class="py-3 text-right">Quantité</th>
+                        <th class="py-3 text-right">Coût unitaire</th>
+                        <th class="py-3 text-right">Coût total</th>
+                        <th class="py-3 text-right">Vente totale</th>
+                        <th class="py-3 text-right">Marge</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in estimate_lines %}
+                    <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/40">
+                        <td class="py-3 font-medium text-[var(--text1)]">{{ line.label }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ line.category|default:"—" }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ line.get_budget_stage_display|default:line.budget_stage|default:"—" }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ line.get_source_type_display|default:line.source_type|default:"—" }}</td>
+                        <td class="py-3 text-right text-[var(--text2)]">{{ line.quantity|default:"0" }}</td>
+                        <td class="py-3 text-right text-[var(--text2)]">{{ line.cost_unit_amount|default:0|floatformat:0|intcomma }}</td>
+                        <td class="py-3 text-right font-medium text-[var(--text1)]">{{ line.cost_amount|default:0|floatformat:0|intcomma }}</td>
+                        <td class="py-3 text-right font-semibold text-[var(--text1)]">{{ line.sale_amount|default:0|floatformat:0|intcomma }}</td>
+                        <td class="py-3 text-right font-semibold text-[var(--green)]">
+                            {% if line.margin_amount is not None %}
+                                {{ line.margin_amount|floatformat:0|intcomma }}
+                            {% else %}
+                                0
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="py-8 text-center text-[var(--text3)]">Aucune ligne d’estimation.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Coût baseline</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ estimate_stats.baseline_cost|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Forecast</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ estimate_stats.forecast_cost|default:0|floatformat:0|intcomma }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">RAF</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ estimate_stats.raf_cost|default:0|floatformat:0|intcomma }}</div>
+        </div>
+    </div>
+</div>

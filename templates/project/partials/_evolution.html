@@ -1,0 +1,168 @@
+{% load humanize %}
+<div class="space-y-6">
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-[var(--text1)]">Actions rapides · Évolution</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Pilote les signaux d’évolution, incidents et collaboration</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="/activity-logs/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    Ajouter activité
+                </a>
+                <a href="/risks/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Nouveau risque
+                </a>
+                <a href="/ai-insights/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Nouvel insight IA
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Activités</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ evolution_summary.activities_count|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Pull requests</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ evolution_summary.pull_requests_count|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Risques</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ evolution_summary.risks_count|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Insights actifs</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ evolution_summary.insights_count|default:0 }}</div>
+        </div>
+    </div>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div>
+            <h3 class="text-lg font-semibold text-[var(--text1)]">Historique d’activité</h3>
+            <p class="mt-1 text-xs text-[var(--text3)]">Traçabilité et événements récents</p>
+        </div>
+
+        <div class="mt-5 space-y-4">
+            {% for log in activity_logs %}
+            <div class="flex gap-4 border-b border-[var(--border)] pb-4 last:border-b-0">
+                <div class="mt-1 h-3 w-3 shrink-0 rounded-full bg-[var(--accent)] shadow-[0_0_0_5px_var(--accent-bg)]"></div>
+                <div class="min-w-0 flex-1">
+                    <div class="font-medium text-[var(--text1)]">{{ log.title|default:"Activité projet" }}</div>
+                    {% if log.description %}
+                    <div class="mt-1 text-sm text-[var(--text2)]">{{ log.description }}</div>
+                    {% endif %}
+                    <div class="mt-1 text-xs text-[var(--text3)]">
+                        {{ log.created_at|date:"d/m/Y H:i" }}{% if log.actor %} · {{ log.actor }}{% endif %}
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                Aucune activité disponible.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Pull Requests</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Suivi de la collaboration technique</p>
+            </div>
+
+            <div class="mt-5 space-y-3">
+                {% for pr in all_pull_requests %}
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="font-semibold text-[var(--text1)]">{{ pr.title }}</div>
+                            <div class="mt-1 text-sm text-[var(--text2)]">
+                                {{ pr.repository|default:"Repository" }}{% if pr.branch_name %} · {{ pr.branch_name }}{% endif %}
+                            </div>
+                            {% if pr.author %}
+                            <div class="mt-1 text-xs text-[var(--text3)]">Auteur : {{ pr.author }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-[var(--text3)]">{{ pr.get_status_display|default:pr.status|default:"—" }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                    Aucune pull request.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Risques</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Menaces identifiées sur le delivery</p>
+            </div>
+
+            <div class="mt-5 space-y-3">
+                {% for risk in all_risks %}
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="font-semibold text-[var(--text1)]">{{ risk.title }}</div>
+                    <div class="mt-1 text-sm text-[var(--text2)]">
+                        {{ risk.get_severity_display|default:risk.severity|default:"—" }} · {{ risk.get_status_display|default:risk.status|default:"—" }}
+                    </div>
+                    {% if risk.owner %}
+                    <div class="mt-1 text-xs text-[var(--text3)]">Responsable : {{ risk.owner }}</div>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                    Aucun risque enregistré.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div>
+            <h3 class="text-lg font-semibold text-[var(--text1)]">Insights IA</h3>
+            <p class="mt-1 text-xs text-[var(--text3)]">Alertes, recommandations et signaux détectés</p>
+        </div>
+
+        <div class="mt-5 space-y-3">
+            {% for insight in all_ai_insights %}
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div class="min-w-0">
+                        <div class="font-semibold text-[var(--text1)]">{{ insight.title }}</div>
+                        <div class="mt-1 text-sm text-[var(--text2)]">{{ insight.summary }}</div>
+                        {% if insight.task %}
+                        <div class="mt-1 text-xs text-[var(--text3)]">Tâche liée : {{ insight.task }}</div>
+                        {% elif insight.sprint %}
+                        <div class="mt-1 text-xs text-[var(--text3)]">Sprint lié : {{ insight.sprint }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="inline-flex rounded-full bg-[var(--bg2)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">
+                            {{ insight.get_insight_type_display|default:insight.insight_type }}
+                        </span>
+                        <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">
+                            {{ insight.get_severity_display|default:insight.severity }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                Aucun insight IA.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>

@@ -1,0 +1,75 @@
+{% load humanize %}
+<section class="grid grid-cols-1 gap-4 xl:grid-cols-4">
+    <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+        <div class="flex items-center justify-between">
+            <div>
+                <div class="text-sm font-semibold text-[var(--text1)]">Pilotage</div>
+                <div class="mt-1 text-xs text-[var(--text3)]">Synthèse de cadrage</div>
+            </div>
+            <span class="inline-flex rounded-full bg-[var(--bg3)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text2)]">Projet</span>
+        </div>
+        <div class="mt-4 space-y-3 text-sm">
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Owner</span><span class="text-right font-medium text-[var(--text1)]">{{ project_obj.owner|default:"—" }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Product manager</span><span class="text-right font-medium text-[var(--text1)]">{{ project_obj.product_manager|default:"—" }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Workspace</span><span class="text-right font-medium text-[var(--text1)]">{{ workspace_obj.name|default:"—" }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Catégorie</span><span class="text-right font-medium text-[var(--text1)]">{{ project_obj.category.name|default:"—" }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Échéance cible</span><span class="text-right font-medium text-[var(--text1)]">{{ project_obj.target_date|date:"d/m/Y"|default:"—" }}</span></div>
+        </div>
+    </div>
+
+    <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+        <div class="flex items-center justify-between">
+            <div>
+                <div class="text-sm font-semibold text-[var(--text1)]">Charge</div>
+                <div class="mt-1 text-xs text-[var(--text3)]">Suivi exécution</div>
+            </div>
+            <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--amber)]">Live</span>
+        </div>
+        <div class="mt-4 space-y-3 text-sm">
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">À faire</span><span class="font-medium text-[var(--text1)]">{{ task_stats.todo|default:0 }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">En cours</span><span class="font-medium text-[var(--text1)]">{{ task_stats.in_progress|default:0 }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Bloquées</span><span class="font-medium text-[var(--text1)]">{{ task_stats.blocked|default:0 }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">En retard</span><span class="font-medium text-[var(--text1)]">{{ task_stats.overdue|default:0 }}</span></div>
+        </div>
+    </div>
+
+    <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+        <div class="flex items-center justify-between">
+            <div>
+                <div class="text-sm font-semibold text-[var(--text1)]">IA & Documents</div>
+                <div class="mt-1 text-xs text-[var(--text3)]">Imports et pièces projet</div>
+            </div>
+            <span class="inline-flex rounded-full bg-[var(--cyan-bg)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--cyan)]">IA</span>
+        </div>
+        <div class="mt-4 space-y-3 text-sm">
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Imports</span><span class="font-medium text-[var(--text1)]">{{ import_summary.count|default:0 }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Terminés</span><span class="font-medium text-[var(--text1)]">{{ import_summary.completed|default:0 }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Insights IA</span><span class="font-medium text-[var(--text1)]">{{ ai_summary.total|default:0 }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Critiques</span><span class="font-medium text-[var(--red)]">{{ ai_summary.critical|default:0 }}</span></div>
+        </div>
+    </div>
+
+    <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+        <div class="flex items-center justify-between">
+            <div>
+                <div class="text-sm font-semibold text-[var(--text1)]">Finance</div>
+                <div class="mt-1 text-xs text-[var(--text3)]">Lecture rapide</div>
+            </div>
+            <span class="inline-flex rounded-full bg-[var(--green-bg)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--green)]">Budget</span>
+        </div>
+
+        {% if can_view_financials %}
+        <div class="mt-4 space-y-3 text-sm">
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Budget approuvé</span><span class="font-medium text-[var(--text1)]">{{ financial_overview.approved_budget|default:0|floatformat:0|intcomma }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Coût réel</span><span class="font-medium text-[var(--text1)]">{{ financial_overview.actual_cost|default:0|floatformat:0|intcomma }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Marge prévisionnelle</span><span class="font-medium text-[var(--text1)]">{{ financial_overview.forecast_margin|default:0|floatformat:0|intcomma }}</span></div>
+        </div>
+        {% else %}
+        <div class="mt-4 space-y-3 text-sm">
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Budget approuvé</span><span class="font-medium text-[var(--text1)]">••••</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Coût réel</span><span class="font-medium text-[var(--text1)]">••••</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-[var(--text3)]">Marge prévisionnelle</span><span class="font-medium text-[var(--text1)]">••••</span></div>
+        </div>
+        {% endif %}
+    </div>
+</section>

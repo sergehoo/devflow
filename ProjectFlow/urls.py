@@ -61,7 +61,8 @@ from project.views import HomeView, DashboardView, WorkspaceListView, WorkspaceC
     TeamListView, WorkspaceArchiveView, WorkspaceDeleteView, ProjectBudgetExportExcelView, sprint_status_update, \
     task_status_update, roadmap_item_shift_dates, AInsightDashboardView, TaskToggleFlagView, TaskQuickCommentView, \
     TaskQuickStatusView, TaskQuickAssignView, ProfileDetailView, ProfileUpdateView, ProfilePasswordChangeView, \
-    TaskQuickAttachmentView, TaskKanbanMoveView
+    TaskQuickAttachmentView, TaskKanbanMoveView, ProjectDocumentImportListView, ProjectDocumentImportCreateView, \
+    ProjectDocumentImportDetailView
 from project.views_budget import ProjectBudgetCreateView, ProjectBudgetDetailView, ProjectEstimateLineCreateView, \
     ProjectRevenueCreateView, GenerateEstimateLinesFromTasksView, ProjectExpenseCreateView, ProjectBudgetUpdateView, \
     RecalculateProjectBudgetView, ProjectExpenseRejectView, ProjectExpenseApproveLevel2View, \
@@ -286,7 +287,11 @@ urlpatterns = [
     path("project-labels/<int:pk>/", ProjectLabelDetailView.as_view(), name="project_label_detail"),
     path("project-labels/<int:pk>/update/", ProjectLabelUpdateView.as_view(), name="project_label_update"),
     path("project-labels/<int:pk>/delete/", ProjectLabelDeleteView.as_view(), name="project_label_delete"),
+    path("project-imports/", ProjectDocumentImportListView.as_view(), name="project_document_import_list"),
 
+    path("project-imports/create/", ProjectDocumentImportCreateView.as_view(), name="project_document_import_create"),
+
+    path("project-imports/<int:pk>/", ProjectDocumentImportDetailView.as_view(), name="project_document_import_detail"),
     path("task-dependencies/", TaskDependencyListView.as_view(), name="task_dependency_list"),
     path("task-dependencies/create/", TaskDependencyCreateView.as_view(), name="task_dependency_create"),
     path("task-dependencies/<int:pk>/", TaskDependencyDetailView.as_view(), name="task_dependency_detail"),

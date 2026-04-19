@@ -1,0 +1,164 @@
+{% load humanize %}
+
+<div class="space-y-6">
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-[var(--text1)]">Actions rapides · Tâches</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Accède rapidement à la création et au pilotage du backlog</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="/tasks/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    Nouvelle tâche
+                </a>
+                <a href="/tasks/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Voir toutes les tâches
+                </a>
+                {% if board_columns %}
+                <a href="/boards/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Voir board
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Total</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ task_stats.total|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">En retard</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ task_stats.overdue|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Charge estimée</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ task_stats.total_estimate_hours|default:0|floatformat:0 }}</div>
+            <div class="mt-1 text-xs text-[var(--text3)]">heures</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Temps passé</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ task_stats.total_spent_hours|default:0|floatformat:0 }}</div>
+            <div class="mt-1 text-xs text-[var(--text3)]">heures</div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">À faire</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ task_stats.todo|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">En cours</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ task_stats.in_progress|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Review</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ task_stats.review|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Bloquées</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ task_stats.blocked|default:0 }}</div>
+        </div>
+    </div>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div>
+            <h3 class="text-lg font-semibold text-[var(--text1)]">Liste des tâches</h3>
+            <p class="mt-1 text-xs text-[var(--text3)]">Backlog détaillé du projet</p>
+        </div>
+
+        <div class="mt-5 overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-[var(--border)] text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                        <th class="py-3 text-left">Tâche</th>
+                        <th class="py-3 text-left">Statut</th>
+                        <th class="py-3 text-left">Priorité</th>
+                        <th class="py-3 text-left">Assigné à</th>
+                        <th class="py-3 text-right">Estimation</th>
+                        <th class="py-3 text-right">Passé</th>
+                        <th class="py-3 text-left">Échéance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in all_tasks %}
+                    <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/40">
+                        <td class="py-3">
+                            <div class="font-medium text-[var(--text1)]">{{ task.title }}</div>
+                            {% if task.backlog_item %}
+                            <div class="mt-1 text-xs text-[var(--text3)]">Backlog : {{ task.backlog_item }}</div>
+                            {% endif %}
+                            {% if task.parent %}
+                            <div class="mt-1 text-xs text-[var(--text3)]">Parent : {{ task.parent }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 text-[var(--text2)]">{{ task.get_status_display|default:task.status }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ task.get_priority_display|default:task.priority }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ task.assignee|default:"—" }}</td>
+                        <td class="py-3 text-right text-[var(--text2)]">{{ task.estimate_hours|default:"0" }} h</td>
+                        <td class="py-3 text-right text-[var(--text2)]">{{ task.spent_hours|default:"0" }} h</td>
+                        <td class="py-3 text-[var(--text2)]">{{ task.due_date|date:"d/m/Y"|default:"—" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="py-8 text-center text-[var(--text3)]">Aucune tâche pour ce projet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% if board_columns %}
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div>
+            <h3 class="text-lg font-semibold text-[var(--text1)]">Board Kanban</h3>
+            <p class="mt-1 text-xs text-[var(--text3)]">Vue opérationnelle par colonnes</p>
+        </div>
+
+        <div class="mt-5">
+            {% include "partials/_kanban_board.html" %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Dépendances entre tâches</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Vue des relations critiques</p>
+            </div>
+            <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                {{ dependency_summary.count|default:0 }}
+            </span>
+        </div>
+
+        <div class="mt-5 space-y-3">
+            {% for dep in task_dependencies|slice:":12" %}
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div class="min-w-0">
+                        <div class="font-medium text-[var(--text1)]">{{ dep.from_task.title }}</div>
+                        <div class="mt-1 text-sm text-[var(--text2)]">
+                            {{ dep.get_dependency_type_display }} →
+                            {{ dep.to_task.title }}
+                        </div>
+                    </div>
+                    <span class="inline-flex rounded-full bg-[var(--bg2)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text2)]">
+                        {{ dep.get_dependency_type_display }}
+                    </span>
+                </div>
+            </div>
+            {% empty %}
+            <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                Aucune dépendance enregistrée.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>

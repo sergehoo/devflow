@@ -1,0 +1,376 @@
+{% load humanize %}
+<div class="space-y-6">
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-[var(--text1)]">
+                    Actions rapides · Planification
+                </h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">
+                    Crée, organise et pilote rapidement la feuille de route du projet
+                </p>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                <a href="/roadmaps/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center gap-2 rounded-xl bg-[var(--cyan-bg)] px-3.5 py-2 text-xs font-semibold text-[var(--cyan)] transition hover:opacity-95">
+                    <i class="fa-solid fa-road"></i>
+                    Nouvelle roadmap
+                </a>
+
+                <a href="/roadmap-items/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-timeline"></i>
+                    Élément roadmap
+                </a>
+
+                <a href="/sprints/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    <i class="fa-solid fa-flag-checkered"></i>
+                    Sprint
+                </a>
+
+                <a href="/milestones/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-flag"></i>
+                    Jalon
+                </a>
+
+                <a href="/releases/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-rocket"></i>
+                    Release
+                </a>
+
+                <a href="/backlog-items/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-list"></i>
+                    Backlog
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-semibold text-[var(--text1)]">Jalons</h3>
+                    <p class="mt-1 text-xs text-[var(--text3)]">Étapes critiques du projet</p>
+                </div>
+                <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                    {{ planning_stats.milestones_count|default:0 }}
+                </span>
+            </div>
+
+            <div class="mt-5 space-y-3">
+                {% for milestone in milestones %}
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="truncate font-semibold text-[var(--text1)]">
+                                <a href="{% url 'milestone_detail' milestone.pk %}">{{ milestone.name }}</a>
+                            </div>
+                            <div class="mt-1 text-sm text-[var(--text2)]">
+                                Échéance : {{ milestone.due_date|date:"d/m/Y"|default:"—" }}
+                            </div>
+                            {% if milestone.owner %}
+                            <div class="mt-1 text-xs text-[var(--text3)]">Responsable : {{ milestone.owner }}</div>
+                            {% endif %}
+                        </div>
+
+                        <span class="inline-flex rounded-full bg-[var(--bg2)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text2)]">
+                            {{ milestone.get_status_display|default:milestone.status }}
+                        </span>
+                    </div>
+
+                    <div class="mt-3">
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-[var(--text3)]">Progression</span>
+                            <span class="font-medium text-[var(--text1)]">{{ milestone.progress_percent|default:0 }}%</span>
+                        </div>
+                        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--bg4)]">
+                            <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))]"
+                                 style="width: {{ milestone.progress_percent|default:0 }}%"></div>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                    Aucun jalon.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-semibold text-[var(--text1)]">Sprints</h3>
+                    <p class="mt-1 text-xs text-[var(--text3)]">Cadence de production</p>
+                </div>
+                <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                    {{ planning_stats.sprints_count|default:0 }}
+                </span>
+            </div>
+
+            <div class="mt-5 space-y-3">
+                {% for sprint in sprints %}
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="truncate font-semibold text-[var(--text1)]">
+                                <a href="{% url 'sprint_detail' sprint.pk %}">{{ sprint.name }}</a>
+                            </div>
+                            <div class="mt-1 text-sm text-[var(--text2)]">
+                                {{ sprint.start_date|date:"d/m/Y"|default:"—" }} - {{ sprint.end_date|date:"d/m/Y"|default:"—" }}
+                            </div>
+                        </div>
+                        <span class="inline-flex rounded-full bg-[var(--bg2)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text2)]">
+                            {{ sprint.get_status_display|default:sprint.status }}
+                        </span>
+                    </div>
+
+                    <div class="mt-3 grid grid-cols-3 gap-3 text-center">
+                        <div class="rounded-xl bg-[var(--bg2)] p-2">
+                            <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Tâches</div>
+                            <div class="mt-1 font-semibold text-[var(--text1)]">{{ sprint.tasks_count|default:0 }}</div>
+                        </div>
+                        <div class="rounded-xl bg-[var(--bg2)] p-2">
+                            <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Backlog</div>
+                            <div class="mt-1 font-semibold text-[var(--text1)]">{{ sprint.backlog_count|default:0 }}</div>
+                        </div>
+                        <div class="rounded-xl bg-[var(--bg2)] p-2">
+                            <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Metrics</div>
+                            <div class="mt-1 font-semibold text-[var(--text1)]">{{ sprint.metrics_count|default:0 }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                    Aucun sprint.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-semibold text-[var(--text1)]">Releases</h3>
+                    <p class="mt-1 text-xs text-[var(--text3)]">Versions livrées</p>
+                </div>
+                <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                    {{ planning_stats.releases_count|default:0 }}
+                </span>
+            </div>
+
+            <div class="mt-5 space-y-3">
+                {% for release in releases %}
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="truncate font-semibold text-[var(--text1)]">
+                                <a href="{% url 'release_detail' release.pk %}">{{ release.name }}</a>
+                            </div>
+                            <div class="mt-1 text-sm text-[var(--text2)]">
+                                Date : {{ release.release_date|date:"d/m/Y"|default:"—" }}
+                            </div>
+                            {% if release.tag %}
+                            <div class="mt-1 text-xs text-[var(--text3)]">Tag : {{ release.tag }}</div>
+                            {% endif %}
+                        </div>
+                        <span class="inline-flex rounded-full bg-[var(--bg2)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text2)]">
+                            {{ release.get_status_display|default:release.status }}
+                        </span>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                    Aucune release.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Roadmap visuelle</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">
+                    Vue chronologique des grands éléments de livraison
+                </p>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                <span class="inline-flex items-center rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                    {{ planning_stats.roadmap_items_count|default:0 }} élément(s)
+                </span>
+            </div>
+        </div>
+
+        <div class="mt-6 space-y-4">
+            {% for ritem in roadmap_items %}
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <div class="h-3 w-3 rounded-full" style="background-color: {{ ritem.color|default:'#F4722B' }}"></div>
+                            <div class="truncate font-semibold text-[var(--text1)]">{{ ritem.title }}</div>
+
+                            <span class="inline-flex rounded-full bg-[var(--bg2)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text2)]">
+                                {{ ritem.get_status_display|default:ritem.status }}
+                            </span>
+
+                            {% if ritem.roadmap %}
+                            <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-2.5 py-1 text-[10px] font-semibold text-[var(--accent)]">
+                                {{ ritem.roadmap.name }}
+                            </span>
+                            {% endif %}
+                        </div>
+
+                        <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-[var(--text3)]">
+                            <span>{{ ritem.start_date|date:"d/m/Y"|default:"—" }}</span>
+                            <span>→</span>
+                            <span>{{ ritem.end_date|date:"d/m/Y"|default:"—" }}</span>
+                            <span>•</span>
+                            <span>{{ ritem.duration_days|default:0 }} jour(s)</span>
+                            {% if ritem.milestone %}
+                            <span>•</span>
+                            <span>Jalon : {{ ritem.milestone.name }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="w-full xl:max-w-xl">
+                        <div class="h-3 overflow-hidden rounded-full bg-[var(--bg4)]">
+                            <div class="h-full rounded-full"
+                                 style="width: {% if ritem.status == 'DONE' %}100{% elif ritem.status == 'IN_PROGRESS' %}65{% elif ritem.status == 'AT_RISK' %}85{% else %}25{% endif %}%; background-color: {{ ritem.color|default:'#F4722B' }};">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-10 text-center text-sm text-[var(--text3)]">
+                Aucun élément de roadmap.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="mb-5">
+            <h3 class="text-lg font-semibold text-[var(--text1)]">Backlog</h3>
+            <p class="mt-1 text-xs text-[var(--text3)]">Éléments de planification et cadrage</p>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-[var(--border)] text-left text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                        <th class="py-3">Titre</th>
+                        <th class="py-3">Type</th>
+                        <th class="py-3">Sprint</th>
+                        <th class="py-3 text-right">Story points</th>
+                        <th class="py-3">Reporter</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for backlog in all_backlog_items %}
+                    <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/30">
+                        <td class="py-3 font-medium text-[var(--text1)]">{{ backlog.title }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ backlog.get_item_type_display|default:backlog.item_type }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ backlog.sprint|default:"—" }}</td>
+                        <td class="py-3 text-right text-[var(--text2)]">{{ backlog.story_points|default:0 }}</td>
+                        <td class="py-3 text-[var(--text2)]">{{ backlog.reporter|default:"—" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="py-8 text-center text-[var(--text3)]">Aucun backlog item.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Dépendances</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Liens critiques entre tâches</p>
+            </div>
+            <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                {{ dependency_summary.count|default:0 }}
+            </span>
+        </div>
+
+        <div class="mt-5 space-y-3">
+            {% for dep in task_dependencies|slice:":12" %}
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div class="min-w-0">
+                        <div class="font-medium text-[var(--text1)]">{{ dep.from_task.title }}</div>
+                        <div class="mt-1 text-sm text-[var(--text2)]">
+                            {{ dep.get_dependency_type_display }} →
+                            {{ dep.to_task.title }}
+                        </div>
+                    </div>
+                    <span class="inline-flex rounded-full bg-[var(--bg2)] px-2.5 py-1 text-[10px] font-semibold text-[var(--text2)]">
+                        {{ dep.get_dependency_type_display }}
+                    </span>
+                </div>
+            </div>
+            {% empty %}
+            <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                Aucune dépendance enregistrée.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Alertes IA planning</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Détection automatique des signaux faibles</p>
+            </div>
+        </div>
+
+        <div class="mt-5 space-y-3">
+            {% for insight in planning_ai_insights %}
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="font-semibold text-[var(--text1)]">{{ insight.title }}</div>
+                        <div class="mt-1 text-sm text-[var(--text2)]">{{ insight.summary }}</div>
+                        {% if insight.recommendation %}
+                        <div class="mt-2 rounded-xl bg-[var(--bg2)] p-3 text-xs text-[var(--text2)]">
+                            <span class="font-semibold text-[var(--text1)]">Reco :</span>
+                            {{ insight.recommendation }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold
+                        {% if insight.severity == 'CRITICAL' or insight.severity == 'HIGH' %}
+                            bg-[var(--red-bg)] text-[var(--red)]
+                        {% elif insight.severity == 'MEDIUM' %}
+                            bg-[var(--amber-bg)] text-[var(--amber)]
+                        {% else %}
+                            bg-[var(--cyan-bg)] text-[var(--cyan)]
+                        {% endif %}">
+                        {{ insight.get_severity_display }}
+                    </span>
+                </div>
+            </div>
+            {% empty %}
+            <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                Aucune alerte IA active.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>

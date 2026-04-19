@@ -1,0 +1,157 @@
+{% load humanize %}
+
+<div class="space-y-6">
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-[var(--text1)]">Actions rapides · Équipes</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Affecte rapidement les ressources au projet</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="/project-members/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    Ajouter un membre
+                </a>
+                <a href="{% url 'team_list' %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Voir les équipes
+                </a>
+                <a href="{% url 'project_update' project_obj.pk %}"
+                   class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Modifier les affectations
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Membres</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ members.count|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Équipes liées</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">{{ team_summary|length|default:0 }}</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Membres principaux</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">
+                {% with primary_total=0 %}
+                    {% for row in team_summary %}
+                        {{ row.primary_count|default:0 }}
+                    {% empty %}
+                        0
+                    {% endfor %}
+                {% endwith %}
+            </div>
+            <div class="mt-1 text-xs text-[var(--text3)]">Lecture par équipe ci-dessous</div>
+        </div>
+        <div class="rounded-[22px] border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft">
+            <div class="text-sm text-[var(--text3)]">Allocation moyenne</div>
+            <div class="mt-2 font-serif text-3xl text-[var(--text1)]">
+                {% if members %}
+                    —
+                {% else %}
+                    0%
+                {% endif %}
+            </div>
+            <div class="mt-1 text-xs text-[var(--text3)]">Selon les affectations projet</div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.5fr]">
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Synthèse équipes</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Répartition par structure de travail</p>
+            </div>
+
+            <div class="mt-5 space-y-3">
+                {% for row in team_summary %}
+                <div class="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                    <div>
+                        <div class="font-semibold text-[var(--text1)]">{{ row.team__name|default:"Sans équipe" }}</div>
+                        <div class="mt-1 text-xs text-[var(--text3)]">Membres affectés</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-serif text-3xl text-[var(--text1)]">{{ row.members_count }}</div>
+                        <div class="text-xs text-[var(--text3)]">{{ row.primary_count|default:0 }} principal(aux)</div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
+                    Aucune équipe liée.
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Membres projet</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Affectations, rôles et allocation</p>
+            </div>
+
+            <div class="mt-5 overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-[var(--border)] text-[11px] uppercase tracking-wide text-[var(--text3)]">
+                            <th class="py-3 text-left">Utilisateur</th>
+                            <th class="py-3 text-left">Équipe</th>
+                            <th class="py-3 text-left">Rôle</th>
+                            <th class="py-3 text-right">Allocation</th>
+                            <th class="py-3 text-left">Principal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for member in members %}
+                        <tr class="border-b border-[var(--border)] transition hover:bg-[var(--accent-bg)]/40">
+                            <td class="py-3 font-medium text-[var(--text1)]">{{ member.user }}</td>
+                            <td class="py-3 text-[var(--text2)]">{{ member.team|default:"—" }}</td>
+                            <td class="py-3 text-[var(--text2)]">{{ member.role|default:"—" }}</td>
+                            <td class="py-3 text-right font-medium text-[var(--text1)]">{{ member.allocation_percent|default:0 }}%</td>
+                            <td class="py-3">
+                                {% if member.is_primary %}
+                                <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">Oui</span>
+                                {% else %}
+                                <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">Non</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="py-8 text-center text-[var(--text3)]">Aucun membre affecté.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div>
+            <h3 class="text-lg font-semibold text-[var(--text1)]">Temps saisi</h3>
+            <p class="mt-1 text-xs text-[var(--text3)]">Lecture synthétique des feuilles de temps projet</p>
+        </div>
+
+        <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-4">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Entrées</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ timesheet_stats.total_entries|default:0 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Heures totales</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ timesheet_stats.total_hours|default:0|floatformat:2 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Heures approuvées</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ timesheet_stats.approved_hours|default:0|floatformat:2 }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-sm text-[var(--text3)]">Heures soumises</div>
+                <div class="mt-2 font-serif text-2xl text-[var(--text1)]">{{ timesheet_stats.submitted_hours|default:0|floatformat:2 }}</div>
+            </div>
+        </div>
+    </section>
+</div>

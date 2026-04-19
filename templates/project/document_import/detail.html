@@ -1,0 +1,249 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}DevFlow — Détail document{% endblock %}
+{% block page_title %}Document projet{% endblock %}
+{% block breadcrumb %}Projet · Documents · Détail{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+        <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.06)_45%,transparent_100%)]"></div>
+        <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
+
+        <div class="relative p-6 lg:p-7">
+            <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-4">
+                        <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--accent),var(--accent2))] text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)]">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 7V5a2 2 0 012-2h6l4 4v12a2 2 0 01-2 2H9a2 2 0 01-2-2V7z"/>
+                            </svg>
+                        </div>
+
+                        <div class="min-w-0">
+                            <h1 class="truncate font-serif text-3xl font-medium tracking-[-0.03em] text-[var(--text1)] lg:text-4xl">
+                                {{ file_name|default:"Document projet" }}
+                            </h1>
+
+                            <div class="mt-2 flex flex-wrap items-center gap-2">
+                                {% if import_obj.status == "COMPLETED" %}
+                                <span class="inline-flex items-center gap-1 rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">
+                                    {{ import_obj.get_status_display }}
+                                </span>
+                                {% elif import_obj.status == "PROCESSING" %}
+                                <span class="inline-flex items-center gap-1 rounded-full bg-[var(--cyan-bg)] px-3 py-1 text-xs font-semibold text-[var(--cyan)]">
+                                    {{ import_obj.get_status_display }}
+                                </span>
+                                {% elif import_obj.status == "FAILED" %}
+                                <span class="inline-flex items-center gap-1 rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">
+                                    {{ import_obj.get_status_display }}
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center gap-1 rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">
+                                    {{ import_obj.get_status_display }}
+                                </span>
+                                {% endif %}
+
+                                {% if import_obj.project %}
+                                <span class="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg3)] px-3 py-1 text-xs font-medium text-[var(--text2)]">
+                                    {{ import_obj.project.name }}
+                                </span>
+                                {% endif %}
+
+                                {% if file_ext %}
+                                <span class="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg3)] px-3 py-1 text-xs font-medium uppercase text-[var(--text2)]">
+                                    {{ file_ext }}
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex shrink-0 flex-wrap gap-2">
+                    {% if file_url %}
+                    <a href="{{ file_url }}" target="_blank"
+                       class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)] transition hover:-translate-y-0.5">
+                        Ouvrir le fichier
+                    </a>
+                    {% endif %}
+                    <a href="{% url 'project_document_import_list' %}"
+                       class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                        Retour à la liste
+                    </a>
+                </div>
+            </div>
+
+            <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Projet</div>
+                    <div class="mt-2 text-sm font-semibold text-[var(--text1)]">{{ import_obj.project.name|default:"—" }}</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Workspace</div>
+                    <div class="mt-2 text-sm font-semibold text-[var(--text1)]">{{ import_obj.workspace.name|default:"—" }}</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Uploadé par</div>
+                    <div class="mt-2 text-sm font-semibold text-[var(--text1)]">{{ import_obj.uploaded_by|default:"—" }}</div>
+                </div>
+
+                <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)]/80 p-4">
+                    <div class="text-[11px] font-medium uppercase tracking-wide text-[var(--text3)]">Date</div>
+                    <div class="mt-2 text-sm font-semibold text-[var(--text1)]">{{ import_obj.created_at|date:"d/m/Y H:i" }}</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft overflow-hidden">
+            <div class="border-b border-[var(--border)] px-6 py-5">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Aperçu du document</h2>
+                <p class="mt-1 text-sm text-[var(--text3)]">
+                    Lecture rapide du contenu et des métadonnées associées.
+                </p>
+            </div>
+
+            <div class="p-6">
+                {% if file_url %}
+                    {% if file_ext == "pdf" %}
+                        <iframe src="{{ file_url }}"
+                                class="h-[720px] w-full rounded-2xl border border-[var(--border)] bg-white"
+                                title="{{ file_name }}"></iframe>
+                    {% elif file_ext == "png" or file_ext == "jpg" or file_ext == "jpeg" or file_ext == "gif" or file_ext == "webp" or file_ext == "svg" %}
+                        <div class="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                            <img src="{{ file_url }}" alt="{{ file_name }}" class="mx-auto max-h-[720px] rounded-xl object-contain">
+                        </div>
+                    {% else %}
+                        <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-6 py-14 text-center">
+                            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg2)] text-[var(--text3)]">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 7V5a2 2 0 012-2h6l4 4v12a2 2 0 01-2 2H9a2 2 0 01-2-2V7z"/>
+                                </svg>
+                            </div>
+                            <div class="mt-4 text-sm font-semibold text-[var(--text1)]">
+                                Prévisualisation intégrée indisponible
+                            </div>
+                            <div class="mt-1 text-sm text-[var(--text3)]">
+                                Ouvre ou télécharge le fichier pour le consulter.
+                            </div>
+                            <div class="mt-5">
+                                <a href="{{ file_url }}" target="_blank"
+                                   class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
+                                    Ouvrir le document
+                                </a>
+                            </div>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-6 py-14 text-center text-sm text-[var(--text3)]">
+                        Aucun fichier disponible.
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <div class="space-y-6">
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Informations</h2>
+
+                <div class="mt-5 space-y-4 text-sm">
+                    <div class="flex items-start justify-between gap-4">
+                        <span class="text-[var(--text3)]">Nom du fichier</span>
+                        <span class="text-right font-medium text-[var(--text1)]">{{ file_name|default:"—" }}</span>
+                    </div>
+
+                    <div class="flex items-start justify-between gap-4">
+                        <span class="text-[var(--text3)]">Type</span>
+                        <span class="text-right font-medium uppercase text-[var(--text1)]">{{ file_ext|default:"—" }}</span>
+                    </div>
+
+                    <div class="flex items-start justify-between gap-4">
+                        <span class="text-[var(--text3)]">Projet</span>
+                        <span class="text-right font-medium text-[var(--text1)]">{{ import_obj.project|default:"—" }}</span>
+                    </div>
+
+                    <div class="flex items-start justify-between gap-4">
+                        <span class="text-[var(--text3)]">Workspace</span>
+                        <span class="text-right font-medium text-[var(--text1)]">{{ import_obj.workspace|default:"—" }}</span>
+                    </div>
+
+                    <div class="flex items-start justify-between gap-4">
+                        <span class="text-[var(--text3)]">Uploadé par</span>
+                        <span class="text-right font-medium text-[var(--text1)]">{{ import_obj.uploaded_by|default:"—" }}</span>
+                    </div>
+
+                    <div class="flex items-start justify-between gap-4">
+                        <span class="text-[var(--text3)]">Créé le</span>
+                        <span class="text-right font-medium text-[var(--text1)]">{{ import_obj.created_at|date:"d/m/Y H:i" }}</span>
+                    </div>
+                </div>
+            </section>
+
+            {% if has_error %}
+            <section class="rounded-[24px] border border-[var(--red-bg)] bg-[var(--red-bg)]/40 p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--red)]">Erreur détectée</h2>
+                <div class="mt-3 rounded-2xl bg-[var(--bg2)] p-4 text-sm leading-6 text-[var(--text2)]">
+                    {{ import_obj.error_message|linebreaksbr }}
+                </div>
+            </section>
+            {% endif %}
+
+            {% if related_imports %}
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Imports liés</h2>
+                <div class="mt-5 space-y-3">
+                    {% for item in related_imports %}
+                    <a href="{% url 'project_document_import_detail' item.pk %}"
+                       class="block rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4 transition hover:border-[var(--accent)] hover:bg-[var(--accent-bg)]/20">
+                        <div class="font-medium text-[var(--text1)]">
+                            {{ item.file.name|cut:"devflow/project_imports/" }}
+                        </div>
+                        <div class="mt-1 text-xs text-[var(--text3)]">
+                            {{ item.get_status_display }} · {{ item.created_at|date:"d/m/Y H:i" }}
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if has_extracted_text %}
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft overflow-hidden">
+        <div class="border-b border-[var(--border)] px-6 py-5">
+            <h2 class="text-lg font-semibold text-[var(--text1)]">Texte extrait</h2>
+            <p class="mt-1 text-sm text-[var(--text3)]">
+                Résultat brut de l’extraction documentaire.
+            </p>
+        </div>
+
+        <div class="p-6">
+            <div class="max-h-[520px] overflow-auto rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-5 text-sm leading-6 text-[var(--text2)] whitespace-pre-wrap">
+                {{ import_obj.extracted_text }}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if has_ai_payload %}
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft overflow-hidden">
+        <div class="border-b border-[var(--border)] px-6 py-5">
+            <h2 class="text-lg font-semibold text-[var(--text1)]">Payload IA</h2>
+            <p class="mt-1 text-sm text-[var(--text3)]">
+                Données structurées générées à partir du document.
+            </p>
+        </div>
+
+        <div class="p-6">
+            <pre class="max-h-[520px] overflow-auto rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-5 text-xs leading-6 text-[var(--text2)]">{{ import_obj.ai_payload }}</pre>
+        </div>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}
