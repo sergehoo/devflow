@@ -2685,7 +2685,7 @@ class ProjectCreateView(DevflowCreateView):
                     dm.ProjectBudget.objects.get_or_create(
                         project=obj,
                         defaults={
-                            "status": dm.ProjectBudget.status.DRAFT,
+                            "status": dm.ProjectBudget.Status.DRAFT,
                             "currency": "XOF",
                         },
                     )
