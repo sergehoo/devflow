@@ -1461,9 +1461,6 @@ class RoadmapForm(BaseStyledModelForm):
         }
 
     def __init__(self, *args, **kwargs):
-        self.current_workspace = kwargs.pop("current_workspace", None)
-        self.allowed_workspaces = kwargs.pop("allowed_workspaces", None)
-        self.request = kwargs.pop("request", None)
         super().__init__(*args, **kwargs)
 
         if "workspace" in self.fields:
@@ -1471,7 +1468,8 @@ class RoadmapForm(BaseStyledModelForm):
                 self.fields["workspace"].queryset = self.allowed_workspaces
 
             if self.current_workspace:
-                self.fields["workspace"].initial = self.current_workspace
+                self.fields["workspace"].initial = self.current_workspace.pk
+                self.initial.setdefault("workspace", self.current_workspace.pk)
                 self.fields["workspace"].required = False
 
                 if self.allowed_workspaces is not None and self.allowed_workspaces.count() == 1:
@@ -1487,6 +1485,17 @@ class RoadmapForm(BaseStyledModelForm):
             return self.current_workspace
 
         raise forms.ValidationError("Ce champ est obligatoire.")
+
+    def clean(self):
+        cleaned = super().clean()
+
+        start_date = cleaned.get("start_date")
+        end_date = cleaned.get("end_date")
+
+        if start_date and end_date and end_date < start_date:
+            self.add_error("end_date", "La date de fin doit être postérieure ou égale à la date de début.")
+
+        return cleaned
 
 
 class RoadmapItemForm(BaseStyledModelForm):
