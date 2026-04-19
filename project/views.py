@@ -6,6 +6,7 @@ from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
 
+from django import forms
 from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
