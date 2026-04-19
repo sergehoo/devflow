@@ -131,6 +131,9 @@ class BaseStyledModelForm(forms.ModelForm):
     """
 
     def __init__(self, *args, **kwargs):
+        self.current_workspace = kwargs.pop("current_workspace", None)
+        self.allowed_workspaces = kwargs.pop("allowed_workspaces", None)
+        self.request = kwargs.pop("request", None)
         super().__init__(*args, **kwargs)
 
         for name, field in self.fields.items():
@@ -179,6 +182,13 @@ class BaseStyledModelForm(forms.ModelForm):
                 widget.attrs.setdefault("placeholder", field.label or name.replace("_", " ").title())
 
             widget.attrs.setdefault("autocomplete", "off")
+    def clean_workspace(self):
+        workspace = self.cleaned_data.get("workspace")
+        if workspace:
+            return workspace
+        if self.current_workspace:
+            return self.current_workspace
+        raise forms.ValidationError("Ce champ est obligatoire.")
 
 
 # =============================================================================
