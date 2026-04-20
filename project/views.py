@@ -1767,85 +1767,331 @@ class ProjectListView(DevflowListView):
 
 
 class ProjectBudgetExportExcelView(LoginRequiredMixin, View):
+
     def get(self, request, pk):
+
         project = get_object_or_404(
-            dm.Project.objects.select_related("workspace"),
-            pk=pk
+
+            dm.Project.objects.select_related("workspace", "budgetestimatif"),
+
+            pk=pk,
+
         )
 
-        estimate_lines = project.estimate_lines.select_related("category").order_by("label")
+        estimate_lines = (
+
+            project.estimate_lines.select_related("category")
+
+            .order_by("budget_stage", "label", "id")
+
+        )
+
         budget = getattr(project, "budgetestimatif", None)
 
         wb = Workbook()
+
         ws = wb.active
+
         ws.title = "Budget estimatif"
 
         header_fill = PatternFill("solid", fgColor="1F2937")
+
         header_font = Font(color="FFFFFF", bold=True)
+
         thin = Side(style="thin", color="D1D5DB")
 
+        currency = budget.currency if budget else "XOF"
+
+        def style_header(cell):
+
+            cell.fill = header_fill
+
+            cell.font = header_font
+
+            cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        def style_money(cell):
+
+            cell.number_format = '#,##0.00'
+
+        # En-tête méta
+
         ws["A1"] = "Projet"
+
         ws["B1"] = project.name
+
         ws["A2"] = "Code"
+
         ws["B2"] = project.code or "-"
-        ws["A3"] = "Client / Workspace"
+
+        ws["A3"] = "Workspace"
+
         ws["B3"] = project.workspace.name
+
         ws["A4"] = "Date export"
+
         ws["B4"] = timezone.localtime().strftime("%d/%m/%Y %H:%M")
 
-        row = 6
-        headers = ["Libellé", "Catégorie", "Quantité", "Coût unitaire", "Montant"]
-        for col, value in enumerate(headers, start=1):
-            cell = ws.cell(row=row, column=col, value=value)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
-            cell.alignment = Alignment(horizontal="center")
+        ws["A5"] = "Devise"
 
-        total = Decimal("0")
+        ws["B5"] = currency
+
+        # Tableau principal
+
+        row = 7
+
+        headers = [
+
+            "Libellé",
+
+            "Catégorie",
+
+            "Stage budget",
+
+            "Quantité",
+
+            "Coût unitaire",
+
+            "Coût total",
+
+            "Vente unitaire",
+
+            "Vente totale",
+
+            "Marge",
+
+        ]
+
+        for col, value in enumerate(headers, start=1):
+
+            cell = ws.cell(row=row, column=col, value=value)
+
+            style_header(cell)
+
         row += 1
 
+        total_cost = Decimal("0.00")
+
+        total_sale = Decimal("0.00")
+
+        total_margin = Decimal("0.00")
+
         for line in estimate_lines:
-            ws.cell(row=row, column=1, value=line.label)
+
+            cost_amount = line.cost_amount or Decimal("0.00")
+
+            sale_amount = line.sale_amount or Decimal("0.00")
+
+            margin_amount = line.margin_amount or Decimal("0.00")
+
+            ws.cell(row=row, column=1, value=line.label or "")
+
             ws.cell(row=row, column=2, value=line.category.name if line.category else "")
-            ws.cell(row=row, column=3, value=float(line.quantity))
-            ws.cell(row=row, column=4, value=float(line.unit_cost))
-            ws.cell(row=row, column=5, value=float(line.total_estimated_cost))
-            total += line.total_estimated_cost or Decimal("0")
+
+            ws.cell(
+
+                row=row,
+
+                column=3,
+
+                value=line.get_budget_stage_display() if hasattr(line, "get_budget_stage_display") else (line.budget_stage or ""),
+
+            )
+
+            ws.cell(row=row, column=4, value=float(line.quantity or 0))
+
+            ws.cell(row=row, column=5, value=float(line.cost_unit_amount or 0))
+
+            ws.cell(row=row, column=6, value=float(cost_amount))
+
+            ws.cell(row=row, column=7, value=float(line.sale_unit_amount or 0))
+
+            ws.cell(row=row, column=8, value=float(sale_amount))
+
+            ws.cell(row=row, column=9, value=float(margin_amount))
+
+            for money_col in [5, 6, 7, 8, 9]:
+
+                style_money(ws.cell(row=row, column=money_col))
+
+            total_cost += cost_amount
+
+            total_sale += sale_amount
+
+            total_margin += margin_amount
+
             row += 1
 
-        ws.cell(row=row, column=4, value="TOTAL")
-        ws.cell(row=row, column=5, value=float(total))
-        ws.cell(row=row, column=4).font = Font(bold=True)
-        ws.cell(row=row, column=5).font = Font(bold=True)
+        # Ligne total
+
+        ws.cell(row=row, column=5, value="TOTAL")
+
+        ws.cell(row=row, column=6, value=float(total_cost))
+
+        ws.cell(row=row, column=8, value=float(total_sale))
+
+        ws.cell(row=row, column=9, value=float(total_margin))
+
+        for col in [5, 6, 8, 9]:
+
+            ws.cell(row=row, column=col).font = Font(bold=True)
+
+            if col != 5:
+
+                style_money(ws.cell(row=row, column=col))
 
         row += 2
-        if budget:
-            ws.cell(row=row, column=1, value="Contingence")
-            ws.cell(row=row, column=2, value=float(budget.contingency_amount))
-            row += 1
-            ws.cell(row=row, column=1, value="Coût total estimé")
-            ws.cell(row=row, column=2, value=float(budget.estimated_total_cost))
-            row += 1
-            ws.cell(row=row, column=1, value="Revenu planifié")
-            ws.cell(row=row, column=2, value=float(budget.planned_revenue))
-            row += 1
-            ws.cell(row=row, column=1, value="Marge estimée")
-            ws.cell(row=row, column=2, value=float(budget.estimated_margin_amount))
 
-        for col in ["A", "B", "C", "D", "E"]:
-            ws.column_dimensions[col].width = 22
+        # Bloc synthèse budget
+
+        if budget:
+
+            summary_rows = [
+
+                ("Statut budget", budget.get_status_display() if hasattr(budget, "get_status_display") else budget.status),
+
+                ("Version", budget.version_number),
+
+                ("Coût main d'œuvre estimé", float(budget.estimated_labor_cost or 0)),
+
+                ("Coût logiciels estimé", float(budget.estimated_software_cost or 0)),
+
+                ("Coût infrastructure estimé", float(budget.estimated_infra_cost or 0)),
+
+                ("Coût sous-traitance estimé", float(budget.estimated_subcontract_cost or 0)),
+
+                ("Autres coûts estimés", float(budget.estimated_other_cost or 0)),
+
+                ("Contingence", float(budget.contingency_amount or 0)),
+
+                ("Réserve management", float(budget.management_reserve_amount or 0)),
+
+                ("Coût total estimé", float(budget.total_estimated_cost or 0)),
+
+                ("Markup (%)", float(budget.markup_percent or 0)),
+
+                ("Revenu planifié", float(budget.planned_revenue or 0)),
+
+                ("Revenu attendu", float(budget.expected_revenue_amount or 0)),
+
+                ("Marge estimée", float(budget.estimated_margin_amount or 0)),
+
+                ("Marge estimée (%)", float(budget.estimated_margin_percent or 0)),
+
+                ("Budget approuvé", float(budget.approved_budget or 0)),
+
+                ("Taux alerte (%)", float(budget.alert_threshold_percent or 0)),
+
+            ]
+
+            ws.cell(row=row, column=1, value="Synthèse budget")
+
+            ws.cell(row=row, column=1).font = Font(bold=True, size=12)
+
+            row += 1
+
+            money_labels = {
+
+                "Coût main d'œuvre estimé",
+
+                "Coût logiciels estimé",
+
+                "Coût infrastructure estimé",
+
+                "Coût sous-traitance estimé",
+
+                "Autres coûts estimés",
+
+                "Contingence",
+
+                "Réserve management",
+
+                "Coût total estimé",
+
+                "Revenu planifié",
+
+                "Revenu attendu",
+
+                "Marge estimée",
+
+                "Budget approuvé",
+
+            }
+
+            percent_labels = {
+
+                "Markup (%)",
+
+                "Marge estimée (%)",
+
+                "Taux alerte (%)",
+
+            }
+
+            for label, value in summary_rows:
+
+                ws.cell(row=row, column=1, value=label)
+
+                ws.cell(row=row, column=2, value=value)
+
+                if label in money_labels:
+
+                    style_money(ws.cell(row=row, column=2))
+
+                elif label in percent_labels:
+
+                    ws.cell(row=row, column=2).number_format = '0.00'
+
+                row += 1
+
+        # Largeurs colonnes
+
+        widths = {
+
+            "A": 34,
+
+            "B": 22,
+
+            "C": 20,
+
+            "D": 12,
+
+            "E": 16,
+
+            "F": 16,
+
+            "G": 16,
+
+            "H": 16,
+
+            "I": 16,
+
+        }
+
+        for col, width in widths.items():
+
+            ws.column_dimensions[col].width = width
 
         stream = BytesIO()
+
         wb.save(stream)
+
         stream.seek(0)
 
         filename = f"budget_estimatif_{project.slug or project.pk}.xlsx"
+
         response = HttpResponse(
+
             stream.getvalue(),
+
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+
         )
+
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
+
         return response
 
 
