@@ -161,7 +161,9 @@
     <div x-show="tab === 'kpi_roi'" x-cloak>
         {% include "project/partials/_kpi_roi.html" %}
     </div>
-
+<div x-show="tab === 'facturation_client'" x-cloak>
+    {% include "project/partials/_facturation_client.html" %}
+</div>
     {% include "project/partials/_document_modal.html" %}
 </div>
 {% endblock %}

@@ -2097,7 +2097,6 @@ class ProjectBudgetExportExcelView(LoginRequiredMixin, View):
 
 
 
-
 class ProjectDetailView(DevflowDetailView):
     model = dm.Project
     template_name = "project/detail.html"
@@ -2115,7 +2114,11 @@ class ProjectDetailView(DevflowDetailView):
             ).prefetch_related(
                 Prefetch(
                     "members",
-                    queryset=dm.ProjectMember.objects.select_related("user", "team").order_by("user__username"),
+                    queryset=dm.ProjectMember.objects.select_related(
+                        "user",
+                        "user__profile",
+                        "team",
+                    ).order_by("user__username"),
                 ),
                 Prefetch(
                     "labels",
@@ -2298,6 +2301,102 @@ class ProjectDetailView(DevflowDetailView):
             dm.TeamMembership.Role.TECH_LEAD,
         ]
 
+    def _get_project_working_days(self, project):
+        """
+        Calcule le nombre de jours ouvrés du projet.
+        Approche simple : lundi-vendredi.
+        """
+        if not project.start_date or not project.target_date:
+            return 0
+
+        if project.target_date < project.start_date:
+            return 0
+
+        current = project.start_date
+        total = 0
+        while current <= project.target_date:
+            if current.weekday() < 5:  # 0=lundi ... 4=vendredi
+                total += 1
+            current += timezone.timedelta(days=1)
+        return total
+
+    def _build_member_cost_summary(self, members_qs, project):
+        """
+        Synthèse RH calculée à partir :
+        - BillingRate.get_user_daily_cost(user)
+        - BillingRate.get_user_sale_daily_rate(user)
+        - allocation_percent de ProjectMember
+        """
+        member_cost_rows = []
+
+        daily_cost_total = Decimal("0.00")
+        daily_sale_total = Decimal("0.00")
+        monthly_cost_total = Decimal("0.00")
+        monthly_sale_total = Decimal("0.00")
+        project_cost_total = Decimal("0.00")
+        project_sale_total = Decimal("0.00")
+
+        project_working_days = self._get_project_working_days(project)
+        standard_month_working_days = Decimal("22")
+
+        for member in members_qs:
+            user = member.user
+            allocation_percent = Decimal(member.allocation_percent or 0)
+            allocation_ratio = allocation_percent / Decimal("100")
+
+            daily_cost = dm.BillingRate.get_user_daily_cost(user) or Decimal("0.00")
+            daily_sale = dm.BillingRate.get_user_sale_daily_rate(user) or Decimal("0.00")
+
+            allocated_daily_cost = daily_cost * allocation_ratio
+            allocated_daily_sale = daily_sale * allocation_ratio
+
+            allocated_monthly_cost = allocated_daily_cost * standard_month_working_days
+            allocated_monthly_sale = allocated_daily_sale * standard_month_working_days
+
+            allocated_project_cost = allocated_daily_cost * Decimal(project_working_days)
+            allocated_project_sale = allocated_daily_sale * Decimal(project_working_days)
+
+            daily_cost_total += allocated_daily_cost
+            daily_sale_total += allocated_daily_sale
+            monthly_cost_total += allocated_monthly_cost
+            monthly_sale_total += allocated_monthly_sale
+            project_cost_total += allocated_project_cost
+            project_sale_total += allocated_project_sale
+
+            profile = getattr(user, "profile", None)
+
+            member_cost_rows.append({
+                "member": member,
+                "user": user,
+                "team": member.team,
+                "role": member.role,
+                "allocation_percent": allocation_percent,
+                "profile_cost_per_day": getattr(profile, "cost_per_day", Decimal("0.00")) if profile else Decimal("0.00"),
+                "profile_billable_rate_per_day": getattr(profile, "billable_rate_per_day", Decimal("0.00")) if profile else Decimal("0.00"),
+                "daily_cost": daily_cost,
+                "daily_sale": daily_sale,
+                "allocated_daily_cost": allocated_daily_cost,
+                "allocated_daily_sale": allocated_daily_sale,
+                "allocated_monthly_cost": allocated_monthly_cost,
+                "allocated_monthly_sale": allocated_monthly_sale,
+                "allocated_project_cost": allocated_project_cost,
+                "allocated_project_sale": allocated_project_sale,
+            })
+
+        summary = {
+            "count": len(member_cost_rows),
+            "project_working_days": project_working_days,
+            "daily_cost_total": daily_cost_total,
+            "daily_sale_total": daily_sale_total,
+            "monthly_cost_total": monthly_cost_total,
+            "monthly_sale_total": monthly_sale_total,
+            "project_cost_total": project_cost_total,
+            "project_sale_total": project_sale_total,
+            "project_margin_total": project_sale_total - project_cost_total,
+        }
+
+        return member_cost_rows, summary
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         project = self.object
@@ -2448,6 +2547,8 @@ class ProjectDetailView(DevflowDetailView):
             "failed": imports_qs.filter(status=dm.ProjectDocumentImport.ImportStatus.FAILED).count(),
         }
 
+        member_cost_rows, member_cost_summary = self._build_member_cost_summary(members_qs, project)
+
         expenses_qs = dm.ProjectExpense.objects.none()
         estimate_lines_qs = dm.ProjectEstimateLine.objects.none()
         revenues_qs = dm.ProjectRevenue.objects.none()
@@ -2479,6 +2580,8 @@ class ProjectDetailView(DevflowDetailView):
             "labor_cost": Decimal("0.00"),
             "direct_cost": Decimal("0.00"),
             "other_cost": Decimal("0.00"),
+            "calculated_member_labor_cost": member_cost_summary["project_cost_total"],
+            "calculated_member_labor_sale": member_cost_summary["project_sale_total"],
         }
 
         revenue_stats = {
@@ -2489,6 +2592,16 @@ class ProjectDetailView(DevflowDetailView):
             "pending_revenue": Decimal("0.00"),
             "remaining_to_invoice": Decimal("0.00"),
             "remaining_to_collect": Decimal("0.00"),
+        }
+
+        client_billing_summary = {
+            "planned_revenue": Decimal("0.00"),
+            "invoiced_revenue": Decimal("0.00"),
+            "received_revenue": Decimal("0.00"),
+            "remaining_to_invoice": Decimal("0.00"),
+            "remaining_to_collect": Decimal("0.00"),
+            "collection_rate_percent": 0,
+            "invoicing_rate_percent": 0,
         }
 
         overview = {
@@ -2520,18 +2633,6 @@ class ProjectDetailView(DevflowDetailView):
         budget_variance = Decimal("0.00")
         forecast_margin_amount = Decimal("0.00")
         budget_remaining = Decimal("0.00")
-
-        sprint_financial_summary = {
-            "count": 0,
-            "total_estimated_cost": Decimal("0.00"),
-        }
-
-        feature_financial_summary = {
-            "count": 0,
-            "total_estimated_cost": Decimal("0.00"),
-            "total_estimated_revenue": Decimal("0.00"),
-            "global_roi_percent": Decimal("0.00"),
-        }
 
         sprint_financial_snapshots_qs = dm.SprintFinancialSnapshot.objects.filter(
             sprint__project=project
@@ -2691,7 +2792,11 @@ class ProjectDetailView(DevflowDetailView):
                     output_field=money_field,
                 ),
             )
-            estimate_stats = {**estimate_agg}
+            estimate_stats = {
+                **estimate_agg,
+                "calculated_member_labor_cost": member_cost_summary["project_cost_total"],
+                "calculated_member_labor_sale": member_cost_summary["project_sale_total"],
+            }
 
             estimate_labor = Decimal("0.00")
             estimate_direct = Decimal("0.00")
@@ -2706,6 +2811,16 @@ class ProjectDetailView(DevflowDetailView):
                     estimate_direct += amount
                 else:
                     estimate_other += amount
+
+            # Si aucune ligne RH n'existe, on injecte le coût RH calculé depuis l'équipe projet
+            if estimate_labor <= 0 and member_cost_summary["project_cost_total"] > 0:
+                estimate_labor = member_cost_summary["project_cost_total"]
+                estimate_stats["total_estimated_cost"] += member_cost_summary["project_cost_total"]
+                estimate_stats["total_estimated_sale"] += member_cost_summary["project_sale_total"]
+                estimate_stats["total_estimated_margin"] += (
+                    member_cost_summary["project_sale_total"] - member_cost_summary["project_cost_total"]
+                )
+                estimate_stats["estimated_cost"] += member_cost_summary["project_cost_total"]
 
             estimate_stats["labor_cost"] = estimate_labor
             estimate_stats["direct_cost"] = estimate_direct
@@ -2726,6 +2841,29 @@ class ProjectDetailView(DevflowDetailView):
                 revenue_stats["invoiced_revenue"] - revenue_stats["received_revenue"],
                 Decimal("0.00"),
             )
+
+            invoicing_rate_percent = 0
+            collection_rate_percent = 0
+
+            if revenue_stats["planned_revenue"] > 0:
+                invoicing_rate_percent = int(
+                    (revenue_stats["invoiced_revenue"] / revenue_stats["planned_revenue"]) * Decimal("100")
+                )
+
+            if revenue_stats["invoiced_revenue"] > 0:
+                collection_rate_percent = int(
+                    (revenue_stats["received_revenue"] / revenue_stats["invoiced_revenue"]) * Decimal("100")
+                )
+
+            client_billing_summary = {
+                "planned_revenue": revenue_stats["planned_revenue"],
+                "invoiced_revenue": revenue_stats["invoiced_revenue"],
+                "received_revenue": revenue_stats["received_revenue"],
+                "remaining_to_invoice": revenue_stats["remaining_to_invoice"],
+                "remaining_to_collect": revenue_stats["remaining_to_collect"],
+                "collection_rate_percent": collection_rate_percent,
+                "invoicing_rate_percent": invoicing_rate_percent,
+            }
 
             approved_budget = budget.approved_budget if budget else Decimal("0.00")
             planned_revenue = budget.expected_revenue_amount if budget else revenue_stats["planned_revenue"]
@@ -2798,6 +2936,7 @@ class ProjectDetailView(DevflowDetailView):
             ],
             "budget_estimatif": [],
             "budget_previsionnel": [],
+            "facturation_client": [],
             "depenses": [],
             "equipes": [
                 {"label": "Ajouter membre projet", "url": f"/project-members/create/?project={project.pk}", "style": "primary", "icon": "users"},
@@ -2831,6 +2970,10 @@ class ProjectDetailView(DevflowDetailView):
                 {"label": "Ajouter prévision de revenu", "url": f"/project-revenues/create/?project={project.pk}", "style": "primary", "icon": "banknote"},
                 {"label": "Réviser budget", "url": f"/project-budgets/create/?project={project.pk}", "style": "soft", "icon": "refresh"},
             ]
+            quick_actions["facturation_client"] = [
+                {"label": "Ajouter revenu client", "url": f"/project-revenues/create/?project={project.pk}", "style": "primary", "icon": "banknote"},
+                {"label": "Voir les revenus client", "url": f"/project-revenues/?project={project.pk}", "style": "soft", "icon": "wallet"},
+            ]
             quick_actions["depenses"] = [
                 {"label": "Nouvelle dépense", "url": f"/project-expenses/create/?project={project.pk}", "style": "primary", "icon": "receipt"},
                 {"label": "Voir toutes les dépenses", "url": f"/project-expenses/?project={project.pk}", "style": "soft", "icon": "table"},
@@ -2841,17 +2984,17 @@ class ProjectDetailView(DevflowDetailView):
             {"key": "equipes", "label": "Équipes", "count": members_qs.count()},
             {"key": "evolution", "label": "Évolution", "count": evolution_summary["activities_count"]},
             {"key": "taches", "label": "Tâches", "count": task_stats["total"]},
-            # {"key": "ia_import", "label": "Imports IA", "count": import_summary["count"]},
             {"key": "kpi_roi", "label": "KPI & ROI", "count": kpi_summary["count"] + roi_summary["count"]},
         ]
 
         if can_view_financials:
             tabs.insert(1, {"key": "budget_estimatif", "label": "Bu.estimatif", "count": estimate_stats["total_estimate_lines"]})
-            tabs.insert(2, {"key": "budget_previsionnel", "label": "Bu. prévisionnel", "count": revenues_qs.count()})
-            tabs.insert(3, {"key": "depenses", "label": "Dépenses", "count": expenses_qs.count()})
+            tabs.insert(2, {"key": "budget_previsionnel", "label": "Bu.prévisionnel", "count": revenues_qs.count()})
+            tabs.insert(3, {"key": "facturation_client", "label": "Facturation", "count": revenues_qs.count()})
+            tabs.insert(4, {"key": "depenses", "label": "Dépenses", "count": expenses_qs.count()})
 
         active_tab = self.request.GET.get("tab", "planification")
-        if active_tab in {"budget_estimatif", "budget_previsionnel", "depenses"} and not can_view_financials:
+        if active_tab in {"budget_estimatif", "budget_previsionnel", "facturation_client", "depenses"} and not can_view_financials:
             active_tab = "planification"
 
         valid_tab_keys = {tab["key"] for tab in tabs}
@@ -2906,6 +3049,7 @@ class ProjectDetailView(DevflowDetailView):
             "all_expenses": expenses_qs if can_view_financials else [],
             "estimate_lines": estimate_lines_qs if can_view_financials else [],
             "revenues": revenues_qs if can_view_financials else [],
+            "all_revenues": revenues_qs if can_view_financials else [],
 
             "budget_obj": budget if can_view_financials else None,
             "financial_overview": overview,
@@ -2925,6 +3069,10 @@ class ProjectDetailView(DevflowDetailView):
             "expense_stats": expense_stats,
             "estimate_stats": estimate_stats,
             "revenue_stats": revenue_stats,
+            "client_billing_summary": client_billing_summary,
+
+            "member_cost_rows": member_cost_rows,
+            "member_cost_summary": member_cost_summary,
 
             "overdue_tasks": task_stats["overdue"],
             "planning_items_count": planning_stats["planning_items_count"],
