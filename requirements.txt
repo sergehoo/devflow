@@ -147,6 +147,8 @@ tzlocal==5.3.1
 uritemplate==4.2.0
 urllib3==2.6.3
 uvicorn==0.39.0
+uvicorn[standard]
+channels-redis
 uvloop==0.22.1
 vine==5.1.0
 
