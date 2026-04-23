@@ -7,7 +7,12 @@ services:
       dockerfile: Dockerfile
     container_name: devflowweb
     command: >
-      gunicorn ProjectFlow.wsgi:application
+      uvicorn ProjectFlow.asgi:application
+      --host 0.0.0.0
+      --port 8000
+      --workers 3
+      --proxy-headers
+      --forwarded-allow-ips='*'
       --bind 0.0.0.0:8000
       --workers 3
       --threads 2
@@ -98,7 +103,7 @@ services:
 
       # HTTP -> HTTPS redirection
       - "traefik.http.routers.devflow-http.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.devflow-http.entrypoints=websecure"
+      - "traefik.http.routers.devflow-http.entrypoints=web"
       - "traefik.http.routers.devflow-http.middlewares=devflow-redirect-https"
 
       - "traefik.http.middlewares.devflow-redirect-https.redirectscheme.scheme=https"
