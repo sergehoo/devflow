@@ -1,16 +1,13 @@
 import json
-
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_POST
-
 from project.models import DirectChannel, Message
 
 
 @login_required
 @require_GET
-
 def channel_panel_data(request):
     profile = getattr(request.user, "profile", None)
     workspace = getattr(profile, "workspace", None)

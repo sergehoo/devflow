@@ -40,40 +40,69 @@
 </div>
 
 <script>
-    const channelId = "{{ chat_channel.id }}";
+    const channelId = "{{ chat_channel.id|default:''|escapejs }}";
     const chatBox = document.getElementById("chat-messages");
     const input = document.getElementById("chat-input");
     const form = document.getElementById("chat-form");
 
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const socket = new WebSocket(`${protocol}://${window.location.host}/ws/channels/${channelId}/`);
+    let socket = null;
 
-    socket.onmessage = function(e) {
-        const data = JSON.parse(e.data);
+    console.log("channelId =", channelId);
 
-        const el = document.createElement("div");
-        el.className = "rounded-2xl bg-[var(--bg3)] p-4";
-        el.innerHTML = `
-            <div class="text-sm font-semibold text-[var(--text1)]">${data.author}</div>
-            <div class="mt-1 text-sm text-[var(--text2)]">${data.body}</div>
-            <div class="mt-2 text-xs text-[var(--text3)]">${data.created_at}</div>
-        `;
-        chatBox.appendChild(el);
-        chatBox.scrollTop = chatBox.scrollHeight;
-    };
+    if (!channelId) {
+        console.error("WebSocket non ouvert : channelId manquant", channelId);
+    } else {
+        socket = new WebSocket(
+            `${protocol}://${window.location.host}/ws/channels/${channelId}/`
+        );
 
-    form.addEventListener("submit", function(e) {
-        e.preventDefault();
+        socket.onopen = function () {
+            console.log("WebSocket connecté pour le channel", channelId);
+        };
 
-        const body = input.value.trim();
-        if (!body) return;
+        socket.onerror = function (error) {
+            console.error("Erreur WebSocket :", error);
+        };
 
-        socket.send(JSON.stringify({
-            body: body
-        }));
+        socket.onclose = function (event) {
+            console.warn("WebSocket fermé :", event);
+        };
 
-        input.value = "";
-        input.focus();
-    });
+        socket.onmessage = function (e) {
+            const data = JSON.parse(e.data);
+
+            const el = document.createElement("div");
+            el.className = "rounded-2xl bg-[var(--bg3)] p-4";
+            el.innerHTML = `
+                <div class="text-sm font-semibold text-[var(--text1)]">${data.author ?? ""}</div>
+                <div class="mt-1 text-sm text-[var(--text2)]">${data.body ?? ""}</div>
+                <div class="mt-2 text-xs text-[var(--text3)]">${data.created_at ?? ""}</div>
+            `;
+            chatBox.appendChild(el);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        };
+    }
+
+    if (form) {
+        form.addEventListener("submit", function (e) {
+            e.preventDefault();
+
+            const body = input?.value.trim();
+            if (!body) return;
+
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                console.error("Socket non connecté");
+                return;
+            }
+
+            socket.send(JSON.stringify({
+                body: body
+            }));
+
+            input.value = "";
+            input.focus();
+        });
+    }
 </script>
 {% endblock %}
