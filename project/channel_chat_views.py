@@ -1,9 +1,31 @@
 import json
+
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
+
 from project.models import DirectChannel, Message
+
+
+@login_required
+@require_GET
+def channel_chat_page(request, pk):
+    channel = get_object_or_404(
+        DirectChannel.objects.prefetch_related("members").select_related("workspace"),
+        pk=pk,
+    )
+
+    messages = channel.messages.select_related("author").order_by("created_at")[:80]
+
+    return render(
+        request,
+        "project/channels/detail.html",
+        {
+            "chat_channel": channel,
+            "messages": messages,
+        },
+    )
 
 
 @login_required
@@ -11,6 +33,7 @@ from project.models import DirectChannel, Message
 def channel_panel_data(request):
     profile = getattr(request.user, "profile", None)
     workspace = getattr(profile, "workspace", None)
+
     if workspace is None:
         return JsonResponse(
             {
@@ -20,12 +43,14 @@ def channel_panel_data(request):
             },
             status=200,
         )
+
     channels = (
         DirectChannel.objects
         .filter(workspace=workspace)
         .prefetch_related("members")
         .order_by("name", "id")
     )
+
     data = [
         {
             "id": channel.pk,
@@ -35,6 +60,7 @@ def channel_panel_data(request):
         }
         for channel in channels
     ]
+
     return JsonResponse({"success": True, "channels": data})
 
 
