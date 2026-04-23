@@ -63,11 +63,13 @@ INSTALLED_APPS = [
     'django_filters',
     # 'qr_code',
     # 'notifications',
+    "channels",
     'weasyprint',
     "csp",
     'drf_spectacular',
     'corsheaders',
     "project",
+
 ]
 
 MIDDLEWARE = [
@@ -168,3 +170,11 @@ CELERY_TIMEZONE = "Africa/Abidjan"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("redis", 6379)],
+        },
+    },
+}
