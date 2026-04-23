@@ -5,7 +5,7 @@ from django.urls import path, include
 
 import project
 from project import routing
-from project.channel_chat_views import channel_send_message, channel_panel_detail, channel_panel_data
+from project.channel_chat_views import channel_send_message, channel_panel_detail, channel_panel_data, channel_chat_page
 from project.views import HomeView, DashboardView, WorkspaceListView, WorkspaceCreateView, WorkspaceDetailView, \
     WorkspaceUpdateView, KeyResultDetailView, KeyResultDeleteView, KeyResultUpdateView, KeyResultCreateView, \
     KeyResultListView, ObjectiveArchiveView, ObjectiveDeleteView, ObjectiveUpdateView, ObjectiveDetailView, \
@@ -228,6 +228,7 @@ urlpatterns = [
     path("activity-logs/<int:pk>/update/", ActivityLogUpdateView.as_view(), name="activity_log_update"),
     path("activity-logs/<int:pk>/delete/", ActivityLogDeleteView.as_view(), name="activity_log_delete"),
 
+    path("channels/<int:pk>/", channel_chat_page, name="channel_chat_page"),
 
     path("channels/panel/", channel_panel_data, name="channel_panel_data"),
     path("channels/<int:pk>/panel/", channel_panel_detail, name="channel_panel_detail"),
