@@ -69,6 +69,7 @@ class ChannelChatConsumer(AsyncWebsocketConsumer):
             "author": message["author"],
             "created_at": message["created_at"],
             "parent_id": message["parent_id"],
+            "is_mine": False,
         }
         await self.channel_layer.group_send(
             self.room_group_name,
