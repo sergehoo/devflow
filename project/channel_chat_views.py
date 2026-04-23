@@ -10,24 +10,34 @@ from project.models import DirectChannel, Message
 
 @login_required
 @require_GET
+
 def channel_panel_data(request):
+    profile = getattr(request.user, "profile", None)
+    workspace = getattr(profile, "workspace", None)
+    if workspace is None:
+        return JsonResponse(
+            {
+                "success": False,
+                "channels": [],
+                "message": "Aucun workspace associé à cet utilisateur.",
+            },
+            status=200,
+        )
     channels = (
         DirectChannel.objects
-        .filter(workspace=request.user.profile.workspace)
+        .filter(workspace=workspace)
         .prefetch_related("members")
-        .order_by("name")
+        .order_by("name", "id")
     )
-
-    data = []
-    for channel in channels:
-        unread_count = 0
-        data.append({
+    data = [
+        {
             "id": channel.pk,
             "name": channel.name,
             "is_private": channel.is_private,
-            "unread_count": unread_count,
-        })
-
+            "unread_count": 0,
+        }
+        for channel in channels
+    ]
     return JsonResponse({"success": True, "channels": data})
 
 
