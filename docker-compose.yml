@@ -291,7 +291,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
-      - "traefik.http.routers.devflowadminer.rule=Host(`adminer.${DOMAIN}`)"
+      - "traefik.http.routers.devflowadminer.rule=Host(`${ADMINER}`)"
       - "traefik.http.routers.devflowadminer.entrypoints=websecure"
       - "traefik.http.routers.devflowadminer.tls=true"
       - "traefik.http.routers.devflowadminer.tls.certresolver=lets"
@@ -306,6 +306,7 @@ services:
       - "11434:11434"
     networks:
       - default
+      - proxy
 volumes:
   postgres_data:
   redis_data:
