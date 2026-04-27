@@ -1,0 +1,17 @@
+Bonjour {{ recipient.first_name|default:recipient.username }},
+
+Cette tâche du projet « {{ project.name }} » nécessite votre attention :
+
+  • {{ task.title }}
+  • Statut actuel : {{ task.get_status_display }}
+  • Priorité : {{ task.get_priority_display }}
+  {% if task.due_date %}• Échéance : {{ task.due_date|date:"d/m/Y" }}{% endif %}
+
+Motif du rappel : {{ reason_label }}{% if days_overdue %} ({{ days_overdue }} jour(s)){% endif %}
+
+Merci de mettre à jour le statut ou de préciser l'avancement de cette tâche
+dans DevFlow.
+
+Lien : {{ task_url }}
+
+— DevFlow (rappel automatique)

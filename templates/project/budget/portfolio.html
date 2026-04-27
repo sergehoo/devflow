@@ -1,0 +1,117 @@
+{% extends "layout/base.html" %}
+{% load static humanize %}
+
+{% block title %}Cockpit financier — {{ workspace.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto">
+
+    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft overflow-hidden relative">
+        <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,78,0,.10),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(14,165,201,.08),transparent_25%)]"></div>
+        <div class="relative p-6 lg:p-8">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+                    Portfolio Financial Cockpit
+                </p>
+                <h1 class="mt-2 text-3xl lg:text-4xl font-serif text-devtext1">
+                    Cockpit financier — {{ workspace.name }}
+                </h1>
+                <p class="mt-3 text-sm text-devtext2 max-w-3xl leading-7">
+                    Vue consolidée de tous les projets actifs : budget approuvé, coût réel,
+                    forecast et marge. Cliquez sur un projet pour ouvrir son cockpit dédié.
+                </p>
+            </div>
+
+            <div class="mt-8 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Budget total</div>
+                    <div class="mt-2 text-3xl font-serif text-devtext1">
+                        {{ portfolio.totals.approved_budget|floatformat:0|intcomma }}
+                    </div>
+                    <div class="mt-1 text-xs text-devtext3">approuvé sur le portefeuille</div>
+                </div>
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Coût réel</div>
+                    <div class="mt-2 text-3xl font-serif text-devamber">
+                        {{ portfolio.totals.actual_cost|floatformat:0|intcomma }}
+                    </div>
+                    <div class="mt-1 text-xs text-devtext3">{{ portfolio.totals_consumption_percent }}% de consommation</div>
+                </div>
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Marge réelle</div>
+                    <div class="mt-2 text-3xl font-serif {% if portfolio.totals_real_margin >= 0 %}text-devgreen{% else %}text-devred{% endif %}">
+                        {{ portfolio.totals_real_margin|floatformat:0|intcomma }}
+                    </div>
+                    <div class="mt-1 text-xs text-devtext3">encaissé − dépensé</div>
+                </div>
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Marge prévisionnelle</div>
+                    <div class="mt-2 text-3xl font-serif {% if portfolio.totals_forecast_margin >= 0 %}text-devcyan{% else %}text-devred{% endif %}">
+                        {{ portfolio.totals_forecast_margin|floatformat:0|intcomma }}
+                    </div>
+                    <div class="mt-1 text-xs text-devtext3">revenu prévu − forecast cost</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tableau projets -->
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <header class="px-6 py-4 border-b border-devborder flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-devtext1">Projets actifs</h2>
+            <span class="text-xs text-devtext3">{{ portfolio.rows|length }} projets</span>
+        </header>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="bg-devbg3 text-left text-devtext3 uppercase text-[11px] tracking-wide">
+                        <th class="px-6 py-3">Projet</th>
+                        <th class="px-6 py-3 text-right">Budget</th>
+                        <th class="px-6 py-3 text-right">Coût réel</th>
+                        <th class="px-6 py-3 text-right">Forecast</th>
+                        <th class="px-6 py-3 text-right">Marge prév.</th>
+                        <th class="px-6 py-3 text-right">Marge réelle</th>
+                        <th class="px-6 py-3 text-right">Conso</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-devborder">
+                    {% for row in portfolio.rows %}
+                    <tr class="hover:bg-devbg3/40 transition">
+                        <td class="px-6 py-3">
+                            <a href="{% url 'project_detail' row.project.pk %}" class="font-medium text-devtext1 hover:text-devaccent">
+                                {{ row.project.name }}
+                            </a>
+                            <div class="text-[11px] text-devtext3">
+                                {{ row.project.get_status_display }} · {{ row.currency }}
+                            </div>
+                        </td>
+                        <td class="px-6 py-3 text-right font-mono text-devtext1">{{ row.approved_budget|floatformat:0|intcomma }}</td>
+                        <td class="px-6 py-3 text-right font-mono text-devamber">{{ row.actual_cost|floatformat:0|intcomma }}</td>
+                        <td class="px-6 py-3 text-right font-mono text-devcyan">{{ row.forecast_final_cost|floatformat:0|intcomma }}</td>
+                        <td class="px-6 py-3 text-right font-mono {% if row.forecast_margin >= 0 %}text-devgreen{% else %}text-devred{% endif %}">
+                            {{ row.forecast_margin|floatformat:0|intcomma }}
+                        </td>
+                        <td class="px-6 py-3 text-right font-mono {% if row.real_margin >= 0 %}text-devgreen{% else %}text-devred{% endif %}">
+                            {{ row.real_margin|floatformat:0|intcomma }}
+                        </td>
+                        <td class="px-6 py-3 text-right">
+                            <span class="badge {% if row.expense_ratio_percent >= 100 %}b-red{% elif row.expense_ratio_percent >= 80 %}b-amber{% else %}b-green{% endif %}">
+                                {{ row.expense_ratio_percent }}%
+                            </span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-12 text-center text-devtext3">
+                            Aucun projet actif dans ce workspace.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</div>
+{% endblock %}

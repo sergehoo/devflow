@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Rappel — {{ task.title }}</title>
+</head>
+<body style="margin:0;padding:0;background:#F5F5F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1F2937;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;">
+  <tr><td align="center">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:18px;border:1px solid #E5E7EB;overflow:hidden;">
+      <tr>
+        <td style="padding:24px 32px 8px 32px;">
+          <div style="font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#FF4E00;font-weight:600;">DevFlow · Rappel</div>
+          <h1 style="margin:8px 0 4px 0;font-size:22px;color:#111827;">{{ task.title }}</h1>
+          <p style="margin:0;font-size:13px;color:#6B7280;">Projet · {{ project.name }}</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:8px 32px 24px 32px;">
+          <p style="font-size:14px;line-height:22px;color:#374151;">
+            Bonjour {{ recipient.first_name|default:recipient.username }},<br>
+            Cette tâche nécessite votre attention.
+          </p>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;background:#F9FAFB;border-radius:12px;">
+            <tr>
+              <td style="padding:14px 16px;font-size:13px;color:#374151;">
+                <div><strong>Motif :</strong>
+                  <span style="display:inline-block;margin-left:6px;background:#FFE6D6;color:#FF4E00;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:600;">{{ reason_label }}</span>
+                </div>
+                <div style="margin-top:6px;"><strong>Statut :</strong> {{ task.get_status_display }}</div>
+                <div style="margin-top:6px;"><strong>Priorité :</strong> {{ task.get_priority_display }}</div>
+                {% if task.due_date %}<div style="margin-top:6px;"><strong>Échéance :</strong> {{ task.due_date|date:"d/m/Y" }}</div>{% endif %}
+                {% if days_overdue %}<div style="margin-top:6px;color:#DC2626;"><strong>Retard :</strong> {{ days_overdue }} jour(s)</div>{% endif %}
+              </td>
+            </tr>
+          </table>
+
+          <div style="text-align:center;margin-top:24px;">
+            <a href="{{ task_url }}" style="display:inline-block;padding:12px 24px;background:#FF4E00;color:#ffffff;text-decoration:none;font-weight:600;border-radius:12px;">
+              Mettre à jour la tâche
+            </a>
+          </div>
+
+          <p style="margin-top:24px;font-size:12px;color:#9CA3AF;">
+            Email envoyé automatiquement par DevFlow. Vous recevez ce message car vous êtes assigné(e) à cette tâche.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

@@ -83,7 +83,53 @@ Document :
     @staticmethod
     def call_llm_to_structured_json(prompt: str) -> dict:
         """
-        À remplacer par ton client OpenAI / Azure / autre.
-        Cette fonction doit retourner un dict Python.
+        Appelle le provider IA configuré (settings.AI_BACKEND) et retourne
+        un dict structuré. Si aucun provider n'est disponible, lève une
+        RuntimeError explicite plutôt que NotImplementedError.
         """
-        raise NotImplementedError("Brancher ici ton moteur LLM structuré.")
+        # Imports locaux pour éviter les imports circulaires
+        from project.services.ai.base import AIMessage
+        from project.services.ai.factory import get_ai_provider
+        from project.services.ai.openai_provider import OpenAIProvider
+
+        provider = get_ai_provider()
+        if not provider.is_available():
+            raise RuntimeError(
+                "Aucun provider IA disponible. Configurez OPENAI_API_KEY ou "
+                "AI_LOCAL_BASE_URL, ou définissez settings.AI_BACKEND."
+            )
+
+        messages = [
+            AIMessage(
+                role="system",
+                content=(
+                    "Tu es un analyste senior PMO + architecte logiciel. "
+                    "Tu réponds STRICTEMENT en JSON valide, sans aucun texte additionnel."
+                ),
+            ),
+            AIMessage(role="user", content=prompt),
+        ]
+        response = provider.generate(
+            messages=messages,
+            temperature=0.1,
+            json_mode=provider.supports_json_mode(),
+        )
+
+        if isinstance(provider, OpenAIProvider):
+            data = OpenAIProvider.parse_json(response)
+        else:
+            try:
+                data = json.loads(response.text)
+            except json.JSONDecodeError:
+                # Tentative de récupération si entouré de markdown
+                text = response.text.strip()
+                if text.startswith("```"):
+                    text = text.split("```", 2)[-1]
+                    if text.startswith("json"):
+                        text = text[4:]
+                    text = text.rsplit("```", 1)[0]
+                data = json.loads(text)
+
+        if not isinstance(data, dict):
+            raise RuntimeError("La réponse IA n'est pas un objet JSON exploitable.")
+        return data

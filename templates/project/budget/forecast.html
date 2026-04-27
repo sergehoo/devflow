@@ -1,0 +1,177 @@
+{% extends "layout/base.html" %}
+{% load static humanize %}
+
+{% block title %}Prévision IA — {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto" x-data="forecastPanel()" x-init="init()">
+
+    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft overflow-hidden relative">
+        <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,78,0,.10),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(14,165,201,.08),transparent_25%)]"></div>
+        <div class="relative p-6 lg:p-8">
+            <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+                <div>
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+                        AI Financial Forecast
+                    </p>
+                    <h1 class="mt-2 text-3xl lg:text-4xl font-serif text-devtext1">
+                        Prévision budgétaire — {{ project.name }}
+                    </h1>
+                    <p class="mt-3 text-sm text-devtext2 max-w-3xl leading-7">
+                        Projection des coûts à venir basée sur les TJM, l'allocation des membres,
+                        le RAF et les engagements en cours, enrichie par l'IA.
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <button @click="refresh()"
+                            class="btn-main"
+                            :disabled="loading">
+                        <i class="fa-solid fa-sparkles" :class="{ 'animate-pulse': loading }"></i>
+                        <span x-text="loading ? 'Calcul en cours…' : 'Recalculer'"></span>
+                    </button>
+                    <a href="{% url 'project_detail' project.pk %}" class="btn-soft">
+                        <i class="fa-solid fa-arrow-left"></i> Retour projet
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- KPI cards -->
+    <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <template x-for="card in cards" :key="card.label">
+            <div class="rounded-[22px] border border-devborder bg-devbg2 px-5 py-5 shadow-soft">
+                <div class="flex items-center justify-between">
+                    <div class="w-11 h-11 rounded-[14px] flex items-center justify-center"
+                         :class="card.iconClass">
+                        <i :class="card.icon + ' text-lg'"></i>
+                    </div>
+                    <span class="text-[11px] font-semibold text-devtext3 uppercase tracking-wide"
+                          x-text="card.label"></span>
+                </div>
+                <div class="mt-4 text-3xl font-serif" :class="card.valueClass" x-text="card.value"></div>
+                <div class="mt-1 text-sm text-devtext2" x-text="card.help"></div>
+            </div>
+        </template>
+    </section>
+
+    <!-- Synthèse IA -->
+    <section class="rounded-[24px] border border-devborder bg-devbg2 p-6 shadow-soft">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="text-lg font-semibold text-devtext1 flex items-center gap-2">
+                <i class="fa-solid fa-robot text-devaccent"></i>
+                Synthèse IA
+            </h2>
+            <span class="badge"
+                  :class="{
+                      'b-green': forecast.confidence === 'high',
+                      'b-amber': forecast.confidence === 'medium',
+                      'b-red':   forecast.confidence === 'low'
+                  }"
+                  x-text="'Confiance ' + (forecast.confidence || 'medium')"></span>
+        </div>
+        <p class="mt-3 text-sm text-devtext2 leading-7"
+           x-text="forecast.ai_summary || 'Le moteur IA n\'a pas généré de synthèse pour cette projection. Les données ci-dessus restent calculées par les heuristiques DevFlow.'"></p>
+
+        <div class="mt-4" x-show="forecast.ai_recommendations && forecast.ai_recommendations.length">
+            <h3 class="text-sm font-semibold text-devtext1 mb-2">Recommandations</h3>
+            <ul class="space-y-2 text-sm text-devtext2">
+                <template x-for="reco in forecast.ai_recommendations" :key="reco">
+                    <li class="flex gap-2">
+                        <i class="fa-solid fa-check text-devgreen mt-1"></i>
+                        <span x-text="reco"></span>
+                    </li>
+                </template>
+            </ul>
+        </div>
+
+        <div class="mt-4" x-show="forecast.drivers && forecast.drivers.length">
+            <h3 class="text-sm font-semibold text-devtext1 mb-2">Facteurs principaux</h3>
+            <ul class="space-y-1 text-xs text-devtext3">
+                <template x-for="driver in forecast.drivers" :key="driver">
+                    <li class="flex gap-2">
+                        <i class="fa-solid fa-circle-dot text-devaccent mt-1"></i>
+                        <span x-text="driver"></span>
+                    </li>
+                </template>
+            </ul>
+        </div>
+
+        <div class="mt-4 text-xs text-devtext3" x-show="forecast.used_provider">
+            Moteur utilisé : <span class="font-mono text-devtext2" x-text="forecast.used_provider"></span>
+        </div>
+    </section>
+</div>
+
+<script>
+function forecastPanel() {
+    return {
+        loading: false,
+        forecast: {},
+        cards: [],
+        currency: '{{ project.budgetestimatif.currency|default:"XOF" }}',
+
+        init() {
+            this.refresh();
+        },
+
+        async refresh() {
+            this.loading = true;
+            try {
+                const url = "{% url 'project_financial_ai_forecast' project.pk %}";
+                const resp = await fetch(url, { credentials: 'same-origin' });
+                this.forecast = await resp.json();
+                this.cards = this.buildCards(this.forecast);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        buildCards(f) {
+            const fmt = (v) => Number(v || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
+            const overrun = f.overrun_risk_percent || 0;
+            return [
+                {
+                    label: 'Coût attendu',
+                    value: fmt(f.base_cost) + ' ' + this.currency,
+                    help: 'Projection centrale (heuristique + IA)',
+                    icon: 'fa-solid fa-coins',
+                    iconClass: 'bg-[rgba(232,149,10,.10)] text-devamber',
+                    valueClass: 'text-devtext1',
+                },
+                {
+                    label: 'Fourchette',
+                    value: fmt(f.optimistic_cost) + ' – ' + fmt(f.pessimistic_cost),
+                    help: 'Optimiste / pessimiste',
+                    icon: 'fa-solid fa-chart-area',
+                    iconClass: 'bg-[rgba(14,165,201,.10)] text-devcyan',
+                    valueClass: 'text-devtext1 text-2xl',
+                },
+                {
+                    label: 'Marge',
+                    value: fmt(f.expected_margin) + ' ' + this.currency,
+                    help: (f.expected_margin_percent || 0) + '%',
+                    icon: 'fa-solid fa-chart-line',
+                    iconClass: Number(f.expected_margin) >= 0
+                        ? 'bg-[rgba(52,168,83,.10)] text-devgreen'
+                        : 'bg-[rgba(232,69,60,.10)] text-devred',
+                    valueClass: Number(f.expected_margin) >= 0 ? 'text-devgreen' : 'text-devred',
+                },
+                {
+                    label: 'Risque dépassement',
+                    value: overrun + '%',
+                    help: overrun >= 70 ? 'Risque élevé' : (overrun >= 40 ? 'Risque modéré' : 'Risque faible'),
+                    icon: 'fa-solid fa-triangle-exclamation',
+                    iconClass: overrun >= 70
+                        ? 'bg-[rgba(232,69,60,.10)] text-devred'
+                        : (overrun >= 40 ? 'bg-[rgba(232,149,10,.10)] text-devamber' : 'bg-[rgba(52,168,83,.10)] text-devgreen'),
+                    valueClass: overrun >= 70 ? 'text-devred' : (overrun >= 40 ? 'text-devamber' : 'text-devgreen'),
+                },
+            ];
+        },
+    };
+}
+</script>
+{% endblock %}

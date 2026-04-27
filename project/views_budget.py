@@ -508,10 +508,10 @@ class ProjectExpenseCreateView(ProjectFinancialPermissionMixin, DevflowCreateVie
         return super().form_valid(form)
 
 
-class GenerateEstimateLinesFromTasksView(ProjectFinancialPermissionMixin, View):
+class GenerateEstimateLinesFromTasksView(ProjectFinancialPermissionMixin, LoginRequiredMixin, View):
     def post(self, request, project_id):
         project = get_object_or_404(dm.Project, pk=project_id)
-        if not self.can_view_financial_data(project):
+        if not self.can_view_financials(project):
             messages.error(request, "Accès non autorisé.")
             return redirect("project_detail", pk=project.pk)
 
@@ -528,10 +528,10 @@ class GenerateEstimateLinesFromTasksView(ProjectFinancialPermissionMixin, View):
         return redirect("project_detail", pk=project.pk)
 
 
-class RecalculateProjectBudgetView(ProjectFinancialPermissionMixin, View):
+class RecalculateProjectBudgetView(ProjectFinancialPermissionMixin, LoginRequiredMixin, View):
     def post(self, request, project_id):
         project = get_object_or_404(dm.Project, pk=project_id)
-        if not self.can_view_financial_data(project):
+        if not self.can_view_financials(project):
             messages.error(request, "Accès non autorisé.")
             return redirect("project_detail", pk=project.pk)
 
@@ -541,4 +541,28 @@ class RecalculateProjectBudgetView(ProjectFinancialPermissionMixin, View):
         )
 
         messages.success(request, "Budget recalculé à partir des lignes d'estimation.")
+        return redirect("project_detail", pk=project.pk)
+
+
+class RefreshProjectFinancialsView(ProjectFinancialPermissionMixin, LoginRequiredMixin, View):
+    """Recalcul intelligent global : RAF + budget + overview."""
+
+    def post(self, request, project_id):
+        project = get_object_or_404(dm.Project, pk=project_id)
+        if not self.can_view_financials(project):
+            messages.error(request, "Accès non autorisé.")
+            return redirect("project_detail", pk=project.pk)
+
+        ProjectBudgetService.refresh_project_financials(
+            project=project,
+            user=request.user,
+            rebuild_budget=True,
+        )
+        ProjectBudgetService.regenerate_raf_lines_from_tasks(
+            project=project,
+            user=request.user,
+            replace_existing=True,
+        )
+
+        messages.success(request, "Données financières du projet rafraîchies.")
         return redirect("project_detail", pk=project.pk)

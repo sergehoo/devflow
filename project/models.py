@@ -2518,3 +2518,308 @@ class FeatureFinancialSnapshot(TimeStampedModel):
     estimated_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     estimated_revenue = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     roi_percent = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+
+
+# =========================================================================
+# AI PROJECT STRUCTURING — Proposals
+# =========================================================================
+class ProjectAIProposal(TimeStampedModel):
+    """
+    Proposition IA générée à la création d'un projet (ou à la demande).
+    Stocke la roadmap, milestones, sprints, backlog, tasks, dependencies,
+    assignments suggérés. L'utilisateur valide ou rejette avant application.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "En attente de génération"
+        GENERATING = "GENERATING", "Génération en cours"
+        READY = "READY", "Prête à validation"
+        PARTIALLY_VALIDATED = "PARTIALLY_VALIDATED", "Partiellement validée"
+        VALIDATED = "VALIDATED", "Validée"
+        APPLIED = "APPLIED", "Appliquée au projet"
+        REJECTED = "REJECTED", "Rejetée"
+        FAILED = "FAILED", "Échec de génération"
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="ai_proposals",
+    )
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name="ai_proposals",
+    )
+    status = models.CharField(max_length=25, choices=Status.choices, default=Status.PENDING)
+
+    # Méta-données IA
+    used_provider = models.CharField(max_length=50, blank=True)
+    used_model = models.CharField(max_length=120, blank=True)
+    tokens_used = models.PositiveIntegerField(default=0)
+    raw_payload = models.JSONField(default=dict, blank=True)
+    prompt_snapshot = models.TextField(blank=True)
+    error_message = models.TextField(blank=True)
+
+    # Synthèse pour la prévisualisation
+    summary = models.TextField(blank=True)
+    risks_summary = models.TextField(blank=True)
+    recommendations = models.JSONField(default=list, blank=True)
+
+    # Workflow
+    triggered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="triggered_ai_proposals",
+    )
+    validated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="validated_ai_proposals",
+    )
+    validated_at = models.DateTimeField(null=True, blank=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Proposition IA projet"
+        verbose_name_plural = "Propositions IA projet"
+
+    def __str__(self):
+        return f"Proposition IA · {self.project.name} · {self.get_status_display()}"
+
+    # Helpers d'agrégation utilisés par les vues
+    def items_by_kind(self, kind):
+        return self.items.filter(kind=kind).order_by("order_index", "id")
+
+    @property
+    def task_items(self):
+        return self.items_by_kind(ProjectAIProposalItem.Kind.TASK)
+
+    @property
+    def sprint_items(self):
+        return self.items_by_kind(ProjectAIProposalItem.Kind.SPRINT)
+
+    @property
+    def milestone_items(self):
+        return self.items_by_kind(ProjectAIProposalItem.Kind.MILESTONE)
+
+    @property
+    def roadmap_items(self):
+        return self.items_by_kind(ProjectAIProposalItem.Kind.ROADMAP_ITEM)
+
+    @property
+    def backlog_items(self):
+        return self.items_by_kind(ProjectAIProposalItem.Kind.BACKLOG)
+
+    @property
+    def dependency_items(self):
+        return self.items_by_kind(ProjectAIProposalItem.Kind.DEPENDENCY)
+
+    @property
+    def assignment_items(self):
+        return self.items_by_kind(ProjectAIProposalItem.Kind.ASSIGNMENT)
+
+    @property
+    def total_items_count(self):
+        return self.items.count()
+
+    @property
+    def validated_items_count(self):
+        return self.items.filter(item_status=ProjectAIProposalItem.ItemStatus.VALIDATED).count()
+
+    @property
+    def is_editable(self):
+        return self.status in {
+            self.Status.READY,
+            self.Status.PARTIALLY_VALIDATED,
+            self.Status.VALIDATED,
+        }
+
+
+class ProjectAIProposalItem(TimeStampedModel):
+    """
+    Item individuel d'une proposition IA. Le payload est volontairement
+    flexible (JSONField) pour accueillir les attributs propres à chaque
+    type sans multiplier les colonnes inutilisées.
+    """
+
+    class Kind(models.TextChoices):
+        ROADMAP_ITEM = "ROADMAP_ITEM", "Phase roadmap"
+        MILESTONE = "MILESTONE", "Jalon"
+        SPRINT = "SPRINT", "Sprint"
+        BACKLOG = "BACKLOG", "Élément de backlog"
+        TASK = "TASK", "Tâche"
+        DEPENDENCY = "DEPENDENCY", "Dépendance"
+        ASSIGNMENT = "ASSIGNMENT", "Affectation"
+
+    class ItemStatus(models.TextChoices):
+        PROPOSED = "PROPOSED", "Proposé"
+        EDITED = "EDITED", "Modifié"
+        VALIDATED = "VALIDATED", "Validé"
+        REJECTED = "REJECTED", "Rejeté"
+        APPLIED = "APPLIED", "Appliqué"
+
+    proposal = models.ForeignKey(
+        ProjectAIProposal,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    item_status = models.CharField(
+        max_length=15,
+        choices=ItemStatus.choices,
+        default=ItemStatus.PROPOSED,
+    )
+
+    # Identifiant logique pour les références internes (ex. pour relier
+    # une dépendance à une tâche par son `local_ref`)
+    local_ref = models.CharField(max_length=80, blank=True)
+
+    # Champs courants (suffisants pour 90% des cas)
+    title = models.CharField(max_length=200, blank=True)
+    description = models.TextField(blank=True)
+    order_index = models.PositiveIntegerField(default=0)
+
+    # Tâche-spécifique (les autres types peuvent réutiliser ce qui leur sert)
+    priority = models.CharField(max_length=20, blank=True)
+    complexity = models.CharField(max_length=20, blank=True)
+    estimate_hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    recommended_profile = models.CharField(max_length=120, blank=True)
+    recommended_assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="proposed_assignments",
+    )
+    sprint_ref = models.CharField(max_length=80, blank=True)
+    milestone_ref = models.CharField(max_length=80, blank=True)
+    depends_on_refs = models.JSONField(default=list, blank=True)
+    acceptance_criteria = models.JSONField(default=list, blank=True)
+
+    # Sprint-spécifique
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    velocity_target = models.PositiveIntegerField(default=0)
+
+    # Free-form payload (extensions futures sans migration)
+    extra_payload = models.JSONField(default=dict, blank=True)
+
+    # Workflow
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="edited_ai_proposal_items",
+    )
+    edited_at = models.DateTimeField(null=True, blank=True)
+    applied_object_id = models.PositiveIntegerField(null=True, blank=True)
+    applied_object_model = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        ordering = ["proposal", "kind", "order_index"]
+        indexes = [
+            models.Index(fields=["proposal", "kind"]),
+            models.Index(fields=["proposal", "item_status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} · {self.title or self.local_ref}"
+
+
+class TaskReminder(TimeStampedModel):
+    """
+    Trace des rappels envoyés sur une tâche : permet d'éviter le spam,
+    de mesurer la réactivité et de produire un historique exploitable.
+    """
+
+    class Reason(models.TextChoices):
+        OVERDUE = "OVERDUE", "Tâche en retard"
+        STALE = "STALE", "Tâche stagnante"
+        DUE_SOON = "DUE_SOON", "Échéance proche"
+        BLOCKED = "BLOCKED", "Tâche bloquée"
+
+    class Channel(models.TextChoices):
+        EMAIL = "EMAIL", "Email"
+        IN_APP = "IN_APP", "Notification in-app"
+        BOTH = "BOTH", "Email + in-app"
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="reminders")
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="task_reminders",
+    )
+    reason = models.CharField(max_length=20, choices=Reason.choices, default=Reason.STALE)
+    channel = models.CharField(max_length=10, choices=Channel.choices, default=Channel.BOTH)
+
+    # Snapshot au moment de l'envoi (pour audit même si la tâche change)
+    task_status_at_send = models.CharField(max_length=20, blank=True)
+    task_due_date_at_send = models.DateField(null=True, blank=True)
+    days_overdue = models.IntegerField(default=0)
+
+    # Métriques de suivi
+    is_acknowledged = models.BooleanField(default=False)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    triggered_status_change = models.BooleanField(
+        default=False,
+        help_text="Vrai si l'assignee a mis à jour la tâche après ce rappel.",
+    )
+
+    sent_at = models.DateTimeField(default=timezone.now)
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-sent_at"]
+        indexes = [
+            models.Index(fields=["task", "-sent_at"]),
+            models.Index(fields=["recipient", "-sent_at"]),
+        ]
+        verbose_name = "Rappel tâche"
+        verbose_name_plural = "Rappels tâches"
+
+    def __str__(self):
+        return f"Rappel {self.task} → {self.recipient} ({self.get_reason_display()})"
+
+
+class ProjectAIProposalLog(TimeStampedModel):
+    """Journal des actions sur une proposition IA (audit & traçabilité)."""
+
+    class Action(models.TextChoices):
+        TRIGGERED = "TRIGGERED", "Déclenchée"
+        GENERATED = "GENERATED", "Générée"
+        ITEM_EDITED = "ITEM_EDITED", "Item modifié"
+        ITEM_VALIDATED = "ITEM_VALIDATED", "Item validé"
+        ITEM_REJECTED = "ITEM_REJECTED", "Item rejeté"
+        VALIDATED = "VALIDATED", "Proposition validée"
+        APPLIED = "APPLIED", "Proposition appliquée"
+        REJECTED = "REJECTED", "Proposition rejetée"
+        FAILED = "FAILED", "Échec"
+
+    proposal = models.ForeignKey(
+        ProjectAIProposal,
+        on_delete=models.CASCADE,
+        related_name="logs",
+    )
+    action = models.CharField(max_length=25, choices=Action.choices)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ai_proposal_actions",
+    )
+    message = models.TextField(blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"[{self.action}] {self.proposal_id}"

@@ -1,0 +1,15 @@
+Bonjour {{ pm.first_name|default:pm.username }},
+
+Synthèse automatique des rappels envoyés à votre équipe sur le projet
+« {{ project.name }} » : {{ items_count }} tâche(s) nécessitent un suivi.
+
+{% for item in items %}
+  • {{ item.task.title }}
+    Assignée à : {{ item.task.assignee }}
+    Motif : {{ item.reason_label }}{% if item.days_overdue %} ({{ item.days_overdue }} jours){% endif %}
+    Statut : {{ item.task.get_status_display }}
+    Lien : {{ item.task_url }}
+
+{% endfor %}
+
+— DevFlow (notification automatique chef de projet)

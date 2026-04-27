@@ -1,0 +1,51 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Propositions IA — {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto">
+    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft p-6 lg:p-8">
+        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">AI Proposals</p>
+        <h1 class="mt-2 text-3xl font-serif text-devtext1">{{ project.name }} — historique IA</h1>
+        <p class="mt-2 text-sm text-devtext2">Toutes les propositions IA générées pour ce projet.</p>
+        <div class="mt-4 flex gap-2">
+            <a href="{% url 'project_detail' project.pk %}" class="btn-soft"><i class="fa-solid fa-arrow-left"></i> Retour projet</a>
+            <form method="post" action="{% url 'project_ai_proposal_trigger' project.pk %}">
+                {% csrf_token %}
+                <button class="btn-main"><i class="fa-solid fa-sparkles"></i> Générer une nouvelle proposition</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <table class="min-w-full text-sm">
+            <thead class="bg-devbg3 text-devtext3 uppercase text-[11px] tracking-wide">
+                <tr>
+                    <th class="px-6 py-3 text-left">Statut</th>
+                    <th class="px-6 py-3 text-left">Items</th>
+                    <th class="px-6 py-3 text-left">Provider</th>
+                    <th class="px-6 py-3 text-left">Déclenchée par</th>
+                    <th class="px-6 py-3 text-left">Créée</th>
+                    <th class="px-6 py-3 text-right">Action</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-devborder">
+                {% for p in proposals %}
+                <tr class="hover:bg-devbg3/40">
+                    <td class="px-6 py-3"><span class="badge">{{ p.get_status_display }}</span></td>
+                    <td class="px-6 py-3">{{ p.total_items_count }}</td>
+                    <td class="px-6 py-3 text-xs">{{ p.used_provider|default:"—" }}</td>
+                    <td class="px-6 py-3 text-xs">{{ p.triggered_by|default:"—" }}</td>
+                    <td class="px-6 py-3 text-xs text-devtext3">{{ p.created_at|date:"d/m/Y H:i" }}</td>
+                    <td class="px-6 py-3 text-right">
+                        <a href="{% url 'ai_proposal_detail' p.pk %}" class="btn-soft text-xs">Ouvrir</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="px-6 py-12 text-center text-devtext3">Aucune proposition pour ce projet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}

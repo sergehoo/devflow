@@ -1,4 +1,4 @@
-import dm
+from project import models as dm
 from django.contrib import admin
 from django.db.models import Count
 from django.utils.html import format_html

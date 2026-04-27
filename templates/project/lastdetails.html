@@ -14,7 +14,7 @@
     class="space-y-6"
 >
     <!-- HERO / HEADER -->
-    <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
+    <section class="relative overflow-visible rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
         <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.06)_45%,transparent_100%)]"></div>
         <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
         <div class="absolute -bottom-20 left-10 h-40 w-40 rounded-full bg-[var(--cyan-bg)] blur-3xl"></div>
@@ -98,7 +98,7 @@
                     </a>
                     {% endif %}
 
-                    <div class="relative">
+                    <div class="relative z-[1000]">
                         <button type="button"
                                 @click="openActions = !openActions"
                                 @click.away="openActions = false"

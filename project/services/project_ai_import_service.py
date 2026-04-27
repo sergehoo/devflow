@@ -10,7 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from project import models as dm
-from project.services.project_budget_service import ProjectBudgetService
+from project.services.budget import ProjectBudgetService
 
 User = get_user_model()
 

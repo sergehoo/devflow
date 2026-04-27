@@ -1,0 +1,70 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Canaux directs{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto">
+    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft p-6 lg:p-8">
+        <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">DevFlow</p>
+                <h1 class="mt-2 text-3xl font-serif text-devtext1">Canaux directs</h1>
+                <p class="mt-2 text-sm text-devtext2">Liste des canaux directs du workspace.</p>
+            </div>
+            {% block list_actions %}{% if create_url %}<a href="{{ create_url }}" class="btn-main"><i class="fa-solid fa-plus"></i> Nouveau</a>{% endif %}{% endblock %}
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-devbg3 text-devtext3 uppercase text-[11px] tracking-wide">
+                    <tr>
+                        <th class="px-6 py-3 text-left">Élément</th>
+                        <th class="px-6 py-3 text-left">Détails</th>
+                        <th class="px-6 py-3 text-left">Mis à jour</th>
+                        <th class="px-6 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-devborder">
+                    {% for obj in object_list|default:items %}
+                    <tr class="hover:bg-devbg3/40">
+                        <td class="px-6 py-3 font-medium text-devtext1">{{ obj }}</td>
+                        <td class="px-6 py-3 text-devtext2 text-xs">
+                            {% if obj.description %}{{ obj.description|truncatechars:80 }}{% else %}—{% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-devtext3 text-xs">
+                            {% if obj.updated_at %}{{ obj.updated_at|date:"d/m/Y H:i" }}{% elif obj.created_at %}{{ obj.created_at|date:"d/m/Y H:i" }}{% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-right">
+                            {% if obj.pk %}
+                                <a href="?pk={{ obj.pk }}" class="text-devtext3 hover:text-devaccent" title="Voir">
+                                    <i class="fa-solid fa-eye"></i>
+                                </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="px-6 py-12 text-center text-devtext3">
+                            <i class="fa-solid fa-inbox text-4xl mb-2 block"></i>
+                            Aucun élément à afficher.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if is_paginated %}
+        <div class="px-6 py-3 border-t border-devborder flex items-center justify-between text-xs text-devtext3">
+            <span>Page {{ page_obj.number }} sur {{ paginator.num_pages }}</span>
+            <div class="flex gap-1">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" class="btn-soft text-xs">Précédent</a>{% endif %}
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" class="btn-soft text-xs">Suivant</a>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

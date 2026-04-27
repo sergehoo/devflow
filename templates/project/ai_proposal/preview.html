@@ -1,0 +1,391 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Proposition IA — {{ proposal.project.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto" x-data="proposalCockpit()" x-init="init()">
+
+    <!-- Hero header -->
+    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft overflow-hidden relative">
+        <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,78,0,.10),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(14,165,201,.08),transparent_25%)]"></div>
+        <div class="relative p-6 lg:p-8">
+            <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+                <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="badge {{ status_class }}">{{ proposal.get_status_display }}</span>
+                        {% if proposal.used_provider %}
+                            <span class="badge b-cyan">{{ proposal.used_provider }}</span>
+                        {% endif %}
+                        {% if proposal.tokens_used %}
+                            <span class="text-[11px] text-devtext3">{{ proposal.tokens_used }} tokens</span>
+                        {% endif %}
+                    </div>
+
+                    <p class="mt-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+                        AI Project Structure Proposal
+                    </p>
+                    <h1 class="mt-2 text-3xl lg:text-4xl font-serif text-devtext1">
+                        {{ proposal.project.name }}
+                    </h1>
+                    <p class="mt-3 text-sm text-devtext2 max-w-3xl leading-7">
+                        {{ proposal.summary|default:"Génération IA en cours ou en attente. Validez/modifiez/rejetez chaque élément avant application définitive au projet." }}
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <form method="post" action="{% url 'ai_proposal_validate_all' proposal.pk %}">
+                        {% csrf_token %}
+                        <button class="btn-main"
+                                {% if proposal.status == 'APPLIED' or proposal.status == 'REJECTED' %}disabled{% endif %}>
+                            <i class="fa-solid fa-check-double"></i> Tout valider
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'ai_proposal_apply' proposal.pk %}">
+                        {% csrf_token %}
+                        <button class="btn-main bg-devgreen border-devgreen"
+                                {% if proposal.status == 'APPLIED' %}disabled{% endif %}
+                                onclick="return confirm('Appliquer cette proposition au projet ?')">
+                            <i class="fa-solid fa-rocket"></i> Appliquer au projet
+                        </button>
+                    </form>
+                    <a href="{% url 'ai_proposal_regenerate' proposal.pk %}" class="btn-soft">
+                        <i class="fa-solid fa-rotate"></i> Régénérer
+                    </a>
+                    <form method="post" action="{% url 'ai_proposal_reject' proposal.pk %}">
+                        {% csrf_token %}
+                        <button class="btn-soft text-devred"
+                                onclick="return confirm('Rejeter toute la proposition ?')">
+                            <i class="fa-solid fa-trash"></i> Rejeter
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- KPI cohérence -->
+            <div class="mt-8 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Tâches proposées</div>
+                    <div class="mt-2 text-3xl font-serif text-devtext1">{{ task_items|length }}</div>
+                    <div class="mt-1 text-xs text-devtext3">{{ proposal.total_items_count }} items au total</div>
+                </div>
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Charge totale</div>
+                    <div class="mt-2 text-3xl font-serif text-devamber">{{ coherence.total_hours|floatformat:0 }}h</div>
+                    <div class="mt-1 text-xs text-devtext3">à répartir sur l'équipe</div>
+                </div>
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Tâches non assignées</div>
+                    <div class="mt-2 text-3xl font-serif {% if coherence.unassigned_tasks > 0 %}text-devred{% else %}text-devgreen{% endif %}">
+                        {{ coherence.unassigned_tasks }}
+                    </div>
+                    <div class="mt-1 text-xs text-devtext3">à attribuer manuellement</div>
+                </div>
+                <div class="rounded-[22px] border border-devborder bg-devbg3/90 px-5 py-5 shadow-soft">
+                    <div class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Dépendances cassées</div>
+                    <div class="mt-2 text-3xl font-serif {% if coherence.broken_dependencies %}text-devred{% else %}text-devgreen{% endif %}">
+                        {{ coherence.broken_dependencies|length }}
+                    </div>
+                    <div class="mt-1 text-xs text-devtext3">références manquantes</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Synthèse + Recos -->
+    {% if proposal.risks_summary or recommendations %}
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {% if proposal.risks_summary %}
+        <div class="rounded-[22px] border border-devborder bg-devbg2 p-6 shadow-soft">
+            <h2 class="text-lg font-semibold text-devtext1 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-triangle-exclamation text-devamber"></i> Risques détectés
+            </h2>
+            <p class="text-sm text-devtext2 leading-7">{{ proposal.risks_summary }}</p>
+        </div>
+        {% endif %}
+        {% if recommendations %}
+        <div class="rounded-[22px] border border-devborder bg-devbg2 p-6 shadow-soft">
+            <h2 class="text-lg font-semibold text-devtext1 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-lightbulb text-devaccent"></i> Recommandations IA
+            </h2>
+            <ul class="space-y-2 text-sm text-devtext2">
+                {% for reco in recommendations %}
+                <li class="flex gap-2">
+                    <i class="fa-solid fa-check text-devgreen mt-1"></i>
+                    <span>{{ reco }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- Charge par membre -->
+    {% if coherence.load_rows %}
+    <section class="rounded-[22px] border border-devborder bg-devbg2 p-6 shadow-soft">
+        <h2 class="text-lg font-semibold text-devtext1 mb-3 flex items-center gap-2">
+            <i class="fa-solid fa-users text-devcyan"></i> Charge par membre
+        </h2>
+        <div class="space-y-2">
+            {% for row in coherence.load_rows %}
+            <div>
+                <div class="flex justify-between text-xs text-devtext3 mb-1">
+                    <span>{{ row.label }}</span>
+                    <span class="font-mono">{{ row.hours|floatformat:0 }}h</span>
+                </div>
+                <div class="h-2 bg-devbg3 rounded-full overflow-hidden">
+                    <div class="h-2 bg-devaccent" style="width: {{ row.hours|floatformat:0 }}%; max-width: 100%;"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- Tabs : Tâches | Sprints | Milestones | Roadmap | Backlog | Dépendances -->
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <div class="flex flex-wrap gap-1 border-b border-devborder bg-devbg3 px-3 pt-3">
+            <template x-for="tab in tabs" :key="tab.key">
+                <button @click="activeTab = tab.key"
+                        :class="activeTab === tab.key ? 'bg-devbg2 text-devtext1 border-devborder' : 'text-devtext3 hover:text-devtext1'"
+                        class="px-4 py-2 text-sm font-semibold rounded-t-[12px] border border-b-0">
+                    <span x-text="tab.label"></span>
+                    <span class="ml-2 text-[10px] text-devtext3" x-text="'(' + tab.count + ')'"></span>
+                </button>
+            </template>
+        </div>
+
+        <!-- Tâches -->
+        <div x-show="activeTab === 'tasks'" class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-devbg3 text-devtext3 uppercase text-[10px] tracking-wide">
+                    <tr>
+                        <th class="px-4 py-3 text-left">Statut</th>
+                        <th class="px-4 py-3 text-left">Réf</th>
+                        <th class="px-4 py-3 text-left">Tâche</th>
+                        <th class="px-4 py-3 text-left">Profil</th>
+                        <th class="px-4 py-3 text-left">Assigné</th>
+                        <th class="px-4 py-3 text-right">Charge</th>
+                        <th class="px-4 py-3 text-left">Sprint</th>
+                        <th class="px-4 py-3 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-devborder">
+                    {% for item in task_items %}
+                    <tr class="hover:bg-devbg3/40">
+                        <td class="px-4 py-3">
+                            <span class="badge
+                                {% if item.item_status == 'VALIDATED' %}b-green
+                                {% elif item.item_status == 'REJECTED' %}b-red
+                                {% elif item.item_status == 'EDITED' %}b-amber
+                                {% elif item.item_status == 'APPLIED' %}b-green
+                                {% else %}b-cyan{% endif %}">
+                                {{ item.get_item_status_display }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 font-mono text-xs text-devtext3">{{ item.local_ref }}</td>
+                        <td class="px-4 py-3">
+                            <div class="font-medium text-devtext1">{{ item.title }}</div>
+                            <div class="text-xs text-devtext3 mt-0.5 line-clamp-2">{{ item.description|truncatechars:120 }}</div>
+                            {% if item.acceptance_criteria %}
+                            <div class="mt-1 flex flex-wrap gap-1">
+                                {% for ac in item.acceptance_criteria|slice:":2" %}
+                                <span class="text-[10px] px-2 py-0.5 rounded-full bg-devbg3 text-devtext3">✓ {{ ac|truncatechars:40 }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-xs text-devtext2">{{ item.recommended_profile|default:"—" }}</td>
+                        <td class="px-4 py-3 text-xs text-devtext2">{{ item.recommended_assignee|default:"Non assigné" }}</td>
+                        <td class="px-4 py-3 text-right font-mono text-devtext1">{{ item.estimate_hours|floatformat:0 }}h</td>
+                        <td class="px-4 py-3 text-xs">
+                            {% if item.sprint_ref %}<span class="font-mono text-devcyan">{{ item.sprint_ref }}</span>{% else %}—{% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex justify-center gap-1">
+                                <form method="post" action="{% url 'ai_proposal_item_validate' proposal.pk item.pk %}">
+                                    {% csrf_token %}
+                                    <button class="text-devgreen hover:text-devtext1" title="Valider"><i class="fa-solid fa-check"></i></button>
+                                </form>
+                                <a href="{% url 'ai_proposal_item_edit' proposal.pk item.pk %}" class="text-devamber hover:text-devtext1" title="Modifier">
+                                    <i class="fa-solid fa-pen"></i>
+                                </a>
+                                <form method="post" action="{% url 'ai_proposal_item_reject' proposal.pk item.pk %}">
+                                    {% csrf_token %}
+                                    <button class="text-devred hover:text-devtext1" title="Rejeter"><i class="fa-solid fa-xmark"></i></button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="px-6 py-12 text-center text-devtext3">Aucune tâche proposée.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Sprints -->
+        <div x-show="activeTab === 'sprints'" class="overflow-x-auto" style="display: none;">
+            <table class="min-w-full text-sm">
+                <thead class="bg-devbg3 text-devtext3 uppercase text-[10px] tracking-wide">
+                    <tr>
+                        <th class="px-4 py-3 text-left">Statut</th>
+                        <th class="px-4 py-3 text-left">Réf</th>
+                        <th class="px-4 py-3 text-left">Sprint</th>
+                        <th class="px-4 py-3 text-left">Période</th>
+                        <th class="px-4 py-3 text-right">Vélocité</th>
+                        <th class="px-4 py-3 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-devborder">
+                    {% for item in sprint_items %}
+                    <tr class="hover:bg-devbg3/40">
+                        <td class="px-4 py-3"><span class="badge b-cyan">{{ item.get_item_status_display }}</span></td>
+                        <td class="px-4 py-3 font-mono text-xs text-devtext3">{{ item.local_ref }}</td>
+                        <td class="px-4 py-3 font-medium text-devtext1">{{ item.title }}</td>
+                        <td class="px-4 py-3 text-xs text-devtext2">
+                            {{ item.start_date|date:"d/m/Y"|default:"—" }} → {{ item.end_date|date:"d/m/Y"|default:"—" }}
+                        </td>
+                        <td class="px-4 py-3 text-right font-mono">{{ item.velocity_target }}</td>
+                        <td class="px-4 py-3">
+                            <div class="flex justify-center gap-1">
+                                <form method="post" action="{% url 'ai_proposal_item_validate' proposal.pk item.pk %}">{% csrf_token %}<button class="text-devgreen"><i class="fa-solid fa-check"></i></button></form>
+                                <a href="{% url 'ai_proposal_item_edit' proposal.pk item.pk %}" class="text-devamber"><i class="fa-solid fa-pen"></i></a>
+                                <form method="post" action="{% url 'ai_proposal_item_reject' proposal.pk item.pk %}">{% csrf_token %}<button class="text-devred"><i class="fa-solid fa-xmark"></i></button></form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Milestones -->
+        <div x-show="activeTab === 'milestones'" class="overflow-x-auto" style="display: none;">
+            <table class="min-w-full text-sm">
+                <thead class="bg-devbg3 text-devtext3 uppercase text-[10px] tracking-wide">
+                    <tr>
+                        <th class="px-4 py-3 text-left">Statut</th>
+                        <th class="px-4 py-3 text-left">Jalon</th>
+                        <th class="px-4 py-3 text-left">Échéance</th>
+                        <th class="px-4 py-3 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-devborder">
+                    {% for item in milestone_items %}
+                    <tr class="hover:bg-devbg3/40">
+                        <td class="px-4 py-3"><span class="badge b-cyan">{{ item.get_item_status_display }}</span></td>
+                        <td class="px-4 py-3 font-medium text-devtext1">{{ item.title }}<div class="text-xs text-devtext3">{{ item.description|truncatechars:80 }}</div></td>
+                        <td class="px-4 py-3 text-xs">{{ item.end_date|date:"d/m/Y"|default:"—" }}</td>
+                        <td class="px-4 py-3">
+                            <div class="flex justify-center gap-1">
+                                <form method="post" action="{% url 'ai_proposal_item_validate' proposal.pk item.pk %}">{% csrf_token %}<button class="text-devgreen"><i class="fa-solid fa-check"></i></button></form>
+                                <a href="{% url 'ai_proposal_item_edit' proposal.pk item.pk %}" class="text-devamber"><i class="fa-solid fa-pen"></i></a>
+                                <form method="post" action="{% url 'ai_proposal_item_reject' proposal.pk item.pk %}">{% csrf_token %}<button class="text-devred"><i class="fa-solid fa-xmark"></i></button></form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Roadmap -->
+        <div x-show="activeTab === 'roadmap'" class="overflow-x-auto" style="display: none;">
+            <table class="min-w-full text-sm">
+                <thead class="bg-devbg3 text-devtext3 uppercase text-[10px] tracking-wide">
+                    <tr>
+                        <th class="px-4 py-3 text-left">Statut</th>
+                        <th class="px-4 py-3 text-left">Phase</th>
+                        <th class="px-4 py-3 text-left">Période</th>
+                        <th class="px-4 py-3 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-devborder">
+                    {% for item in roadmap_items %}
+                    <tr class="hover:bg-devbg3/40">
+                        <td class="px-4 py-3"><span class="badge b-cyan">{{ item.get_item_status_display }}</span></td>
+                        <td class="px-4 py-3 font-medium text-devtext1">{{ item.title }}<div class="text-xs text-devtext3">{{ item.description|truncatechars:80 }}</div></td>
+                        <td class="px-4 py-3 text-xs">{{ item.start_date|date:"d/m/Y" }} → {{ item.end_date|date:"d/m/Y" }}</td>
+                        <td class="px-4 py-3">
+                            <div class="flex justify-center gap-1">
+                                <form method="post" action="{% url 'ai_proposal_item_validate' proposal.pk item.pk %}">{% csrf_token %}<button class="text-devgreen"><i class="fa-solid fa-check"></i></button></form>
+                                <form method="post" action="{% url 'ai_proposal_item_reject' proposal.pk item.pk %}">{% csrf_token %}<button class="text-devred"><i class="fa-solid fa-xmark"></i></button></form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Backlog -->
+        <div x-show="activeTab === 'backlog'" class="overflow-x-auto" style="display: none;">
+            <ul class="divide-y divide-devborder">
+                {% for item in backlog_items %}
+                <li class="px-6 py-3 flex items-center justify-between">
+                    <div>
+                        <div class="font-medium text-devtext1">{{ item.title }}</div>
+                        <div class="text-xs text-devtext3">{{ item.description|truncatechars:120 }}</div>
+                    </div>
+                    <div class="flex gap-1">
+                        <form method="post" action="{% url 'ai_proposal_item_validate' proposal.pk item.pk %}">{% csrf_token %}<button class="text-devgreen"><i class="fa-solid fa-check"></i></button></form>
+                        <form method="post" action="{% url 'ai_proposal_item_reject' proposal.pk item.pk %}">{% csrf_token %}<button class="text-devred"><i class="fa-solid fa-xmark"></i></button></form>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Dépendances -->
+        <div x-show="activeTab === 'deps'" class="px-6 py-4" style="display: none;">
+            <ul class="space-y-2 text-sm">
+                {% for item in dependency_items %}
+                <li class="flex items-center justify-between p-3 rounded-[12px] bg-devbg3">
+                    <span class="font-mono text-devtext1">{{ item.title }}</span>
+                    <span class="badge b-cyan">{{ item.get_item_status_display }}</span>
+                </li>
+                {% empty %}
+                <li class="text-devtext3 text-center py-6">Aucune dépendance proposée.</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Logs -->
+        <div x-show="activeTab === 'logs'" class="px-6 py-4" style="display: none;">
+            <ul class="space-y-1 text-xs text-devtext2">
+                {% for log in proposal.logs.all %}
+                <li class="flex gap-3">
+                    <span class="font-mono text-devtext3 whitespace-nowrap">{{ log.created_at|date:"d/m H:i" }}</span>
+                    <span class="badge b-cyan">{{ log.get_action_display }}</span>
+                    <span>{{ log.message }}</span>
+                </li>
+                {% empty %}
+                <li class="text-devtext3">Aucune action enregistrée.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+</div>
+
+<script>
+function proposalCockpit() {
+    return {
+        activeTab: 'tasks',
+        tabs: [
+            { key: 'tasks', label: 'Tâches', count: {{ task_items|length }} },
+            { key: 'sprints', label: 'Sprints', count: {{ sprint_items|length }} },
+            { key: 'milestones', label: 'Milestones', count: {{ milestone_items|length }} },
+            { key: 'roadmap', label: 'Roadmap', count: {{ roadmap_items|length }} },
+            { key: 'backlog', label: 'Backlog', count: {{ backlog_items|length }} },
+            { key: 'deps', label: 'Dépendances', count: {{ dependency_items|length }} },
+            { key: 'logs', label: 'Historique', count: {{ proposal.logs.count }} },
+        ],
+        init() {},
+    };
+}
+</script>
+{% endblock %}

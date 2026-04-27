@@ -435,7 +435,99 @@ urlpatterns = [
     path("key-results/<int:pk>/", KeyResultDetailView.as_view(), name="key_result_detail"),
     path("key-results/<int:pk>/update/", KeyResultUpdateView.as_view(), name="key_result_update"),
     path("key-results/<int:pk>/delete/", KeyResultDeleteView.as_view(), name="key_result_delete"),
+
+    # =====================================================================
+    # API REST v1 (DRF + drf-spectacular)
+    # =====================================================================
+    path("api/v1/", include("project.api.urls")),
 ]
+
+# Vues IA financières (HTML / JSON htmx) — import différé pour éviter les
+# cycles d'import au démarrage.
+from project.views_financial_ai import (  # noqa: E402
+    ProjectBudgetForecastView,
+    ProjectRiskAnalysisView,
+    WorkspaceAllocationAdviceView,
+    WorkspaceFinancialPortfolioView,
+)
+from project.views_budget import RefreshProjectFinancialsView  # noqa: E402
+from project.views_ai_proposal import (  # noqa: E402
+    ProjectAIProposalApplyView,
+    ProjectAIProposalDetailView,
+    ProjectAIProposalItemEditView,
+    ProjectAIProposalItemRejectView,
+    ProjectAIProposalItemValidateView,
+    ProjectAIProposalListView,
+    ProjectAIProposalRegenerateView,
+    ProjectAIProposalRejectView,
+    ProjectAIProposalTriggerView,
+    ProjectAIProposalValidateAllView,
+    ProjectAIProposalsForProjectView,
+)
+
+urlpatterns += [
+    path(
+        "projects/<int:project_id>/financial-ai/forecast/",
+        ProjectBudgetForecastView.as_view(),
+        name="project_financial_ai_forecast",
+    ),
+    path(
+        "projects/<int:project_id>/financial-ai/risks/",
+        ProjectRiskAnalysisView.as_view(),
+        name="project_financial_ai_risks",
+    ),
+    path(
+        "workspaces/<int:workspace_id>/financial-ai/allocation/",
+        WorkspaceAllocationAdviceView.as_view(),
+        name="workspace_financial_ai_allocation",
+    ),
+    path(
+        "workspaces/<int:workspace_id>/financial-ai/portfolio/",
+        WorkspaceFinancialPortfolioView.as_view(),
+        name="workspace_financial_portfolio",
+    ),
+    path(
+        "projects/<int:project_id>/refresh-financials/",
+        RefreshProjectFinancialsView.as_view(),
+        name="project_refresh_financials",
+    ),
+
+    # =====================================================================
+    # Workflow ProjectAIProposal (auto-structuration projet)
+    # =====================================================================
+    path("ai-proposals/", ProjectAIProposalListView.as_view(), name="ai_proposal_list"),
+    path("ai-proposals/<int:pk>/", ProjectAIProposalDetailView.as_view(), name="ai_proposal_detail"),
+    path("ai-proposals/<int:pk>/regenerate/", ProjectAIProposalRegenerateView.as_view(), name="ai_proposal_regenerate"),
+    path("ai-proposals/<int:pk>/validate-all/", ProjectAIProposalValidateAllView.as_view(), name="ai_proposal_validate_all"),
+    path("ai-proposals/<int:pk>/reject/", ProjectAIProposalRejectView.as_view(), name="ai_proposal_reject"),
+    path("ai-proposals/<int:pk>/apply/", ProjectAIProposalApplyView.as_view(), name="ai_proposal_apply"),
+    path(
+        "ai-proposals/<int:pk>/items/<int:item_pk>/validate/",
+        ProjectAIProposalItemValidateView.as_view(),
+        name="ai_proposal_item_validate",
+    ),
+    path(
+        "ai-proposals/<int:pk>/items/<int:item_pk>/reject/",
+        ProjectAIProposalItemRejectView.as_view(),
+        name="ai_proposal_item_reject",
+    ),
+    path(
+        "ai-proposals/<int:pk>/items/<int:item_pk>/edit/",
+        ProjectAIProposalItemEditView.as_view(),
+        name="ai_proposal_item_edit",
+    ),
+    path(
+        "projects/<int:project_pk>/ai-proposals/",
+        ProjectAIProposalsForProjectView.as_view(),
+        name="project_ai_proposals",
+    ),
+    path(
+        "projects/<int:project_pk>/ai-proposals/trigger/",
+        ProjectAIProposalTriggerView.as_view(),
+        name="project_ai_proposal_trigger",
+    ),
+]
+
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -157,7 +157,23 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CELERY_BEAT_SCHEDULE = {
+    # Balayage de toutes les tâches DevFlow 2x/jour pour envoyer
+    # automatiquement des relances aux assignees et notifier les PM.
+    # Heures locales : 9h00 (matin) et 16h00 (après-midi) Africa/Abidjan.
+    "task-reminder-morning-sweep": {
+        "task": "project.tasks.run_task_reminder_sweep",
+        "schedule": crontab(hour=9, minute=0),
+    },
+    "task-reminder-afternoon-sweep": {
+        "task": "project.tasks.run_task_reminder_sweep",
+        "schedule": crontab(hour=16, minute=0),
+    },
 }
+
+# Paramètres du moteur de relance (surchargeable via env)
+TASK_REMINDER_COOLDOWN_HOURS = int(os.getenv("TASK_REMINDER_COOLDOWN_HOURS", "10"))
+TASK_STALE_DAYS = int(os.getenv("TASK_STALE_DAYS", "2"))
+TASK_DUE_SOON_DAYS = int(os.getenv("TASK_DUE_SOON_DAYS", "3"))
 
 CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
 CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
@@ -168,6 +184,52 @@ CELERY_TIMEZONE = "Africa/Abidjan"
 
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+
+# =========================================================================
+# Couche IA (provider hybride) — voir project/services/ai/
+# =========================================================================
+# Backend actif :
+#   - "auto"   : OpenAI si clé dispo, sinon endpoint local, sinon désactivé
+#   - "openai" : force OpenAI
+#   - "local"  : force endpoint local (Ollama, vLLM...)
+#   - "none"   : désactive toute IA (heuristiques uniquement)
+AI_BACKEND = os.getenv("AI_BACKEND", "auto")
+
+# OpenAI
+AI_OPENAI_MODEL = os.getenv("AI_OPENAI_MODEL", "gpt-4o-mini")
+AI_OPENAI_BASE_URL = os.getenv("AI_OPENAI_BASE_URL", "") or None
+
+# Local (compatible OpenAI : Ollama, vLLM, LocalAI, llama.cpp...)
+AI_LOCAL_BASE_URL = os.getenv("AI_LOCAL_BASE_URL", "http://localhost:11434/v1")
+AI_LOCAL_MODEL = os.getenv("AI_LOCAL_MODEL", "mistral:7b")
+AI_LOCAL_API_KEY = os.getenv("AI_LOCAL_API_KEY", "ollama")
+
+# Cache court pour éviter de spammer le LLM (secondes)
+AI_CACHE_TTL = int(os.getenv("AI_CACHE_TTL", "300"))
+
+# REST Framework / drf-spectacular
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.TokenAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+    ],
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 25,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "DevFlow API",
+    "DESCRIPTION": "API REST DevFlow — projets, budget, IA financière.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+}
 
 
 CHANNEL_LAYERS = {

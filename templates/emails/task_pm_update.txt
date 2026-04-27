@@ -1,0 +1,11 @@
+Bonjour {{ pm.first_name|default:pm.username }},
+
+Une tâche de votre projet « {{ project.name }} » a été mise à jour :
+
+  • {{ task.title }}
+  • {{ message }}
+  {% if task.assignee %}• Assignée à : {{ task.assignee }}{% endif %}
+  • Statut : {{ task.get_status_display }}
+  • Progression : {{ task.progress_percent }}%
+
+— DevFlow (notification automatique)
