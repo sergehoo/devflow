@@ -1,4 +1,9 @@
-<div class="ai-panel" id="aiPanel">
+{% load static %}
+{# DevFlow AI — Panneau conversationnel branché sur le backend #}
+<div class="ai-panel" id="aiPanel"
+     x-data="devflowAIPanel()"
+     x-init="init()">
+
   <div class="ai-panel-head">
     <div style="display:flex;align-items:center;gap:10px">
       <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--cyan));display:flex;align-items:center;justify-content:center">
@@ -6,27 +11,224 @@
       </div>
       <div>
         <div style="font-size:13.5px;font-weight:700;color:var(--text1)">DevFlow AI</div>
-        <div style="font-size:10.5px;color:var(--green);display:flex;align-items:center;gap:4px"><span class="sprint-pip" style="width:5px;height:5px;animation:breathe 2s ease-in-out infinite"></span>En ligne</div>
+        <div style="font-size:10.5px;display:flex;align-items:center;gap:4px"
+             :style="aiOnline ? 'color:var(--green)' : 'color:var(--amber)'">
+          <span class="sprint-pip" style="width:5px;height:5px;animation:breathe 2s ease-in-out infinite"></span>
+          <span x-text="aiOnline ? 'En ligne' : 'Mode déterministe'"></span>
+          <template x-if="contextSummary && contextSummary.workspace_name">
+            <span style="margin-left:6px;color:var(--text3);font-weight:500" x-text="'· ' + contextSummary.workspace_name"></span>
+          </template>
+        </div>
       </div>
     </div>
-    <button class="btn-soft" style="font-size:11px" onclick="closeAI()">✕ Fermer</button>
+    <button class="btn-soft" style="font-size:11px" @click="closeAI()">✕ Fermer</button>
   </div>
-  <div class="ai-messages" id="aiMessages">
-    <div class="ai-msg bot">
-      <div class="ai-bubble">👋 Bonjour Alexandre ! Je suis DevFlow AI.<br><br>Je vois que le <strong>Sprint 14</strong> est en cours avec 9 jours restants. La vélocité est à <strong>62%</strong> — légèrement en dessous de la cible.<br><br>⚠️ <strong>Mobile App v3</strong> est en retard. Voulez-vous que j'analyse les risques ?</div>
-      <div class="ai-time">Maintenant</div>
+
+  <div class="ai-messages" id="aiMessages" x-ref="messages">
+    <template x-for="msg in messages" :key="msg.id">
+      <div class="ai-msg" :class="msg.role === 'user' ? 'user' : 'bot'">
+        <div class="ai-bubble" x-html="msg.html"></div>
+        <div class="ai-time" x-text="msg.time"></div>
+      </div>
+    </template>
+
+    <div class="ai-msg bot" x-show="loading" style="display:none">
+      <div class="ai-bubble">
+        <span class="ai-typing">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        </span>
+      </div>
     </div>
   </div>
+
   <div class="ai-suggestion">
-    <div class="ai-chip" onclick="sendAI(this.textContent)">📊 Analyse du sprint</div>
-    <div class="ai-chip" onclick="sendAI(this.textContent)">⚠️ Projets à risque</div>
-    <div class="ai-chip" onclick="sendAI(this.textContent)">📋 Générer un rapport</div>
-    <div class="ai-chip" onclick="sendAI(this.textContent)">👥 Charge équipe</div>
+    <template x-for="chip in suggestions" :key="chip">
+      <div class="ai-chip" @click="sendMessage(chip)" x-text="chip"></div>
+    </template>
   </div>
+
   <div class="ai-input-wrap">
-    <textarea class="ai-input" id="aiInput" rows="1" placeholder="Poser une question…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIMsg()}"></textarea>
-    <button class="ai-send" onclick="sendAIMsg()">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    <textarea class="ai-input" id="aiInput" rows="1"
+              placeholder="Poser une question…"
+              x-model="draft"
+              :disabled="loading"
+              @keydown.enter.prevent="if(!$event.shiftKey){submit()}"></textarea>
+    <button class="ai-send" @click="submit()" :disabled="loading || !draft.trim()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+        <line x1="22" y1="2" x2="11" y2="13"/>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
     </button>
   </div>
 </div>
+
+<style>
+  .ai-typing { display:inline-flex; gap:4px; padding:4px 0; }
+  .ai-typing .dot {
+    width:6px; height:6px; border-radius:50%; background:var(--text3);
+    animation: aiTyping 1.2s ease-in-out infinite;
+  }
+  .ai-typing .dot:nth-child(2) { animation-delay: .15s; }
+  .ai-typing .dot:nth-child(3) { animation-delay: .3s; }
+  @keyframes aiTyping {
+    0%, 60%, 100% { opacity:.25; transform: translateY(0); }
+    30%           { opacity:1;   transform: translateY(-3px); }
+  }
+</style>
+
+<script>
+function devflowAIPanel() {
+  return {
+    sessionId: null,
+    messages: [],
+    suggestions: [
+      "📊 Analyse du sprint",
+      "⚠️ Projets à risque",
+      "📋 Générer un rapport",
+      "👥 Charge équipe",
+    ],
+    draft: "",
+    loading: false,
+    aiOnline: true,
+    contextSummary: null,
+    csrfToken: null,
+    nextLocalId: 1,
+
+    init() {
+      this.csrfToken = this._readCookie("csrftoken")
+        || document.querySelector('meta[name="csrf-token"]')?.content
+        || "";
+      // Restaure une éventuelle session locale
+      const stored = localStorage.getItem("devflow.ai.session_id");
+      if (stored) this.sessionId = parseInt(stored, 10) || null;
+
+      this.fetchWelcome();
+
+      // Hook global pour boutons existants
+      window.sendAI = (txt) => this.sendMessage(txt);
+      window.sendAIMsg = () => this.submit();
+      window.closeAI = () => this.closeAI();
+    },
+
+    closeAI() {
+      const panel = document.getElementById("aiPanel");
+      if (panel) panel.classList.remove("open");
+    },
+
+    async fetchWelcome() {
+      try {
+        const resp = await fetch("{% url 'ai_chat_welcome' %}", {
+          credentials: "same-origin",
+          headers: { "Accept": "application/json" },
+        });
+        if (!resp.ok) throw new Error("welcome status " + resp.status);
+        const data = await resp.json();
+        if (data.ok) {
+          this.contextSummary = data.context_summary;
+          if (data.suggestions && data.suggestions.length) {
+            this.suggestions = data.suggestions;
+          }
+          this._pushBot(data.html);
+        } else {
+          this._pushBot("👋 DevFlow AI prête. Posez-moi une question sur vos projets.");
+        }
+      } catch (err) {
+        console.warn("AI welcome failed:", err);
+        this._pushBot("👋 DevFlow AI prête. Posez-moi une question.");
+        this.aiOnline = false;
+      }
+    },
+
+    submit() {
+      const txt = (this.draft || "").trim();
+      if (!txt || this.loading) return;
+      this.draft = "";
+      this.sendMessage(txt);
+    },
+
+    async sendMessage(text) {
+      if (!text || this.loading) return;
+      this._pushUser(text);
+      this.loading = true;
+
+      try {
+        const resp = await fetch("{% url 'ai_chat_send' %}", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": this.csrfToken,
+            "Accept": "application/json",
+          },
+          body: JSON.stringify({
+            message: text,
+            session_id: this.sessionId,
+          }),
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.error || "Erreur backend");
+        }
+
+        if (data.session_id) {
+          this.sessionId = data.session_id;
+          localStorage.setItem("devflow.ai.session_id", String(data.session_id));
+        }
+        this.aiOnline = (data.assistant_message?.used_provider || "heuristic") !== "heuristic";
+
+        this._pushBot(data.assistant_message.content);
+      } catch (err) {
+        console.warn("AI send failed:", err);
+        this._pushBot("⚠️ Erreur de communication avec DevFlow AI. Veuillez réessayer.");
+        this.aiOnline = false;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    _pushUser(text) {
+      this.messages.push({
+        id: "u" + (this.nextLocalId++),
+        role: "user",
+        html: this._escape(text),
+        time: this._fmtNow(),
+      });
+      this._scrollDown();
+    },
+
+    _pushBot(html) {
+      this.messages.push({
+        id: "b" + (this.nextLocalId++),
+        role: "assistant",
+        html: html,
+        time: "Maintenant",
+      });
+      this._scrollDown();
+    },
+
+    _scrollDown() {
+      this.$nextTick(() => {
+        const el = this.$refs.messages;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    },
+
+    _escape(s) {
+      return String(s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
+    },
+
+    _fmtNow() {
+      const d = new Date();
+      return d.getHours().toString().padStart(2, "0") + ":" + d.getMinutes().toString().padStart(2, "0");
+    },
+
+    _readCookie(name) {
+      const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+      return m ? decodeURIComponent(m[2]) : null;
+    },
+  };
+}
+</script>

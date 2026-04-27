@@ -2733,6 +2733,72 @@ class ProjectAIProposalItem(TimeStampedModel):
         return f"{self.get_kind_display()} · {self.title or self.local_ref}"
 
 
+class AIChatSession(TimeStampedModel):
+    """
+    Session conversationnelle DevFlow AI. Permet de garder l'historique
+    multi-tours, le contexte projet/sprint actif, et les statistiques
+    d'usage.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ai_chat_sessions",
+    )
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name="ai_chat_sessions",
+        null=True,
+        blank=True,
+    )
+    project = models.ForeignKey(
+        "Project",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ai_chat_sessions",
+    )
+    title = models.CharField(max_length=200, blank=True)
+    is_active = models.BooleanField(default=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        verbose_name = "Session chat IA"
+        verbose_name_plural = "Sessions chat IA"
+
+    def __str__(self):
+        return self.title or f"Chat #{self.pk} · {self.user}"
+
+
+class AIChatMessage(TimeStampedModel):
+    class Role(models.TextChoices):
+        USER = "USER", "Utilisateur"
+        ASSISTANT = "ASSISTANT", "Assistant"
+        SYSTEM = "SYSTEM", "Système"
+
+    session = models.ForeignKey(
+        AIChatSession,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    role = models.CharField(max_length=12, choices=Role.choices)
+    content = models.TextField()
+    intent = models.CharField(max_length=80, blank=True)
+    used_provider = models.CharField(max_length=50, blank=True)
+    used_model = models.CharField(max_length=120, blank=True)
+    tokens_used = models.PositiveIntegerField(default=0)
+    context_payload = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [models.Index(fields=["session", "created_at"])]
+
+    def __str__(self):
+        return f"[{self.role}] {self.content[:60]}"
+
+
 class TaskReminder(TimeStampedModel):
     """
     Trace des rappels envoyés sur une tâche : permet d'éviter le spam,

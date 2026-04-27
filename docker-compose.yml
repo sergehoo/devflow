@@ -297,12 +297,22 @@ services:
       - "traefik.http.routers.devflowadminer.tls.certresolver=lets"
       - "traefik.http.services.devflowadminer.loadbalancer.server.port=8080"
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: devflow_ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - default
 volumes:
   postgres_data:
   redis_data:
   static_volume:
   media_volume:
   logs_volume:
+  ollama_data:
 
 networks:
   proxy:

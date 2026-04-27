@@ -451,6 +451,12 @@ from project.views_financial_ai import (  # noqa: E402
     WorkspaceFinancialPortfolioView,
 )
 from project.views_budget import RefreshProjectFinancialsView  # noqa: E402
+from project.views_ai_chat import (  # noqa: E402
+    AIChatCloseSessionView,
+    AIChatHistoryView,
+    AIChatSendView,
+    AIChatWelcomeView,
+)
 from project.views_ai_proposal import (  # noqa: E402
     ProjectAIProposalApplyView,
     ProjectAIProposalDetailView,
@@ -525,6 +531,22 @@ urlpatterns += [
         "projects/<int:project_pk>/ai-proposals/trigger/",
         ProjectAIProposalTriggerView.as_view(),
         name="project_ai_proposal_trigger",
+    ),
+
+    # =====================================================================
+    # DevFlow AI — Chat conversationnel (panneau latéral)
+    # =====================================================================
+    path("ai/chat/welcome/", AIChatWelcomeView.as_view(), name="ai_chat_welcome"),
+    path("ai/chat/", AIChatSendView.as_view(), name="ai_chat_send"),
+    path(
+        "ai/chat/sessions/<int:session_id>/messages/",
+        AIChatHistoryView.as_view(),
+        name="ai_chat_history",
+    ),
+    path(
+        "ai/chat/sessions/<int:session_id>/close/",
+        AIChatCloseSessionView.as_view(),
+        name="ai_chat_close",
     ),
 ]
 
