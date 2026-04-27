@@ -292,3 +292,37 @@ def notify_pm_on_task_change(sender, instance, created, **kwargs):
                 )
             except Exception:
                 pass
+
+
+# =========================================================================
+# Auto-refresh budget estimatif quand une tâche change (TJM intégré)
+# =========================================================================
+@receiver(post_save, sender=dm.Task)
+def refresh_project_budget_on_task_change(sender, instance, created, **kwargs):
+    """
+    Le budget estimatif d'un projet dépend du TJM × heures estimées des
+    tâches de ses membres. Dès qu'une tâche est créée, modifiée (estimate,
+    assignee, status), on déclenche un rafraîchissement asynchrone du
+    budget pour que le cockpit financier reste cohérent sans clic manuel.
+
+    On utilise un drapeau `_skip_budget_refresh` pour éviter les boucles
+    et on délègue à Celery quand disponible (sinon best-effort sync).
+    """
+    if not instance.project_id:
+        return
+    if getattr(instance, "_skip_budget_refresh", False):
+        return
+
+    if not getattr(settings, "AUTO_REFRESH_BUDGET_ON_TASK_CHANGE", True):
+        return
+
+    try:
+        from project.tasks import refresh_project_budget_task
+
+        if getattr(settings, "AI_TRIGGER_SYNC", False):
+            refresh_project_budget_task(instance.project_id)
+        else:
+            refresh_project_budget_task.delay(instance.project_id)
+    except Exception:
+        # Ne JAMAIS planter le save d'une tâche à cause du budget.
+        pass

@@ -906,10 +906,36 @@ class TaskForm(BaseStyledModelForm):
                     is_archived=False,
                 ).order_by("title")
 
-                self.fields["assignee"].queryset = get_user_model().objects.filter(
+                # Si on a un projet en initial OU sur l'instance, on restreint
+                # les assignees aux membres du projet (UX plus fluide, évite
+                # de proposer tout le workspace).
+                project_id = (
+                    (self.initial.get("project") if self.initial else None)
+                    or (self.data.get("project") if self.data else None)
+                    or (getattr(self.instance, "project_id", None) if self.instance else None)
+                )
+
+                assignee_qs = get_user_model().objects.filter(
                     is_active=True,
                     devflow_memberships__workspace=workspace,
-                ).distinct().order_by("username")
+                ).distinct()
+
+                if project_id:
+                    project_member_ids = list(
+                        ProjectMember.objects.filter(project_id=project_id)
+                        .values_list("user_id", flat=True)
+                    )
+                    if project_member_ids:
+                        assignee_qs = get_user_model().objects.filter(
+                            pk__in=project_member_ids, is_active=True
+                        )
+
+                self.fields["assignee"].queryset = assignee_qs.order_by("username")
+
+                # Pré-remplissage de l'assignee depuis l'URL (?assignee=N)
+                # — utile quand on crée une tâche depuis la fiche d'un membre.
+                if not self.instance.pk and not self.initial.get("assignee"):
+                    pass  # le pré-remplissage par GET est géré dans la vue
 
     def clean_progress_percent(self):
         value = self.cleaned_data.get("progress_percent") or 0

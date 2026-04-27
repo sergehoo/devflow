@@ -25,5 +25,17 @@
                 {{ project_imports|length|default:0 }}
             </span>
         </button>
+
+        <button
+            @click="tab='meetings'"
+            :class="tab === 'meetings' ? 'bg-[var(--accent)] text-white shadow-[0_8px_20px_rgba(124,111,247,0.25)]' : 'bg-[var(--bg3)] text-[var(--text2)] hover:bg-[var(--bg4)] hover:text-[var(--text1)]'"
+            class="inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition"
+            type="button"
+        >
+            <span>Réunions</span>
+            <span class="rounded-full bg-black/10 px-2 py-0.5 text-[11px] font-semibold">
+                {{ object.meetings.count|default:0 }}
+            </span>
+        </button>
     </div>
 </section>

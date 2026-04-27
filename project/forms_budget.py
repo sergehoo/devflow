@@ -41,6 +41,7 @@ BASE_DATE_CLASS = (
 class StyledModelForm(forms.ModelForm):
     """
     Base form DevFlow:
+    - accepte les kwargs DevFlow: request, current_workspace, current_user, allowed_workspaces
     - select => select2
     - textarea description/notes => tinymce
     - autres champs => classes Tailwind homogènes
@@ -49,6 +50,11 @@ class StyledModelForm(forms.ModelForm):
     tinymce_field_names = {"description", "notes", "summary", "comment", "body"}
 
     def __init__(self, *args, **kwargs):
+        self.request = kwargs.pop("request", None)
+        self.current_workspace = kwargs.pop("current_workspace", None)
+        self.current_user = kwargs.pop("current_user", None)
+        self.allowed_workspaces = kwargs.pop("allowed_workspaces", None)
+
         super().__init__(*args, **kwargs)
 
         for name, field in self.fields.items():
@@ -57,12 +63,12 @@ class StyledModelForm(forms.ModelForm):
             if isinstance(widget, forms.CheckboxInput):
                 css = BASE_CHECKBOX_CLASS
 
-            elif isinstance(widget, forms.Select):
+            elif isinstance(widget, forms.SelectMultiple):
                 css = BASE_SELECT_CLASS
                 widget.attrs.setdefault("data-control", "select2")
                 widget.attrs.setdefault("data-placeholder", f"Sélectionner {field.label.lower()}")
 
-            elif isinstance(widget, forms.SelectMultiple):
+            elif isinstance(widget, forms.Select):
                 css = BASE_SELECT_CLASS
                 widget.attrs.setdefault("data-control", "select2")
                 widget.attrs.setdefault("data-placeholder", f"Sélectionner {field.label.lower()}")
@@ -136,6 +142,13 @@ class ProjectBudgetForm(StyledModelForm):
             "alert_threshold_percent": forms.NumberInput(attrs={"min": "0", "max": "100"}),
             "notes": forms.Textarea(),
         }
+
+    def __init__(self, *args, **kwargs):
+        self.current_workspace = kwargs.pop("current_workspace", None)
+        self.current_user = kwargs.pop("current_user", None)
+        self.allowed_workspaces = kwargs.pop("allowed_workspaces", None)
+
+        super().__init__(*args, **kwargs)
 
 
 class ProjectEstimateLineForm(StyledModelForm):

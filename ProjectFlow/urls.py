@@ -451,6 +451,20 @@ from project.views_financial_ai import (  # noqa: E402
     WorkspaceFinancialPortfolioView,
 )
 from project.views_budget import RefreshProjectFinancialsView  # noqa: E402
+from project.views_meeting import (  # noqa: E402
+    MeetingActionItemConvertToTaskView,
+    MeetingActionItemCreateView,
+    MeetingAIProcessView,
+    ProjectMeetingCreateView,
+    ProjectMeetingDeleteView,
+    ProjectMeetingDetailView,
+    ProjectMeetingListView,
+    ProjectMeetingUpdateView,
+)
+from project.views_ai_genesis import (  # noqa: E402
+    ProjectGenesisAPIView,
+    ProjectGenesisView,
+)
 from project.views_ai_chat import (  # noqa: E402
     AIChatCloseSessionView,
     AIChatHistoryView,
@@ -547,6 +561,36 @@ urlpatterns += [
         "ai/chat/sessions/<int:session_id>/close/",
         AIChatCloseSessionView.as_view(),
         name="ai_chat_close",
+    ),
+
+    # =====================================================================
+    # DevFlow Genesis — Créer un projet complet depuis un simple brief
+    # =====================================================================
+    path("ai/genesis/", ProjectGenesisView.as_view(), name="ai_project_genesis"),
+    path("ai/genesis/api/", ProjectGenesisAPIView.as_view(), name="ai_project_genesis_api"),
+
+    # =====================================================================
+    # Module Réunions projet
+    # =====================================================================
+    path("meetings/", ProjectMeetingListView.as_view(), name="meeting_list"),
+    path("meetings/create/", ProjectMeetingCreateView.as_view(), name="meeting_create"),
+    path("meetings/<int:pk>/", ProjectMeetingDetailView.as_view(), name="meeting_detail"),
+    path("meetings/<int:pk>/update/", ProjectMeetingUpdateView.as_view(), name="meeting_update"),
+    path("meetings/<int:pk>/delete/", ProjectMeetingDeleteView.as_view(), name="meeting_delete"),
+    path(
+        "meetings/<int:meeting_pk>/actions/create/",
+        MeetingActionItemCreateView.as_view(),
+        name="meeting_action_create",
+    ),
+    path(
+        "meetings/actions/<int:item_pk>/convert-to-task/",
+        MeetingActionItemConvertToTaskView.as_view(),
+        name="meeting_action_convert_to_task",
+    ),
+    path(
+        "meetings/<int:meeting_pk>/ai-process/",
+        MeetingAIProcessView.as_view(),
+        name="meeting_ai_process",
     ),
 ]
 

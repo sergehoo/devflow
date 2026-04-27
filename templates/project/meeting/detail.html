@@ -1,0 +1,218 @@
+{% extends "layout/base.html" %}
+
+{% block title %}{{ meeting.title }} — Réunion{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto" x-data="{ tab: 'notes', aiBusy: false }">
+
+    <!-- Hero -->
+    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft overflow-hidden relative">
+        <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,78,0,.10),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(14,165,201,.08),transparent_25%)]"></div>
+        <div class="relative p-6 lg:p-8">
+            <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6">
+                <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="badge b-{{ meeting.status_color }}">{{ meeting.get_status_display }}</span>
+                        <span class="badge b-cyan">{{ meeting.get_meeting_type_display }}</span>
+                        <span class="text-[11px] text-devtext3">
+                            <i class="fa-solid fa-clock"></i> {{ meeting.duration_label }}
+                        </span>
+                    </div>
+                    <p class="mt-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+                        Réunion · {{ meeting.scheduled_at|date:"d/m/Y H:i" }}
+                    </p>
+                    <h1 class="mt-2 text-3xl lg:text-4xl font-serif text-devtext1">{{ meeting.title }}</h1>
+                    <p class="mt-2 text-sm text-devtext2">
+                        <a href="{% url 'project_detail' meeting.project.pk %}" class="hover:text-devaccent">
+                            <i class="fa-solid fa-folder-open"></i> {{ meeting.project.name }}
+                        </a>
+                        {% if meeting.organizer %}· organisée par <strong>{{ meeting.organizer }}</strong>{% endif %}
+                        {% if meeting.location %}· 📍 {{ meeting.location }}{% endif %}
+                        {% if meeting.meeting_link %}· <a href="{{ meeting.meeting_link }}" target="_blank" class="text-devcyan">🔗 Lien visio</a>{% endif %}
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <form method="post" action="{% url 'meeting_ai_process' meeting.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-main" :disabled="aiBusy" @click="aiBusy = true">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span x-show="!aiBusy">Analyser par IA</span>
+                            <span x-show="aiBusy" style="display:none">Analyse en cours…</span>
+                        </button>
+                    </form>
+                    <a href="{% url 'meeting_update' meeting.pk %}" class="btn-soft">
+                        <i class="fa-solid fa-pen"></i> Modifier
+                    </a>
+                    <a href="{% url 'meeting_delete' meeting.pk %}" class="btn-soft text-devred">
+                        <i class="fa-solid fa-trash"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- KPI -->
+            <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
+                    <div class="text-[11px] uppercase text-devtext3 font-semibold">Participants</div>
+                    <div class="mt-1 text-xl font-serif text-devtext1">{{ meeting.participants_count }}</div>
+                </div>
+                <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
+                    <div class="text-[11px] uppercase text-devtext3 font-semibold">Actions</div>
+                    <div class="mt-1 text-xl font-serif text-devtext1">{{ meeting.action_items.count }}</div>
+                </div>
+                <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
+                    <div class="text-[11px] uppercase text-devtext3 font-semibold">Pièces jointes</div>
+                    <div class="mt-1 text-xl font-serif text-devtext1">{{ meeting.attachments.count }}</div>
+                </div>
+                <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
+                    <div class="text-[11px] uppercase text-devtext3 font-semibold">Sprint</div>
+                    <div class="mt-1 text-xl font-serif text-devtext1">{{ meeting.sprint.name|default:"—" }}</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    {% if meeting.ai_summary %}
+    <section class="rounded-[24px] border border-devborder bg-devbg2 p-6 shadow-soft">
+        <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-[12px] bg-gradient-to-br from-devaccent to-devcyan flex items-center justify-center text-white">
+                <i class="fa-solid fa-robot"></i>
+            </div>
+            <div class="flex-1">
+                <h2 class="text-lg font-semibold text-devtext1">Synthèse IA</h2>
+                <p class="text-[11px] text-devtext3">
+                    Provider : {{ meeting.ai_used_provider|default:"—" }} · {{ meeting.ai_extracted_at|date:"d/m/Y H:i" }}
+                </p>
+                <div class="mt-3 text-sm text-devtext2 leading-7 whitespace-pre-line">{{ meeting.ai_summary }}</div>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- Tabs -->
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <div class="flex flex-wrap gap-1 border-b border-devborder bg-devbg3 px-3 pt-3">
+            <button @click="tab = 'notes'" :class="tab === 'notes' ? 'bg-devbg2 text-devtext1' : 'text-devtext3'" class="px-4 py-2 text-sm font-semibold rounded-t-[12px] border border-b-0 border-devborder">Notes &amp; ordre du jour</button>
+            <button @click="tab = 'decisions'" :class="tab === 'decisions' ? 'bg-devbg2 text-devtext1' : 'text-devtext3'" class="px-4 py-2 text-sm font-semibold rounded-t-[12px] border border-b-0 border-devborder">Décisions</button>
+            <button @click="tab = 'actions'" :class="tab === 'actions' ? 'bg-devbg2 text-devtext1' : 'text-devtext3'" class="px-4 py-2 text-sm font-semibold rounded-t-[12px] border border-b-0 border-devborder">Actions ({{ meeting.action_items.count }})</button>
+            <button @click="tab = 'participants'" :class="tab === 'participants' ? 'bg-devbg2 text-devtext1' : 'text-devtext3'" class="px-4 py-2 text-sm font-semibold rounded-t-[12px] border border-b-0 border-devborder">Participants</button>
+        </div>
+
+        <!-- Notes -->
+        <div x-show="tab === 'notes'" class="p-6 space-y-5">
+            {% if meeting.agenda %}
+            <div>
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3 mb-2">Ordre du jour</h3>
+                <div class="text-sm text-devtext2 leading-7 whitespace-pre-line">{{ meeting.agenda }}</div>
+            </div>
+            {% endif %}
+            <div>
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3 mb-2">Notes / compte-rendu</h3>
+                <div class="text-sm text-devtext2 leading-7 whitespace-pre-line">
+                    {{ meeting.notes|default:"Aucune note enregistrée." }}
+                </div>
+            </div>
+            {% if meeting.blockers %}
+            <div>
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-devred mb-2">⚠️ Points bloquants</h3>
+                <div class="text-sm text-devtext2 leading-7 whitespace-pre-line">{{ meeting.blockers }}</div>
+            </div>
+            {% endif %}
+            {% if meeting.next_steps %}
+            <div>
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-devcyan mb-2">→ Prochaine étape</h3>
+                <div class="text-sm text-devtext2 leading-7 whitespace-pre-line">{{ meeting.next_steps }}</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Decisions -->
+        <div x-show="tab === 'decisions'" class="p-6" style="display:none">
+            <div class="text-sm text-devtext2 leading-7 whitespace-pre-line">
+                {{ meeting.decisions|default:"Aucune décision tracée." }}
+            </div>
+        </div>
+
+        <!-- Action items -->
+        <div x-show="tab === 'actions'" class="p-6 space-y-4" style="display:none">
+            <form method="post" action="{% url 'meeting_action_create' meeting.pk %}"
+                  class="flex flex-wrap items-center gap-2 p-3 rounded-[14px] bg-devbg3/40">
+                {% csrf_token %}
+                <input name="title" placeholder="Nouvelle action…" required
+                       class="flex-1 min-w-[200px] rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm" />
+                <select name="priority" class="rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM" selected>Medium</option>
+                    <option value="HIGH">High</option>
+                    <option value="CRITICAL">Critical</option>
+                </select>
+                <input type="date" name="due_date" class="rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm" />
+                <button class="btn-main"><i class="fa-solid fa-plus"></i> Ajouter</button>
+            </form>
+
+            <ul class="divide-y divide-devborder rounded-[14px] border border-devborder">
+                {% for action in meeting.action_items.all %}
+                <li class="px-4 py-3 flex flex-wrap items-center gap-3">
+                    <div class="flex-1 min-w-[200px]">
+                        <div class="font-medium text-devtext1">{{ action.title }}</div>
+                        {% if action.description %}<div class="text-xs text-devtext3 mt-1">{{ action.description|truncatechars:120 }}</div>{% endif %}
+                        <div class="mt-1 flex flex-wrap gap-2 text-[11px]">
+                            {% if action.owner %}<span class="text-devtext3">👤 {{ action.owner }}</span>{% endif %}
+                            {% if action.due_date %}<span class="text-devamber">📅 {{ action.due_date|date:"d/m/Y" }}</span>{% endif %}
+                            <span class="badge b-{% if action.priority == 'CRITICAL' or action.priority == 'HIGH' %}red{% elif action.priority == 'MEDIUM' %}amber{% else %}cyan{% endif %}">{{ action.get_priority_display }}</span>
+                            <span class="badge {% if action.status == 'DONE' %}b-green{% else %}b-cyan{% endif %}">{{ action.get_status_display }}</span>
+                        </div>
+                    </div>
+                    <div>
+                        {% if action.converted_task_id %}
+                            <a href="{% url 'task_detail' action.converted_task_id %}" class="btn-soft text-xs">
+                                <i class="fa-solid fa-check"></i> Tâche liée
+                            </a>
+                        {% else %}
+                            <form method="post" action="{% url 'meeting_action_convert_to_task' action.pk %}">
+                                {% csrf_token %}
+                                <button class="btn-soft text-xs"><i class="fa-solid fa-arrow-right"></i> Convertir en tâche</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </li>
+                {% empty %}
+                <li class="px-4 py-6 text-center text-devtext3 text-sm">
+                    Aucune action décidée. Lancez l'IA pour les extraire automatiquement des notes.
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Participants -->
+        <div x-show="tab === 'participants'" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6" style="display:none">
+            <div>
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3 mb-2">Internes ({{ meeting.internal_participants.count }})</h3>
+                <ul class="space-y-2 text-sm">
+                    {% for u in meeting.internal_participants.all %}
+                    <li class="flex items-center gap-2 p-2 rounded-[12px] bg-devbg3/40">
+                        <div class="w-8 h-8 rounded-full bg-devaccent/20 text-devaccent flex items-center justify-center text-xs font-bold">
+                            {{ u.first_name|default:u.username|slice:":1"|upper }}
+                        </div>
+                        <span class="text-devtext1">{{ u.get_full_name|default:u.username }}</span>
+                    </li>
+                    {% empty %}
+                    <li class="text-devtext3 text-sm">Aucun participant interne.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div>
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3 mb-2">Externes</h3>
+                <div class="text-sm text-devtext2 leading-7 whitespace-pre-line p-3 rounded-[12px] bg-devbg3/40">
+                    {{ meeting.external_participants|default:"—" }}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Métadonnées -->
+    <section class="text-xs text-devtext3 px-4 flex flex-wrap gap-4">
+        <span>Créée par {{ meeting.created_by|default:"—" }} le {{ meeting.created_at|date:"d/m/Y H:i" }}</span>
+        {% if meeting.updated_by %}<span>· Mise à jour par {{ meeting.updated_by }} le {{ meeting.updated_at|date:"d/m/Y H:i" }}</span>{% endif %}
+    </section>
+</div>
+{% endblock %}

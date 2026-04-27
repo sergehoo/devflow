@@ -1,0 +1,56 @@
+{# Onglet "Réunions" sur la fiche projet — inclus depuis project/detail.html #}
+<section x-show="tab === 'meetings'" x-cloak
+         class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft space-y-4">
+
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+            <h2 class="text-lg font-semibold text-[var(--text1)]">Réunions du projet</h2>
+            <p class="text-xs text-[var(--text3)]">Notes, décisions et actions tracées par DevFlow.</p>
+        </div>
+        <a href="{% url 'meeting_create' %}?project={{ object.pk }}" class="btn-main">
+            <i class="fa-solid fa-calendar-plus"></i> Nouvelle réunion
+        </a>
+    </div>
+
+    {% with project_meetings=object.meetings.all %}
+    {% if project_meetings %}
+    <ul class="divide-y divide-[var(--border)] rounded-[14px] border border-[var(--border)]">
+        {% for m in project_meetings|slice:":15" %}
+        <li class="px-4 py-3 flex flex-wrap items-center gap-3">
+            <div class="flex-1 min-w-[200px]">
+                <a href="{% url 'meeting_detail' m.pk %}" class="font-medium text-[var(--text1)] hover:text-[var(--accent)]">
+                    {{ m.title }}
+                </a>
+                <div class="text-[11px] text-[var(--text3)] mt-1 flex flex-wrap gap-2">
+                    <span><i class="fa-solid fa-clock"></i> {{ m.scheduled_at|date:"d/m/Y H:i" }}</span>
+                    <span class="badge b-cyan">{{ m.get_meeting_type_display }}</span>
+                    <span class="badge b-{{ m.status_color }}">{{ m.get_status_display }}</span>
+                    {% if m.action_items.count %}<span>· {{ m.action_items.count }} action(s)</span>{% endif %}
+                </div>
+            </div>
+            <a href="{% url 'meeting_detail' m.pk %}" class="btn-soft text-xs">
+                <i class="fa-solid fa-arrow-right"></i>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% if project_meetings.count > 15 %}
+    <div class="text-center pt-2">
+        <a href="{% url 'meeting_list' %}?project={{ object.pk }}" class="text-xs text-[var(--accent)] hover:underline">
+            Voir toutes les {{ project_meetings.count }} réunions →
+        </a>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="text-center py-12 text-[var(--text3)]">
+        <i class="fa-solid fa-calendar-xmark text-3xl mb-2 block"></i>
+        Aucune réunion enregistrée pour ce projet.
+        <div class="mt-3">
+            <a href="{% url 'meeting_create' %}?project={{ object.pk }}" class="btn-main text-sm">
+                <i class="fa-solid fa-plus"></i> Planifier la première réunion
+            </a>
+        </div>
+    </div>
+    {% endif %}
+    {% endwith %}
+</section>

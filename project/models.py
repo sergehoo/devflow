@@ -2733,6 +2733,204 @@ class ProjectAIProposalItem(TimeStampedModel):
         return f"{self.get_kind_display()} · {self.title or self.local_ref}"
 
 
+class ProjectMeeting(TimeStampedModel, SoftDeleteModel):
+    """Réunion projet (cadrage, suivi, sprint review, comité, etc.)."""
+
+    class MeetingType(models.TextChoices):
+        FRAMING = "FRAMING", "Cadrage"
+        FOLLOW_UP = "FOLLOW_UP", "Suivi"
+        SPRINT_REVIEW = "SPRINT_REVIEW", "Sprint review"
+        PROJECT_COMMITTEE = "PROJECT_COMMITTEE", "Comité projet"
+        STEERING_COMMITTEE = "STEERING_COMMITTEE", "Comité de pilotage"
+        RETROSPECTIVE = "RETROSPECTIVE", "Rétrospective"
+        OTHER = "OTHER", "Autre"
+
+    class Status(models.TextChoices):
+        PLANNED = "PLANNED", "Planifiée"
+        HELD = "HELD", "Tenue"
+        CANCELLED = "CANCELLED", "Annulée"
+        POSTPONED = "POSTPONED", "Reportée"
+
+    workspace = models.ForeignKey(
+        "Workspace", on_delete=models.CASCADE, related_name="meetings"
+    )
+    project = models.ForeignKey(
+        "Project", on_delete=models.CASCADE, related_name="meetings"
+    )
+    sprint = models.ForeignKey(
+        "Sprint", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="meetings",
+    )
+    title = models.CharField(max_length=200)
+    meeting_type = models.CharField(
+        max_length=25, choices=MeetingType.choices, default=MeetingType.FOLLOW_UP,
+    )
+    status = models.CharField(
+        max_length=15, choices=Status.choices, default=Status.PLANNED,
+    )
+
+    scheduled_at = models.DateTimeField()
+    duration_minutes = models.PositiveIntegerField(default=60)
+    location = models.CharField(max_length=200, blank=True)
+    meeting_link = models.URLField(blank=True)
+
+    organizer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="organized_meetings",
+    )
+    internal_participants = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="attended_meetings",
+        blank=True,
+    )
+    external_participants = models.TextField(
+        blank=True,
+        help_text="Liste libre, un par ligne (Nom — Société — Email)",
+    )
+
+    agenda = models.TextField(blank=True, help_text="Ordre du jour")
+    notes = models.TextField(blank=True, help_text="Prise de notes / compte-rendu")
+    decisions = models.TextField(blank=True, help_text="Décisions prises")
+    blockers = models.TextField(blank=True, help_text="Points bloquants")
+    next_steps = models.TextField(blank=True, help_text="Prochaine étape")
+
+    # Synthèse IA (générée à la demande)
+    ai_summary = models.TextField(blank=True)
+    ai_extracted_at = models.DateTimeField(null=True, blank=True)
+    ai_used_provider = models.CharField(max_length=50, blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="created_meetings",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="updated_meetings",
+    )
+
+    class Meta:
+        ordering = ["-scheduled_at"]
+        verbose_name = "Réunion projet"
+        verbose_name_plural = "Réunions projet"
+        permissions = [
+            ("ai_process_meeting", "Peut lancer le traitement IA d'une réunion"),
+        ]
+
+    def __str__(self):
+        return f"{self.title} · {self.project.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.workspace_id and self.project_id:
+            self.workspace = self.project.workspace
+        super().save(*args, **kwargs)
+
+    @property
+    def duration_label(self):
+        h, m = divmod(self.duration_minutes or 0, 60)
+        if h and m:
+            return f"{h}h {m:02d}"
+        if h:
+            return f"{h}h"
+        return f"{m} min"
+
+    @property
+    def participants_count(self):
+        external = sum(1 for line in (self.external_participants or "").splitlines() if line.strip())
+        return self.internal_participants.count() + external
+
+    @property
+    def status_color(self):
+        return {
+            self.Status.PLANNED: "cyan",
+            self.Status.HELD: "green",
+            self.Status.CANCELLED: "red",
+            self.Status.POSTPONED: "amber",
+        }.get(self.status, "cyan")
+
+
+class MeetingActionItem(TimeStampedModel):
+    """Action décidée pendant une réunion. Convertible en Task."""
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Ouverte"
+        IN_PROGRESS = "IN_PROGRESS", "En cours"
+        DONE = "DONE", "Terminée"
+        CANCELLED = "CANCELLED", "Annulée"
+
+    meeting = models.ForeignKey(
+        ProjectMeeting, on_delete=models.CASCADE, related_name="action_items",
+    )
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="meeting_action_items",
+    )
+    due_date = models.DateField(null=True, blank=True)
+    status = models.CharField(
+        max_length=15, choices=Status.choices, default=Status.OPEN,
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=[
+            ("LOW", "Low"), ("MEDIUM", "Medium"),
+            ("HIGH", "High"), ("CRITICAL", "Critique"),
+        ],
+        default="MEDIUM",
+    )
+
+    # Lien optionnel vers la Task créée à partir de cette action
+    converted_task = models.ForeignKey(
+        "Task",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="source_meeting_actions",
+    )
+    converted_at = models.DateTimeField(null=True, blank=True)
+    converted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="converted_meeting_actions",
+    )
+
+    class Meta:
+        ordering = ["due_date", "-created_at"]
+        verbose_name = "Action de réunion"
+        verbose_name_plural = "Actions de réunion"
+
+    def __str__(self):
+        return f"{self.title} · {self.meeting.title}"
+
+
+class MeetingAttachment(TimeStampedModel):
+    meeting = models.ForeignKey(
+        ProjectMeeting, on_delete=models.CASCADE, related_name="attachments",
+    )
+    file = models.FileField(upload_to="devflow/meetings/")
+    label = models.CharField(max_length=200, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="meeting_uploads",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.label or self.file.name
+
+
 class AIChatSession(TimeStampedModel):
     """
     Session conversationnelle DevFlow AI. Permet de garder l'historique
@@ -2889,3 +3087,91 @@ class ProjectAIProposalLog(TimeStampedModel):
 
     def __str__(self):
         return f"[{self.action}] {self.proposal_id}"
+
+
+# class ProjectMeeting(TimeStampedModel, SoftDeleteModel):
+#     class MeetingType(models.TextChoices):
+#         KICKOFF = "KICKOFF", "Cadrage"
+#         FOLLOW_UP = "FOLLOW_UP", "Suivi projet"
+#         SPRINT_REVIEW = "SPRINT_REVIEW", "Sprint review"
+#         STEERING = "STEERING", "Comité de pilotage"
+#         PROJECT_COMMITTEE = "PROJECT_COMMITTEE", "Comité projet"
+#         RETROSPECTIVE = "RETROSPECTIVE", "Rétrospective"
+#         OTHER = "OTHER", "Autre"
+#
+#     class Status(models.TextChoices):
+#         PLANNED = "PLANNED", "Planifiée"
+#         HELD = "HELD", "Tenue"
+#         CANCELLED = "CANCELLED", "Annulée"
+#         POSTPONED = "POSTPONED", "Reportée"
+#
+#     workspace = models.ForeignKey(
+#         Workspace,
+#         on_delete=models.CASCADE,
+#         related_name="project_meetings"
+#     )
+#     project = models.ForeignKey(
+#         Project,
+#         on_delete=models.CASCADE,
+#         related_name="meetings"
+#     )
+#
+#     title = models.CharField(max_length=180)
+#     meeting_type = models.CharField(
+#         max_length=30,
+#         choices=MeetingType.choices,
+#         default=MeetingType.FOLLOW_UP
+#     )
+#     status = models.CharField(
+#         max_length=20,
+#         choices=Status.choices,
+#         default=Status.PLANNED
+#     )
+#
+#     meeting_date = models.DateTimeField()
+#     duration_minutes = models.PositiveIntegerField(default=60)
+#
+#     organizer = models.ForeignKey(
+#         settings.AUTH_USER_MODEL,
+#         on_delete=models.SET_NULL,
+#         null=True,
+#         blank=True,
+#         related_name="organized_project_meetings"
+#     )
+#     participants = models.ManyToManyField(
+#         settings.AUTH_USER_MODEL,
+#         blank=True,
+#         related_name="project_meetings"
+#     )
+#     external_participants = models.TextField(blank=True)
+#
+#     agenda = models.TextField(blank=True)
+#     notes = models.TextField(blank=True)
+#     decisions = models.TextField(blank=True)
+#     blockers = models.TextField(blank=True)
+#     action_items = models.TextField(blank=True)
+#     next_steps = models.TextField(blank=True)
+#
+#     ai_summary = models.TextField(blank=True)
+#     ai_risks = models.TextField(blank=True)
+#
+#     created_by = models.ForeignKey(
+#         settings.AUTH_USER_MODEL,
+#         on_delete=models.SET_NULL,
+#         null=True,
+#         blank=True,
+#         related_name="created_project_meetings"
+#     )
+#     updated_by = models.ForeignKey(
+#         settings.AUTH_USER_MODEL,
+#         on_delete=models.SET_NULL,
+#         null=True,
+#         blank=True,
+#         related_name="updated_project_meetings"
+#     )
+#
+#     class Meta:
+#         ordering = ["-meeting_date", "-created_at"]
+#
+#     def __str__(self):
+#         return f"{self.project} — {self.title}"

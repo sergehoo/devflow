@@ -4343,6 +4343,8 @@ class TaskCreateView(DevflowCreateView):
         project_id = self.request.GET.get("project")
         sprint_id = self.request.GET.get("sprint")
         parent_id = self.request.GET.get("parent")
+        assignee_id = self.request.GET.get("assignee")
+        backlog_id = self.request.GET.get("backlog_item")
 
         if project_id:
             initial["project"] = project_id
@@ -4350,6 +4352,15 @@ class TaskCreateView(DevflowCreateView):
             initial["sprint"] = sprint_id
         if parent_id:
             initial["parent"] = parent_id
+        if assignee_id:
+            initial["assignee"] = assignee_id
+        if backlog_id:
+            initial["backlog_item"] = backlog_id
+
+        # Initiation status par défaut sur "TODO" pour éviter le piège UX
+        # où le formulaire reste vide et bloque sur le clean.
+        initial.setdefault("status", dm.Task.Status.TODO)
+        initial.setdefault("priority", dm.Task.Priority.MEDIUM)
         return initial
 
     def get_form_kwargs(self):
@@ -4372,6 +4383,19 @@ class TaskCreateView(DevflowCreateView):
 
         obj.save()
         form.save_m2m()
+
+        # Si l'utilisateur a aussi rempli l'assignee, on crée le
+        # TaskAssignment correspondant pour garder la cohérence (sinon il
+        # n'y a que le FK assignee, pas la M2M assignments).
+        if obj.assignee_id and not dm.TaskAssignment.objects.filter(
+            task=obj, user=obj.assignee
+        ).exists():
+            dm.TaskAssignment.objects.create(
+                task=obj,
+                user=obj.assignee,
+                assigned_by=self.request.user if self.request.user.is_authenticated else None,
+                allocation_percent=100,
+            )
 
         messages.success(self.request, "Tâche créée avec succès.")
         self.object = obj

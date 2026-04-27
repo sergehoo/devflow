@@ -1,0 +1,107 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Réunions projet{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto">
+
+    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft overflow-hidden relative">
+        <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,78,0,.10),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(14,165,201,.08),transparent_25%)]"></div>
+        <div class="relative p-6 lg:p-8">
+            <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+                <div>
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">DevFlow · Suivi</p>
+                    <h1 class="mt-2 text-3xl font-serif text-devtext1">Réunions projet</h1>
+                    <p class="mt-2 text-sm text-devtext2 max-w-2xl">
+                        Historique des réunions de cadrage, suivi, comités et rétrospectives.
+                        Notes, décisions, actions et risques tracés.
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <a href="{% url 'meeting_create' %}{% if current_project %}?project={{ current_project }}{% endif %}" class="btn-main">
+                        <i class="fa-solid fa-plus"></i> Nouvelle réunion
+                    </a>
+                </div>
+            </div>
+
+            <form method="get" class="mt-6 flex flex-wrap gap-2">
+                <input type="text" name="q" value="{{ request.GET.q }}" placeholder="Rechercher…"
+                       class="rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm flex-1 min-w-[200px]" />
+                <select name="type" class="rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+                    <option value="">Tous types</option>
+                    {% for v, l in meeting_type_choices %}
+                        <option value="{{ v }}" {% if v == current_type %}selected{% endif %}>{{ l }}</option>
+                    {% endfor %}
+                </select>
+                <select name="status" class="rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+                    <option value="">Tous statuts</option>
+                    {% for v, l in status_choices %}
+                        <option value="{{ v }}" {% if v == current_status %}selected{% endif %}>{{ l }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn-soft"><i class="fa-solid fa-filter"></i> Filtrer</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-devbg3 text-devtext3 uppercase text-[11px] tracking-wide">
+                    <tr>
+                        <th class="px-6 py-3 text-left">Réunion</th>
+                        <th class="px-6 py-3 text-left">Projet</th>
+                        <th class="px-6 py-3 text-left">Type</th>
+                        <th class="px-6 py-3 text-left">Date</th>
+                        <th class="px-6 py-3 text-center">Participants</th>
+                        <th class="px-6 py-3 text-left">Statut</th>
+                        <th class="px-6 py-3 text-right">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-devborder">
+                    {% for m in items %}
+                    <tr class="hover:bg-devbg3/40">
+                        <td class="px-6 py-3">
+                            <a href="{% url 'meeting_detail' m.pk %}" class="font-medium text-devtext1 hover:text-devaccent">
+                                {{ m.title }}
+                            </a>
+                            {% if m.organizer %}<div class="text-[11px] text-devtext3">par {{ m.organizer }}</div>{% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-xs text-devtext2">{{ m.project.name }}</td>
+                        <td class="px-6 py-3"><span class="badge b-cyan">{{ m.get_meeting_type_display }}</span></td>
+                        <td class="px-6 py-3 text-xs text-devtext2">
+                            {{ m.scheduled_at|date:"d/m/Y H:i" }}
+                            <div class="text-[10px] text-devtext3">{{ m.duration_label }}</div>
+                        </td>
+                        <td class="px-6 py-3 text-center text-devtext2">{{ m.participants_count }}</td>
+                        <td class="px-6 py-3">
+                            <span class="badge b-{{ m.status_color }}">{{ m.get_status_display }}</span>
+                        </td>
+                        <td class="px-6 py-3 text-right">
+                            <a href="{% url 'meeting_detail' m.pk %}" class="btn-soft text-xs">Ouvrir</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-12 text-center text-devtext3">
+                            <i class="fa-solid fa-calendar-xmark text-3xl mb-2 block"></i>
+                            Aucune réunion enregistrée.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if is_paginated %}
+        <div class="px-6 py-3 border-t border-devborder flex items-center justify-between text-xs text-devtext3">
+            <span>Page {{ page_obj.number }} / {{ paginator.num_pages }}</span>
+            <div class="flex gap-1">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" class="btn-soft text-xs">Précédent</a>{% endif %}
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" class="btn-soft text-xs">Suivant</a>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

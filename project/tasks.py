@@ -134,3 +134,28 @@ def run_task_reminder_sweep(self, dry_run: bool = False):
         except Exception:
             pass
         return {"ok": False, "reason": str(exc)}
+
+
+# =========================================================================
+# Refresh asynchrone du budget projet quand une tâche change
+# =========================================================================
+@shared_task(bind=True, max_retries=1)
+def refresh_project_budget_task(self, project_id):
+    """
+    Recalcule le budget estimatif d'un projet (TJM × heures estimées de
+    ses tâches) sans bloquer le save de la tâche déclencheuse.
+    """
+    try:
+        project = dm.Project.objects.get(pk=project_id)
+    except dm.Project.DoesNotExist:
+        return {"ok": False, "reason": "project not found"}
+
+    from project.services.budget import ProjectBudgetService
+    try:
+        ProjectBudgetService.refresh_project_financials(
+            project=project, user=None, rebuild_budget=True,
+        )
+        return {"ok": True, "project_id": project_id}
+    except Exception as exc:
+        logger.exception("Budget refresh failed for project %s", project_id)
+        return {"ok": False, "reason": str(exc)}

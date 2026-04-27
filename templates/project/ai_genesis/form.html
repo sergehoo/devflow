@@ -1,0 +1,102 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Créer un projet par IA — DevFlow Genesis{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6" x-data="{ submitting: false }">
+
+    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft overflow-hidden relative">
+        <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,78,0,.10),transparent_22%),radial-gradient(circle_at_bottom_left,rgba(14,165,201,.08),transparent_25%)]"></div>
+        <div class="relative p-6 lg:p-8">
+            <div class="flex items-start gap-4">
+                <div class="w-14 h-14 rounded-[16px] bg-gradient-to-br from-devaccent to-devcyan flex items-center justify-center text-white">
+                    <i class="fa-solid fa-wand-magic-sparkles text-2xl"></i>
+                </div>
+                <div>
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">DevFlow Genesis · IA</p>
+                    <h1 class="mt-2 text-3xl font-serif text-devtext1">Créer un projet par IA</h1>
+                    <p class="mt-2 text-sm text-devtext2 max-w-2xl leading-7">
+                        Donnez juste le nom et une description. DevFlow AI génère pour vous la roadmap,
+                        les sprints, milestones, backlog, tâches et leurs dépendances en moins de 30 secondes.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <form method="post" class="rounded-[24px] border border-devborder bg-devbg2 p-6 lg:p-8 shadow-soft space-y-5"
+          @submit="submitting = true">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+        <div class="rounded-[14px] border border-[var(--red-bg)] bg-[var(--red-bg)]/40 p-4 text-sm text-devred">
+            {% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}
+        </div>
+        {% endif %}
+
+        <div>
+            <label class="block text-xs font-semibold text-devtext3 uppercase tracking-wide mb-2">{{ form.name.label }}</label>
+            {{ form.name }}
+            {% if form.name.errors %}<p class="text-xs text-devred mt-1">{{ form.name.errors|striptags }}</p>{% endif %}
+        </div>
+
+        <div>
+            <label class="block text-xs font-semibold text-devtext3 uppercase tracking-wide mb-2">{{ form.description.label }}</label>
+            {{ form.description }}
+            <p class="text-[11px] text-devtext3 mt-1">
+                Plus c'est précis, mieux l'IA structurera le projet (objectifs, périmètre, technologies, contraintes).
+            </p>
+            {% if form.description.errors %}<p class="text-xs text-devred mt-1">{{ form.description.errors|striptags }}</p>{% endif %}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-xs font-semibold text-devtext3 uppercase tracking-wide mb-2">{{ form.workspace.label }}</label>
+                {{ form.workspace }}
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-devtext3 uppercase tracking-wide mb-2">{{ form.priority.label }}</label>
+                {{ form.priority }}
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-devtext3 uppercase tracking-wide mb-2">{{ form.target_date.label }}</label>
+                {{ form.target_date }}
+            </div>
+        </div>
+
+        <label class="flex items-start gap-3 text-sm text-devtext1 cursor-pointer p-3 rounded-[12px] bg-devbg3/60">
+            {{ form.auto_apply }}
+            <span>
+                <span class="font-semibold">Appliquer automatiquement</span>
+                <span class="block text-xs text-devtext3 mt-0.5">
+                    Décocher pour valider la proposition manuellement avant application définitive.
+                </span>
+            </span>
+        </label>
+
+        <div class="flex flex-wrap gap-3 justify-end pt-2">
+            <a href="{% url 'project_list' %}" class="btn-soft">Annuler</a>
+            <button type="submit" class="btn-main" :disabled="submitting">
+                <template x-if="!submitting">
+                    <span><i class="fa-solid fa-sparkles"></i> Générer le projet</span>
+                </template>
+                <template x-if="submitting">
+                    <span><i class="fa-solid fa-circle-notch fa-spin"></i> Génération en cours...</span>
+                </template>
+            </button>
+        </div>
+    </form>
+
+    <section class="rounded-[20px] border border-devborder bg-devbg3/40 p-6 text-sm text-devtext2 leading-7">
+        <h2 class="text-sm font-semibold text-devtext1 mb-2"><i class="fa-solid fa-info-circle text-devcyan"></i> Ce que DevFlow Genesis va générer</h2>
+        <ul class="space-y-1 list-disc pl-6">
+            <li><strong>Roadmap</strong> — phases du projet (cadrage → maintenance)</li>
+            <li><strong>Sprints &amp; milestones</strong> — découpage temporel cohérent</li>
+            <li><strong>Backlog &amp; tâches</strong> — couvrant les 13 phases standard, avec critères d'acceptation</li>
+            <li><strong>Dépendances</strong> — entre tâches, dans l'ordre logique</li>
+            <li><strong>Affectations</strong> — recommandations selon les profils des membres du workspace</li>
+            <li><strong>Budget estimatif</strong> — calculé à partir du TJM des membres</li>
+        </ul>
+    </section>
+</div>
+{% endblock %}
