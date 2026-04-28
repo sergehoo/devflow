@@ -1,11 +1,14 @@
-# email_confirmation_message.txt
 Bonjour,
 
 Bienvenue sur DevFlow.
 
-Pour confirmer votre adresse e-mail, cliquez sur le lien suivant :
+Vous recevez cet e-mail parce qu’une demande de création de compte a été effectuée avec cette adresse.
+
+Pour activer votre compte, ouvrez le lien suivant :
+
 {{ activate_url }}
 
-Si vous n’êtes pas à l’origine de cette demande, ignorez simplement cet e-mail.
+Si vous n’êtes pas à l’origine de cette demande, vous pouvez ignorer cet e-mail.
 
+Merci,
 L’équipe DevFlow
