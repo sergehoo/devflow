@@ -1,0 +1,11 @@
+# email_confirmation_message.txt
+Bonjour,
+
+Bienvenue sur DevFlow.
+
+Pour confirmer votre adresse e-mail, cliquez sur le lien suivant :
+{{ activate_url }}
+
+Si vous n’êtes pas à l’origine de cette demande, ignorez simplement cet e-mail.
+
+L’équipe DevFlow
