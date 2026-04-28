@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from allauth.account.forms import SignupForm
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordChangeForm
@@ -58,7 +59,26 @@ from .models import (
 
 User = get_user_model()
 
+class CustomSignupForm(SignupForm):
 
+    first_name = forms.CharField(
+        label="Prénom",
+        max_length=150,
+        required=True,
+        widget=forms.TextInput(attrs={"placeholder": "Votre prénom"}),
+    )
+    last_name = forms.CharField(
+        label="Nom",
+        max_length=150,
+        required=True,
+        widget=forms.TextInput(attrs={"placeholder": "Votre nom"}),
+    )
+    def save(self, request):
+        user = super().save(request)
+        user.first_name = self.cleaned_data["first_name"]
+        user.last_name = self.cleaned_data["last_name"]
+        user.save(update_fields=["first_name", "last_name"])
+        return user
 # =============================================================================
 # STYLE CONSTANTS
 # =============================================================================
