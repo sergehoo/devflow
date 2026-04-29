@@ -75,6 +75,30 @@
   .nav-group[open] .nav-caret {
     transform: rotate(180deg);
   }
+
+  /* Indicateur visuel quand un enfant est actif */
+  .nav-group.has-active > summary .nav-parent-left > span {
+    color: var(--text1);
+    font-weight: 600;
+  }
+  .nav-group.has-active > summary {
+    background: linear-gradient(90deg, rgba(255,90,31,.06), transparent);
+  }
+  .nav-group[open] > summary .nav-icon {
+    color: var(--accent);
+  }
+
+  /* Animation fluide des sous-menus */
+  .nav-group .nav-submenu {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height .3s ease, opacity .2s ease;
+  }
+  .nav-group[open] .nav-submenu {
+    max-height: 800px;
+    opacity: 1;
+  }
 </style>
 
 <aside class="sidebar">
@@ -374,4 +398,76 @@
 </div>
   </div>
 </aside>
+
+<script>
+(function () {
+    "use strict";
+    const STORAGE_KEY = "devflow.sidebar.openGroups";
+    const ACCORDION = true;  // un seul groupe ouvert à la fois
+    const sidebar = document.querySelector(".sidebar");
+    if (!sidebar) return;
+
+    const groups = Array.from(sidebar.querySelectorAll("details.nav-group"));
+    if (!groups.length) return;
+
+    // 1) Marquer les groupes qui contiennent un sous-menu actif
+    groups.forEach((g, idx) => {
+        if (!g.dataset.gid) g.dataset.gid = "g" + idx;
+        if (g.querySelector(".lenk-active")) {
+            g.classList.add("has-active");
+        }
+    });
+
+    // 2) Restaurer l'état depuis localStorage
+    let openSet = new Set();
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) openSet = new Set(JSON.parse(raw));
+    } catch (e) { /* noop */ }
+
+    // Priorité au groupe « actif » (URL courante) — on l'ouvre toujours,
+    // peu importe ce qui était mémorisé.
+    const activeGroup = sidebar.querySelector("details.nav-group.has-active");
+    if (activeGroup) {
+        if (ACCORDION) openSet.clear();
+        openSet.add(activeGroup.dataset.gid);
+    }
+
+    groups.forEach(g => {
+        if (openSet.has(g.dataset.gid)) g.setAttribute("open", "");
+        else g.removeAttribute("open");
+    });
+
+    // 3) Comportement accordéon + persistance
+    function persist() {
+        const ids = groups.filter(g => g.hasAttribute("open")).map(g => g.dataset.gid);
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ids)); }
+        catch (e) { /* noop */ }
+    }
+
+    groups.forEach(g => {
+        g.addEventListener("toggle", () => {
+            if (ACCORDION && g.hasAttribute("open")) {
+                groups.forEach(other => {
+                    if (other !== g && other.hasAttribute("open")) {
+                        other.removeAttribute("open");
+                    }
+                });
+            }
+            persist();
+        });
+    });
+
+    // 4) Fermeture automatique sur mobile au clic d'un lien
+    sidebar.querySelectorAll(".nav-subitem, a.nav-item").forEach(link => {
+        link.addEventListener("click", () => {
+            if (window.innerWidth <= 860) {
+                sidebar.classList.remove("open");
+                const overlay = document.getElementById("mobileSidebarOverlay");
+                if (overlay) overlay.classList.remove("open");
+            }
+        });
+    });
+})();
+</script>
 {% endwith %}
