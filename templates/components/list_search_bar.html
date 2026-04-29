@@ -1,0 +1,75 @@
+{% load devflow_extras %}
+
+<form method="get"
+      class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft mb-4">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:flex-wrap">
+
+        <!-- Champ de recherche -->
+        <div class="flex-1 min-w-[220px]">
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text3)]">
+                Recherche
+            </label>
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text3)] text-xs"></i>
+                <input type="text"
+                       name="q"
+                       value="{{ search_q|default:'' }}"
+                       placeholder="{{ search_placeholder|default:'Rechercher…' }}"
+                       class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] pl-10 pr-4 py-2.5 text-sm text-[var(--text1)] placeholder:text-[var(--text3)] focus:outline-none focus:border-[var(--accent)]">
+            </div>
+        </div>
+
+        <!-- Filtres -->
+        {% for f in filter_definitions %}
+        <div class="min-w-[160px]">
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text3)]">
+                {{ f.label }}
+            </label>
+            {% if f.type == "bool" %}
+                <select name="{{ f.name }}"
+                        class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2.5 text-sm text-[var(--text1)]">
+                    <option value="">Tous</option>
+                    <option value="1" {% if active_filters|get_item:f.name == "1" %}selected{% endif %}>Oui</option>
+                    <option value="0" {% if active_filters|get_item:f.name == "0" %}selected{% endif %}>Non</option>
+                </select>
+            {% elif f.type == "choices" %}
+                <select name="{{ f.name }}"
+                        class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2.5 text-sm text-[var(--text1)]">
+                    <option value="">Tous</option>
+                    {% for value, label in f.choices %}
+                        <option value="{{ value }}" {% if active_filters|get_item:f.name == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            {% elif f.type == "model" %}
+                <select name="{{ f.name }}"
+                        class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2.5 text-sm text-[var(--text1)]">
+                    <option value="">Tous</option>
+                    {% for obj in f.queryset %}
+                        <option value="{{ obj.pk }}" {% if active_filters|get_item:f.name == obj.pk|stringformat:"s" %}selected{% endif %}>{{ obj }}</option>
+                    {% endfor %}
+                </select>
+            {% else %}
+                <input type="text"
+                       name="{{ f.name }}"
+                       value="{{ active_filters|get_item:f.name|default:'' }}"
+                       placeholder="{{ f.label }}"
+                       class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2.5 text-sm text-[var(--text1)] placeholder:text-[var(--text3)]">
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <!-- Boutons -->
+        <div class="flex gap-2">
+            <button type="submit"
+                    class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(255,78,0,0.18)] transition hover:-translate-y-0.5">
+                <i class="fa-solid fa-filter"></i> Filtrer
+            </button>
+            {% if has_filters_or_search %}
+            <a href="{{ request.path }}"
+               class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                <i class="fa-solid fa-rotate-left"></i> Réinitialiser
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</form>

@@ -1,0 +1,6 @@
+{% extends "project/_generic_form.html" %}
+{% block form_title %}{% if object %}Modifier le client{% else %}Nouveau client{% endif %}{% endblock %}
+{% block form_heading %}{% if object %}Modifier le client de facturation{% else %}Créer un client de facturation{% endif %}{% endblock %}
+{% block form_subtitle %}Coordonnées complètes du client : nom légal, identifiant fiscal, adresse — utiles à l'édition d'une facture conforme.{% endblock %}
+{% block back_url %}{% url 'invoice_client_list' %}{% endblock %}
+{% block cancel_url %}{% url 'invoice_client_list' %}{% endblock %}

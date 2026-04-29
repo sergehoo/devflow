@@ -152,11 +152,32 @@ class TeamMembership(TimeStampedModel):
     joined_at = models.DateField(default=timezone.now)
 
     class Meta:
-        unique_together = [("workspace", "user", "team")]
-        ordering = ["user__username"]
+        ordering = ["-status", "user__last_name", "user__first_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workspace", "user", "team"],
+                name="uniq_membership_with_team",
+                condition=Q(team__isnull=False),
+            ),
+            models.UniqueConstraint(
+                fields=["workspace", "user"],
+                name="uniq_membership_no_team",
+                condition=Q(team__isnull=True),
+            ),
+        ]
 
     def __str__(self):
-        return f"{self.user} · {self.workspace}"
+        return f"{self.user.get_full_name()} · {self.workspace}"
+
+    def save(self, *args, **kwargs):
+        # Couleur d'avatar par défaut basée sur l'ID utilisateur (palette stable)
+        if not self.avatar_color and self.user_id:
+            palette = [
+                "#7C6FF7", "#FF4E00", "#0EA5C9", "#22C55E", "#F59E0B",
+                "#EF4444", "#8B5CF6", "#EC4899", "#14B8A6", "#F97316",
+            ]
+            self.avatar_color = palette[self.user_id % len(palette)]
+        super().save(*args, **kwargs)
 
 
 def compute_risk_score(project):
@@ -1144,6 +1165,66 @@ class Task(TimeStampedModel, SoftDeleteModel):
 
         self.full_clean()
         super().save(*args, **kwargs)
+
+    # =========================================================================
+    # Source unique de vérité pour l'affectation : maintient en cohérence
+    # le FK Task.assignee et le modèle TaskAssignment (M2M étendu).
+    # Les vues / services DOIVENT passer par ces méthodes.
+    # =========================================================================
+    def assign(self, user, *, assigned_by=None, allocation_percent=100):
+        from django.db import transaction
+
+        if user is None:
+            return self.unassign(actor=assigned_by)
+
+        with transaction.atomic():
+            previous_id = self.assignee_id
+            self._assigned_by = assigned_by  # picked up by signals
+            self.assignee = user
+            self.save(update_fields=["assignee", "updated_at"])
+
+            TaskAssignment.objects.update_or_create(
+                task=self,
+                user=user,
+                defaults={
+                    "assigned_by": assigned_by,
+                    "allocation_percent": allocation_percent,
+                    "is_active": True,
+                },
+            )
+            # Désactive les autres affectations actives sur cette tâche
+            TaskAssignment.objects.filter(
+                task=self, is_active=True
+            ).exclude(user=user).update(is_active=False)
+
+            # ActivityLog
+            try:
+                if previous_id != user.pk:
+                    ActivityLog.objects.create(
+                        workspace=self.workspace,
+                        actor=assigned_by,
+                        project=self.project,
+                        task=self,
+                        activity_type=ActivityLog.ActivityType.MEMBER_ASSIGNED,
+                        title=f"Tâche assignée à {user}",
+                        description=(
+                            f"{assigned_by or 'Système'} a assigné la tâche "
+                            f"« {self.title} » à {user}."
+                        ),
+                    )
+            except Exception:
+                pass
+
+    def unassign(self, *, actor=None):
+        from django.db import transaction
+
+        with transaction.atomic():
+            TaskAssignment.objects.filter(task=self, is_active=True).update(
+                is_active=False
+            )
+            self._assigned_by = actor
+            self.assignee = None
+            self.save(update_fields=["assignee", "updated_at"])
 
 
 class TaskAssignment(TimeStampedModel):
@@ -3088,3 +3169,306 @@ class ProjectAIProposalLog(TimeStampedModel):
     def __str__(self):
         return f"[{self.action}] {self.proposal_id}"
 
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 14. FACTURATION CLIENT
+#     Invoice → InvoiceLine → InvoicePayment.
+#     Une facture est rattachée à un projet (et donc à un workspace).
+#     Elle peut être générée automatiquement depuis :
+#       - les ProjectEstimateLine (mode forfait)
+#       - les TimesheetEntry × BillingRate (mode régie)
+#       - les Milestones (jalons facturables)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class InvoiceClient(TimeStampedModel, SoftDeleteModel):
+    """
+    Client final destinataire des factures. Distinct du Workspace pour
+    permettre à un même workspace d'émettre vers plusieurs clients.
+    """
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="invoice_clients"
+    )
+    name = models.CharField(max_length=180)
+    legal_name = models.CharField(max_length=200, blank=True)
+    tax_id = models.CharField(
+        max_length=60, blank=True,
+        help_text="N° TVA / NIF / SIRET / autre identifiant fiscal."
+    )
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=40, blank=True)
+    address_line1 = models.CharField(max_length=200, blank=True)
+    address_line2 = models.CharField(max_length=200, blank=True)
+    postal_code = models.CharField(max_length=20, blank=True)
+    city = models.CharField(max_length=120, blank=True)
+    country = models.CharField(max_length=80, blank=True)
+    contact_name = models.CharField(max_length=180, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["name"]
+        unique_together = [("workspace", "name")]
+
+    def __str__(self):
+        return self.name
+
+
+class Invoice(TimeStampedModel, SoftDeleteModel):
+    """Facture client liée à un projet."""
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Brouillon"
+        ISSUED = "ISSUED", "Émise"
+        SENT = "SENT", "Envoyée"
+        PARTIALLY_PAID = "PARTIALLY_PAID", "Partiellement payée"
+        PAID = "PAID", "Payée"
+        OVERDUE = "OVERDUE", "En retard"
+        CANCELLED = "CANCELLED", "Annulée"
+    class BillingMode(models.TextChoices):
+        FIXED = "FIXED", "Forfait (Estimate Lines)"
+        TIME_AND_MATERIALS = "TIME_AND_MATERIALS", "Régie (Timesheets)"
+        MILESTONE = "MILESTONE", "Sur jalon"
+        MANUAL = "MANUAL", "Manuel"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="invoices"
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="invoices"
+    )
+    client = models.ForeignKey(
+        InvoiceClient, on_delete=models.PROTECT,
+        related_name="invoices", null=True, blank=True,
+    )
+
+    # Identification
+    number = models.CharField(
+        max_length=40, blank=True,
+        help_text="Auto-généré si non renseigné (FAC-AAAA-NNNN)."
+    )
+    title = models.CharField(max_length=200, blank=True)
+    notes = models.TextField(blank=True)
+
+    # Dates
+    issue_date = models.DateField(default=timezone.localdate)
+    due_date = models.DateField(null=True, blank=True)
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+    paid_at = models.DateField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    # Montants (calculés depuis les InvoiceLine au save)
+    subtotal_ht = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    discount_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("18.00"),
+        help_text="Taux de TVA en % appliqué globalement (par défaut 18%)."
+    )
+    tax_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    total_ttc = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    paid_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    currency = models.CharField(max_length=10, default="XOF")
+
+    # Statut & métadonnées
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.DRAFT
+    )
+    billing_mode = models.CharField(
+        max_length=25, choices=BillingMode.choices, default=BillingMode.MANUAL
+    )
+
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="issued_invoices",
+    )
+    pdf_file = models.FileField(
+        upload_to="devflow/invoices/", null=True, blank=True
+    )
+
+    class Meta:
+        ordering = ["-issue_date", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workspace", "number"],
+                name="uniq_invoice_number_per_workspace",
+                condition=~Q(number=""),
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["workspace", "status"]),
+            models.Index(fields=["project", "status"]),
+            models.Index(fields=["due_date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.number or 'Brouillon'} · {self.project.name}"
+
+    # ────────────────────────────────────────────────────────────────────
+    # Numérotation
+    # ────────────────────────────────────────────────────────────────────
+    @classmethod
+    def generate_number(cls, workspace):
+        """Génère un numéro FAC-AAAA-NNNN unique par workspace + année."""
+        year = timezone.localdate().year
+        prefix = f"FAC-{year}-"
+        last = (
+            cls.objects.filter(workspace=workspace, number__startswith=prefix)
+            .order_by("-number").first()
+        )
+        next_seq = 1
+        if last and last.number:
+            try:
+                next_seq = int(last.number.rsplit("-", 1)[-1]) + 1
+            except (ValueError, IndexError):
+                next_seq = cls.objects.filter(
+                    workspace=workspace, number__startswith=prefix
+                ).count() + 1
+        return f"{prefix}{next_seq:04d}"
+
+    # ────────────────────────────────────────────────────────────────────
+    # Calculs
+    # ────────────────────────────────────────────────────────────────────
+    def recompute_totals(self, save=True):
+        from django.db.models import Sum
+
+        lines_total = self.lines.aggregate(s=Sum("total_amount"))["s"] or Decimal("0")
+        discount = self.discount_amount or Decimal("0")
+        subtotal = (lines_total - discount).quantize(Decimal("0.01"))
+        if subtotal < 0:
+            subtotal = Decimal("0")
+
+        rate = self.tax_rate or Decimal("0")
+        tax = (subtotal * rate / Decimal("100")).quantize(Decimal("0.01"))
+        ttc = (subtotal + tax).quantize(Decimal("0.01"))
+
+        paid = self.payments.filter(
+            status=InvoicePayment.Status.CONFIRMED
+        ).aggregate(s=Sum("amount"))["s"] or Decimal("0")
+
+        self.subtotal_ht = subtotal
+        self.tax_amount = tax
+        self.total_ttc = ttc
+        self.paid_amount = paid
+
+        # Statut auto
+        if self.status not in {self.Status.CANCELLED, self.Status.DRAFT}:
+            if paid >= ttc and ttc > 0:
+                self.status = self.Status.PAID
+                if not self.paid_at:
+                    self.paid_at = timezone.localdate()
+            elif paid > 0:
+                self.status = self.Status.PARTIALLY_PAID
+            elif self.due_date and self.due_date < timezone.localdate():
+                self.status = self.Status.OVERDUE
+
+        if save:
+            self.save(update_fields=[
+                "subtotal_ht", "tax_amount", "total_ttc",
+                "paid_amount", "status", "paid_at", "updated_at",
+            ])
+
+    @property
+    def remaining_due(self):
+        return (self.total_ttc or Decimal("0")) - (self.paid_amount or Decimal("0"))
+
+    def save(self, *args, **kwargs):
+        if self.project_id and not self.workspace_id:
+            self.workspace = self.project.workspace
+        if not self.number and self.workspace_id and self.status != self.Status.DRAFT:
+            self.number = self.generate_number(self.workspace)
+        if not self.due_date and self.issue_date:
+            from datetime import timedelta
+            self.due_date = self.issue_date + timedelta(days=30)
+        super().save(*args, **kwargs)
+
+
+class InvoiceLine(TimeStampedModel):
+    """Ligne d'une facture."""
+
+    class LineType(models.TextChoices):
+        SERVICE = "SERVICE", "Prestation"
+        TIME = "TIME", "Régie / Heures"
+        EXPENSE = "EXPENSE", "Frais refacturé"
+        MILESTONE = "MILESTONE", "Jalon"
+        DISCOUNT = "DISCOUNT", "Remise"
+        OTHER = "OTHER", "Autre"
+
+    invoice = models.ForeignKey(
+        Invoice, on_delete=models.CASCADE, related_name="lines"
+    )
+    line_type = models.CharField(
+        max_length=15, choices=LineType.choices, default=LineType.SERVICE
+    )
+    label = models.CharField(max_length=240)
+    description = models.TextField(blank=True)
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    position = models.PositiveIntegerField(default=0)
+
+    # Liens optionnels vers les sources qui ont engendré la ligne
+    estimate_line = models.ForeignKey(
+        ProjectEstimateLine, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="invoice_lines",
+    )
+    milestone = models.ForeignKey(
+        "Milestone", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="invoice_lines",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="invoice_lines",
+    )
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self):
+        return f"{self.label} ({self.total_amount})"
+
+    def save(self, *args, **kwargs):
+        qty = self.quantity or Decimal("0")
+        price = self.unit_price or Decimal("0")
+        self.total_amount = (qty * price).quantize(Decimal("0.01"))
+        super().save(*args, **kwargs)
+
+
+class InvoicePayment(TimeStampedModel):
+    """Paiement enregistré sur une facture."""
+
+    class Method(models.TextChoices):
+        BANK_TRANSFER = "BANK_TRANSFER", "Virement bancaire"
+        CARD = "CARD", "Carte bancaire"
+        CASH = "CASH", "Espèces"
+        CHECK = "CHECK", "Chèque"
+        MOBILE_MONEY = "MOBILE_MONEY", "Mobile Money"
+        OTHER = "OTHER", "Autre"
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "En attente"
+        CONFIRMED = "CONFIRMED", "Confirmé"
+        REFUNDED = "REFUNDED", "Remboursé"
+        FAILED = "FAILED", "Échoué"
+
+    invoice = models.ForeignKey(
+        Invoice, on_delete=models.CASCADE, related_name="payments"
+    )
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    received_at = models.DateField(default=timezone.localdate)
+    method = models.CharField(
+        max_length=20, choices=Method.choices, default=Method.BANK_TRANSFER
+    )
+    reference = models.CharField(max_length=120, blank=True)
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.CONFIRMED
+    )
+    note = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="recorded_payments",
+    )
+
+    class Meta:
+        ordering = ["-received_at", "-id"]
+
+    def __str__(self):
+        return f"{self.amount} · {self.invoice.number} ({self.get_method_display()})"

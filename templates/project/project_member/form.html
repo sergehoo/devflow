@@ -1,0 +1,8 @@
+{% extends "project/_generic_form.html" %}
+
+{% block form_title %}{% if object %}Modifier le membre projet{% else %}Ajouter un membre au projet{% endif %}{% endblock %}
+{% block form_heading %}{% if object %}Modifier le membre projet{% else %}Ajouter un membre au projet{% endif %}{% endblock %}
+{% block form_subtitle %}Affectez un utilisateur à un projet avec son rôle, son équipe d'appartenance et son taux d'allocation. La somme des allocations actives ne doit pas dépasser 100 %.{% endblock %}
+{% block back_url %}{% url 'project_member_list' %}{% endblock %}
+{% block cancel_url %}{% url 'project_member_list' %}{% endblock %}
+{% block submit_label %}{% if object %}Enregistrer{% else %}Ajouter au projet{% endif %}{% endblock %}

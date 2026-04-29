@@ -1,0 +1,8 @@
+{% extends "project/_generic_form.html" %}
+
+{% block form_title %}{% if object %}Modifier l'équipe{% else %}Nouvelle équipe{% endif %}{% endblock %}
+{% block form_heading %}{% if object %}Modifier l'équipe « {{ object.name }} »{% else %}Créer une nouvelle équipe{% endif %}{% endblock %}
+{% block form_subtitle %}Une équipe regroupe les membres opérationnels d'un domaine (Backend, Frontend, QA…). Elle peut piloter un ou plusieurs projets et a son propre objectif de vélocité.{% endblock %}
+{% block back_url %}{% url 'team_list' %}{% endblock %}
+{% block cancel_url %}{% url 'team_list' %}{% endblock %}
+{% block submit_label %}{% if object %}Enregistrer les modifications{% else %}Créer l'équipe{% endif %}{% endblock %}

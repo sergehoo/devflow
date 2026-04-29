@@ -19,6 +19,7 @@ from project.views import HomeView, DashboardView, WorkspaceListView, WorkspaceC
     ReactionUpdateView, ReactionDetailView, ReactionCreateView, ReactionListView, WebhookDeleteView, WebhookUpdateView, \
     WebhookDetailView, WebhookCreateView, WebhookListView, IntegrationDeleteView, IntegrationUpdateView, \
     IntegrationDetailView, IntegrationCreateView, IntegrationListView, WorkspaceInvitationAcceptView, \
+    WorkspaceInvitationPublicAcceptView, \
     WorkspaceInvitationDeleteView, WorkspaceInvitationUpdateView, WorkspaceInvitationDetailView, \
     WorkspaceInvitationCreateView, WorkspaceInvitationListView, BoardColumnDeleteView, BoardColumnUpdateView, \
     BoardColumnDetailView, BoardColumnCreateView, BoardColumnListView, RoadmapItemDeleteView, RoadmapItemUpdateView, \
@@ -367,6 +368,8 @@ urlpatterns = [
          name="workspace_invitation_delete"),
     path("workspace-invitations/<int:pk>/accept/", WorkspaceInvitationAcceptView.as_view(),
          name="workspace_invitation_accept"),
+    path("invitations/<str:token>/", WorkspaceInvitationPublicAcceptView.as_view(),
+         name="workspace_invitation_public_accept"),
 
     path("integrations/", IntegrationListView.as_view(), name="integration_list"),
     path("integrations/create/", IntegrationCreateView.as_view(), name="integration_create"),
@@ -451,6 +454,16 @@ from project.views_financial_ai import (  # noqa: E402
     WorkspaceFinancialPortfolioView,
 )
 from project.views_budget import RefreshProjectFinancialsView  # noqa: E402
+from project.views import (  # noqa: E402  -- Facturation
+    InvoiceClientListView, InvoiceClientCreateView, InvoiceClientDetailView,
+    InvoiceClientUpdateView, InvoiceClientDeleteView,
+    InvoiceListView, InvoiceCreateView, InvoiceDetailView,
+    InvoiceUpdateView, InvoiceDeleteView, InvoicePrintView,
+    InvoiceIssueView, InvoiceMarkSentView, InvoiceCancelView,
+    InvoicePaymentCreateView,
+    InvoiceLineCreateView, InvoiceLineUpdateView, InvoiceLineDeleteView,
+    InvoiceGenerateFromProjectView,
+)
 from project.views_meeting import (  # noqa: E402
     MeetingActionItemConvertToTaskView,
     MeetingActionItemCreateView,
@@ -592,6 +605,33 @@ urlpatterns += [
         MeetingAIProcessView.as_view(),
         name="meeting_ai_process",
     ),
+
+    # =====================================================================
+    # Module Facturation
+    # =====================================================================
+    path("billing/clients/", InvoiceClientListView.as_view(), name="invoice_client_list"),
+    path("billing/clients/create/", InvoiceClientCreateView.as_view(), name="invoice_client_create"),
+    path("billing/clients/<int:pk>/", InvoiceClientDetailView.as_view(), name="invoice_client_detail"),
+    path("billing/clients/<int:pk>/update/", InvoiceClientUpdateView.as_view(), name="invoice_client_update"),
+    path("billing/clients/<int:pk>/delete/", InvoiceClientDeleteView.as_view(), name="invoice_client_delete"),
+
+    path("billing/invoices/", InvoiceListView.as_view(), name="invoice_list"),
+    path("billing/invoices/create/", InvoiceCreateView.as_view(), name="invoice_create"),
+    path("billing/invoices/<int:pk>/", InvoiceDetailView.as_view(), name="invoice_detail"),
+    path("billing/invoices/<int:pk>/update/", InvoiceUpdateView.as_view(), name="invoice_update"),
+    path("billing/invoices/<int:pk>/delete/", InvoiceDeleteView.as_view(), name="invoice_delete"),
+    path("billing/invoices/<int:pk>/print/", InvoicePrintView.as_view(), name="invoice_print"),
+    path("billing/invoices/<int:pk>/issue/", InvoiceIssueView.as_view(), name="invoice_issue"),
+    path("billing/invoices/<int:pk>/mark-sent/", InvoiceMarkSentView.as_view(), name="invoice_mark_sent"),
+    path("billing/invoices/<int:pk>/cancel/", InvoiceCancelView.as_view(), name="invoice_cancel"),
+    path("billing/invoices/<int:pk>/payments/create/", InvoicePaymentCreateView.as_view(), name="invoice_payment_create"),
+
+    path("billing/lines/create/", InvoiceLineCreateView.as_view(), name="invoice_line_create"),
+    path("billing/lines/<int:pk>/update/", InvoiceLineUpdateView.as_view(), name="invoice_line_update"),
+    path("billing/lines/<int:pk>/delete/", InvoiceLineDeleteView.as_view(), name="invoice_line_delete"),
+
+    path("billing/projects/<int:project_pk>/generate/",
+         InvoiceGenerateFromProjectView.as_view(), name="invoice_generate_from_project"),
 ]
 
 if settings.DEBUG:

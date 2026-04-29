@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Nouvelle tâche assignée · Dev'Flow</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f3ef;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1d1a17;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f3ef;padding:32px 16px;">
+  <tr><td align="center">
+    <table role="presentation" cellspacing="0" cellpadding="0" style="max-width:560px;background:#fff;border-radius:28px;overflow:hidden;border:1px solid rgba(0,0,0,.07);">
+      <tr>
+        <td style="padding:32px 32px 8px;">
+          <div style="font-size:11px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#FF5A1F;">Dev'Flow · Tâches</div>
+          <h1 style="margin:12px 0 0;font-family:Georgia,serif;font-size:26px;line-height:1.25;color:#1d1a17;">
+            Nouvelle tâche pour vous
+          </h1>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:8px 32px 4px;color:#1d1a17;font-size:15px;line-height:1.6;">
+          <p style="margin:0 0 14px;">
+            Bonjour <strong>{{ recipient.get_full_name|default:recipient.username }}</strong>,
+          </p>
+          <p style="margin:0 0 14px;">
+            {% if assigned_by %}<strong>{{ assigned_by.get_full_name|default:assigned_by.username }}</strong> vous a confié{% else %}Une nouvelle tâche vous a été confiée{% endif %}
+            sur le projet <strong>{{ project.name }}</strong>.
+          </p>
+        </td>
+      </tr>
+
+      <tr>
+        <td style="padding:0 32px;">
+          <div style="background:#f6f3ef;border:1px solid rgba(0,0,0,.06);border-radius:18px;padding:18px 20px;margin-top:6px;">
+            <div style="font-size:18px;font-weight:600;line-height:1.4;color:#1d1a17;">{{ task.title }}</div>
+            <div style="margin-top:8px;font-size:13px;color:#6d655d;line-height:1.6;">
+              {% if task.priority %}Priorité : <strong style="color:#1d1a17;">{{ task.get_priority_display }}</strong>{% endif %}
+              {% if task.due_date %}<br>Échéance : <strong style="color:#1d1a17;">{{ task.due_date|date:"d/m/Y" }}</strong>{% endif %}
+              {% if task.estimate_hours %}<br>Estimation : <strong style="color:#1d1a17;">{{ task.estimate_hours }} h</strong>{% endif %}
+            </div>
+          </div>
+        </td>
+      </tr>
+
+      <tr>
+        <td align="center" style="padding:22px 32px 8px;">
+          <a href="/tasks/{{ task.pk }}/"
+             style="display:inline-block;background:#ff5a1f;color:#fff;text-decoration:none;padding:13px 26px;border-radius:14px;font-weight:600;font-size:14px;">
+            Ouvrir la tâche
+          </a>
+        </td>
+      </tr>
+
+      <tr>
+        <td style="padding:8px 32px 26px;font-size:12px;color:#a79f97;line-height:1.6;text-align:center;">
+          Vous recevez cet e-mail parce que vous avez été désigné·e responsable de cette tâche.<br>
+          Vous pouvez gérer vos préférences dans votre profil Dev'Flow.
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

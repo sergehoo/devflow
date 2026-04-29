@@ -1,2 +1,1 @@
-# email_confirmation_subject.txt
-Confirmez votre adresse e-mail DevFlow
+Confirmez votre adresse e-mail · Dev'Flow

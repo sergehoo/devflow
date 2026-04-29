@@ -5,24 +5,122 @@
             <div>
                 <h3 class="text-sm font-semibold text-[var(--text1)]">Actions rapides · Facturation client</h3>
                 <p class="mt-1 text-xs text-[var(--text3)]">
-                    Suivez les revenus prévus, les montants facturés et les encaissements client.
+                    Générez des factures depuis les estimations / heures / jalons et suivez encaissements.
                 </p>
             </div>
 
             <div class="flex flex-wrap gap-2">
-                {% for action in active_quick_actions %}
-                    <a href="{{ action.url }}"
-                       class="{% if action.style == 'primary' %}bg-[var(--accent)] text-white{% else %}border border-[var(--border)] bg-[var(--bg3)] text-[var(--text2)]{% endif %} inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:opacity-95 hover:text-[var(--text1)]">
-                        {{ action.label }}
-                    </a>
-                {% empty %}
-                    <a href="/project-revenues/create/?project={{ project_obj.pk }}"
-                       class="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
-                        Ajouter revenu client
-                    </a>
-                {% endfor %}
+                <a href="{% url 'invoice_generate_from_project' project_obj.pk %}"
+                   class="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-95">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Générer une facture
+                </a>
+                <a href="{% url 'invoice_create' %}?project={{ project_obj.pk }}"
+                   class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-plus"></i> Facture manuelle
+                </a>
+                <a href="/project-revenues/create/?project={{ project_obj.pk }}"
+                   class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3.5 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    Ajouter prévision revenu
+                </a>
             </div>
         </div>
+    </section>
+
+    <!-- ── Factures émises (module Invoice) ────────────────────────── -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-[var(--text1)]">Factures émises</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">
+                    {{ invoice_summary.count_total|default:0 }} facture(s) · {{ invoice_summary.count_overdue|default:0 }} en retard · {{ invoice_summary.count_draft|default:0 }} brouillon(s)
+                </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <span class="inline-flex rounded-full bg-[var(--accent-bg)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">
+                    TTC : {{ invoice_summary.total_ttc|default:0|floatformat:0|intcomma }}
+                </span>
+                <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">
+                    Encaissé : {{ invoice_summary.total_paid|default:0|floatformat:0|intcomma }}
+                </span>
+                <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">
+                    Reste : {{ invoice_summary.total_due|default:0|floatformat:0|intcomma }}
+                </span>
+            </div>
+        </div>
+
+        <div class="mt-5 overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-[var(--bg3)]/70">
+                    <tr class="border-b border-[var(--border)] text-left text-[11px] uppercase tracking-[0.14em] text-[var(--text3)]">
+                        <th class="px-4 py-3">Numéro</th>
+                        <th class="px-4 py-3">Client</th>
+                        <th class="px-4 py-3">Émise</th>
+                        <th class="px-4 py-3">Échéance</th>
+                        <th class="px-4 py-3 text-right">TTC</th>
+                        <th class="px-4 py-3 text-right">Encaissé</th>
+                        <th class="px-4 py-3">Statut</th>
+                        <th class="px-4 py-3 text-right">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for inv in project_invoices %}
+                    <tr class="border-b border-[var(--border)] hover:bg-[var(--accent-bg)]/20">
+                        <td class="px-4 py-3">
+                            <a href="{% url 'invoice_detail' inv.pk %}" class="font-semibold text-[var(--text1)] hover:text-[var(--accent)]">
+                                {{ inv.number|default:"(brouillon)" }}
+                            </a>
+                            <div class="text-[11px] text-[var(--text3)]">{{ inv.get_billing_mode_display }}</div>
+                        </td>
+                        <td class="px-4 py-3 text-[var(--text2)]">{{ inv.client.name|default:"—" }}</td>
+                        <td class="px-4 py-3 text-[var(--text2)] text-xs">{{ inv.issue_date|date:"d/m/Y" }}</td>
+                        <td class="px-4 py-3 text-[var(--text2)] text-xs">{{ inv.due_date|date:"d/m/Y"|default:"—" }}</td>
+                        <td class="px-4 py-3 text-right font-medium text-[var(--text1)]">{{ inv.total_ttc|floatformat:0|intcomma }} {{ inv.currency }}</td>
+                        <td class="px-4 py-3 text-right text-[var(--text2)]">{{ inv.paid_amount|floatformat:0|intcomma }}</td>
+                        <td class="px-4 py-3">
+                            {% if inv.status == "PAID" %}
+                                <span class="inline-flex rounded-full bg-[var(--green-bg)] px-3 py-1 text-xs font-semibold text-[var(--green)]">{{ inv.get_status_display }}</span>
+                            {% elif inv.status == "OVERDUE" %}
+                                <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">{{ inv.get_status_display }}</span>
+                            {% elif inv.status == "DRAFT" %}
+                                <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">{{ inv.get_status_display }}</span>
+                            {% else %}
+                                <span class="inline-flex rounded-full bg-[var(--cyan-bg)] px-3 py-1 text-xs font-semibold text-[var(--cyan)]">{{ inv.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                            <a href="{% url 'invoice_detail' inv.pk %}" class="text-[var(--text3)] hover:text-[var(--accent)]" title="Ouvrir">
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            </a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="8" class="px-4 py-10 text-center">
+                            <div class="mx-auto flex max-w-md flex-col items-center">
+                                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg3)] text-[var(--text3)]">
+                                    <i class="fa-solid fa-file-invoice-dollar text-lg"></i>
+                                </div>
+                                <div class="mt-4 text-sm font-semibold text-[var(--text1)]">Aucune facture émise pour ce projet</div>
+                                <div class="mt-1 text-xs text-[var(--text3)]">Cliquez sur « Générer une facture » pour créer un brouillon depuis les estimations, les heures saisies ou les jalons.</div>
+                                <a href="{% url 'invoice_generate_from_project' project_obj.pk %}"
+                                   class="mt-4 inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Générer maintenant
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if all_project_invoices|length > 10 %}
+        <div class="mt-3 text-right">
+            <a href="{% url 'invoice_list' %}?project={{ project_obj.pk }}" class="text-xs font-semibold text-[var(--accent)]">
+                Voir les {{ all_project_invoices|length }} factures →
+            </a>
+        </div>
+        {% endif %}
     </section>
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">

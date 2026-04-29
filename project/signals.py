@@ -11,10 +11,24 @@ from project.models import Workspace, UserProfile
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_profile(sender, instance, created, **kwargs):
-    if created:
-        workspace = Workspace.objects.first()  # ou logique custom
-        if workspace:
-            UserProfile.objects.create(user=instance, workspace=workspace)
+    """
+    Crée un UserProfile à la création d'un utilisateur.
+    Le workspace cible est lu sur l'attribut transient `instance._invited_workspace`
+    posé par le flow d'invitation. À défaut, on ne crée RIEN — il vaut mieux
+    rater la création silencieuse d'un profil que rattacher l'utilisateur au
+    mauvais workspace en multi-tenant.
+    """
+    if not created:
+        return
+    workspace = getattr(instance, "_invited_workspace", None)
+    if workspace is None:
+        # Mode mono-tenant historique : on retombe sur le 1er workspace
+        # uniquement si un seul existe en base. Évite la dérive multi-tenant.
+        ws_qs = Workspace.objects.all()[:2]
+        if len(ws_qs) == 1:
+            workspace = ws_qs[0]
+    if workspace:
+        UserProfile.objects.get_or_create(user=instance, workspace=workspace)
 
 
 from project import models as dm
@@ -47,16 +61,20 @@ def notify_on_task_assignee_change(sender, instance, created, **kwargs):
 
     if should_notify:
         recipient = instance.assignee
+        # _assigned_by est posé par Task.assign() / les vues quick-assign.
+        # À défaut on retombe sur le reporter (créateur) qui est moins faux
+        # qu'un None pour les notifications.
+        actor = getattr(instance, "_assigned_by", None) or instance.reporter
 
         notify_task_assignment(
             task=instance,
             recipient=recipient,
-            assigned_by=instance.reporter,
+            assigned_by=actor,
         )
 
         log_activity(
             workspace=instance.workspace,
-            actor=instance.reporter,
+            actor=actor,
             project=instance.project,
             task=instance,
             activity_type=dm.ActivityLog.ActivityType.MEMBER_ASSIGNED,

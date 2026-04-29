@@ -1,0 +1,53 @@
+{% extends "layout/base.html" %}
+{% block title %}Clients de facturation{% endblock %}
+{% block page_title %}Clients de facturation{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto">
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--accent)]">DevFlow · Facturation</p>
+                <h1 class="mt-2 font-serif text-3xl font-medium text-[var(--text1)]">Clients</h1>
+                <p class="mt-2 text-sm text-[var(--text2)]">Carnet d'adresses des clients destinataires de vos factures.</p>
+            </div>
+            <a href="{% url 'invoice_client_create' %}" class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
+                <i class="fa-solid fa-plus"></i> Nouveau client
+            </a>
+        </div>
+    </section>
+
+    {% include "components/list_search_bar.html" %}
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft overflow-hidden">
+        <table class="min-w-full text-sm">
+            <thead class="bg-[var(--bg3)] text-[var(--text3)] uppercase text-[11px] tracking-wide">
+                <tr>
+                    <th class="px-6 py-3 text-left">Nom</th>
+                    <th class="px-6 py-3 text-left">Identifiant fiscal</th>
+                    <th class="px-6 py-3 text-left">Email</th>
+                    <th class="px-6 py-3 text-left">Ville</th>
+                    <th class="px-6 py-3 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-[var(--border)]">
+            {% for c in object_list %}
+                <tr class="hover:bg-[var(--bg3)]/40">
+                    <td class="px-6 py-3 font-medium text-[var(--text1)]">
+                        <a href="{% url 'invoice_client_detail' c.pk %}" class="hover:text-[var(--accent)]">{{ c.name }}</a>
+                    </td>
+                    <td class="px-6 py-3 text-[var(--text2)] text-xs">{{ c.tax_id|default:"—" }}</td>
+                    <td class="px-6 py-3 text-[var(--text2)] text-xs">{{ c.email|default:"—" }}</td>
+                    <td class="px-6 py-3 text-[var(--text2)] text-xs">{{ c.city|default:"—" }}</td>
+                    <td class="px-6 py-3 text-right text-xs">
+                        <a href="{% url 'invoice_client_update' c.pk %}" class="text-[var(--text3)] hover:text-[var(--accent)]"><i class="fa-solid fa-pen"></i></a>
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="5" class="px-6 py-12 text-center text-[var(--text3)]">Aucun client enregistré.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}

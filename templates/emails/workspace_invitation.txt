@@ -1,0 +1,12 @@
+Bonjour,
+
+{% if invited_by %}{{ invited_by.get_full_name|default:invited_by.username }}{% else %}Un collaborateur{% endif %} vous invite à rejoindre le workspace « {{ workspace.name }} » sur DevFlow{% if team %}, au sein de l'équipe « {{ team.name }} »{% endif %}, en tant que {{ role_label }}.
+
+Pour accepter l'invitation, cliquez sur le lien ci-dessous :
+
+    {{ accept_url }}
+
+Ce lien est valable jusqu'au {{ expires_at|date:"d/m/Y H:i" }}.
+
+À bientôt,
+L'équipe DevFlow

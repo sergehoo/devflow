@@ -1,14 +1,12 @@
 Bonjour,
 
-Bienvenue sur DevFlow.
+Bienvenue sur Dev'Flow !
 
-Vous recevez cet e-mail parce qu’une demande de création de compte a été effectuée avec cette adresse.
+Pour activer votre compte et commencer à piloter vos projets, vos équipes et votre facturation, confirmez votre adresse e-mail en ouvrant le lien ci-dessous :
 
-Pour activer votre compte, ouvrez le lien suivant :
+    {{ activate_url }}
 
-{{ activate_url }}
+Si vous n'êtes pas à l'origine de cette demande, ignorez ce message — sans confirmation de votre part, l'adresse ne sera pas activée.
 
-Si vous n’êtes pas à l’origine de cette demande, vous pouvez ignorer cet e-mail.
-
-Merci,
-L’équipe DevFlow
+À très vite,
+L'équipe Dev'Flow

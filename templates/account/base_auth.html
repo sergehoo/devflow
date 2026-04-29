@@ -679,6 +679,61 @@
             font-size: 13px;
         }
 
+        /* Status pages (success / info / warn) */
+        .auth-status {
+            text-align: center;
+        }
+
+        .status-icon {
+            width: 76px;
+            height: 76px;
+            border-radius: 24px;
+            display: grid;
+            place-items: center;
+            margin: 0 auto 22px;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, .06);
+        }
+
+        .status-icon svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        .status-success {
+            background: var(--green-bg);
+            color: var(--green);
+        }
+
+        .status-info {
+            background: var(--accent-bg);
+            color: var(--accent);
+        }
+
+        .status-warn {
+            background: var(--amber-bg);
+            color: var(--amber);
+        }
+
+        .auth-status .auth-eyebrow,
+        .auth-status .auth-title,
+        .auth-status .auth-subtitle {
+            text-align: center;
+        }
+
+        .auth-hint {
+            margin-top: 14px;
+            font-size: 12px;
+            line-height: 1.6;
+            color: var(--text3);
+            text-align: center;
+        }
+
+        .auth-actions {
+            margin-top: 28px;
+            display: grid;
+            gap: 4px;
+        }
+
         .msg-list {
             display: grid;
             gap: 10px;

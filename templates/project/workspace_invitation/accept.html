@@ -1,0 +1,66 @@
+{% extends "layout/base.html" %}
+{% block title %}DevFlow — Accepter l'invitation{% endblock %}
+{% block page_title %}Accepter l'invitation{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-2xl space-y-6">
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-7 shadow-soft">
+        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--accent)]">DevFlow</p>
+        <h1 class="mt-2 font-serif text-3xl font-medium text-[var(--text1)]">
+            {% if state == "expired" %}Invitation expirée
+            {% elif state == "not_pending" %}Invitation déjà traitée
+            {% else %}Rejoindre {{ invitation.workspace.name }}
+            {% endif %}
+        </h1>
+
+        {% if state == "expired" %}
+            <p class="mt-3 text-sm text-[var(--text2)]">
+                Cette invitation est expirée. Demandez à votre administrateur d'en envoyer une nouvelle.
+            </p>
+        {% elif state == "not_pending" %}
+            <p class="mt-3 text-sm text-[var(--text2)]">
+                Cette invitation a déjà été {{ invitation.get_status_display|lower }}.
+            </p>
+        {% else %}
+            <p class="mt-3 text-sm text-[var(--text2)]">
+                {% if invitation.invited_by %}{{ invitation.invited_by.get_full_name|default:invitation.invited_by.username }}{% else %}Un collaborateur{% endif %}
+                vous invite à rejoindre le workspace
+                <strong>{{ invitation.workspace.name }}</strong>
+                {% if invitation.team %}au sein de l'équipe <strong>{{ invitation.team.name }}</strong>,{% endif %}
+                en tant que <strong>{{ invitation.get_role_display }}</strong>.
+            </p>
+
+            <form method="post" class="mt-6 space-y-4">
+                {% csrf_token %}
+                {% if existing_user %}
+                    <p class="text-sm text-[var(--text2)]">
+                        Un compte existe déjà pour <strong>{{ invitation.email }}</strong>.
+                        Connectez-vous puis cliquez sur « Accepter » ci-dessous pour rejoindre le workspace.
+                    </p>
+                {% else %}
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Prénom <span class="text-orange-500">*</span></label>
+                            <input type="text" name="first_name" required class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm">
+                        </div>
+                        <div>
+                            <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Nom <span class="text-orange-500">*</span></label>
+                            <input type="text" name="last_name" required class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Mot de passe (8 caractères min.) <span class="text-orange-500">*</span></label>
+                        <input type="password" name="password" minlength="8" required class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm">
+                    </div>
+                {% endif %}
+
+                <div class="flex justify-end">
+                    <button type="submit"
+                            class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(255,78,0,0.24)] transition hover:-translate-y-0.5">
+                        <i class="fa-solid fa-circle-check"></i> Accepter l'invitation
+                    </button>
+                </div>
+            </form>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

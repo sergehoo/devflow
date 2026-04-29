@@ -1,24 +1,23 @@
 {% extends "account/base_auth.html" %}
 
-{% block head_title %}E-mail confirmé{% endblock %}
+{% block title %}Adresse confirmée — Dev'Flow{% endblock %}
 
 {% block auth_content %}
-<div class="text-center">
-    <div class="mx-auto grid h-20 w-20 place-items-center rounded-[24px] bg-emerald-100 text-emerald-700">
-        <i class="fa-solid fa-circle-check text-2xl"></i>
+<div class="auth-status">
+    <div class="status-icon status-success">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m4.5 12.75 6 6 9-13.5"/>
+        </svg>
     </div>
-
-    <p class="mt-6 text-xs font-bold uppercase tracking-[0.22em] text-premium-600">Confirmation réussie</p>
-    <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900">Adresse e-mail confirmée</h2>
-    <p class="mt-3 text-sm leading-6 text-slate-500">
-        Votre adresse e-mail a bien été confirmée. Vous pouvez maintenant accéder à votre espace.
+    <div class="auth-eyebrow">Validation réussie</div>
+    <h2 class="auth-title">Votre adresse est confirmée</h2>
+    <p class="auth-subtitle">
+        Bienvenue sur Dev'Flow ! Votre adresse e-mail est désormais vérifiée et votre compte est activé.
+        Connectez-vous pour découvrir vos espaces de travail.
     </p>
 </div>
 
-<div class="mt-8">
-    <a href="{% url 'account_login' %}" class="btn-primary">
-        <i class="fa-solid fa-right-to-bracket"></i>
-        <span>Se connecter</span>
-    </a>
+<div class="auth-actions">
+    <a href="{% url 'account_login' %}" class="btn-auth">Se connecter</a>
 </div>
 {% endblock %}

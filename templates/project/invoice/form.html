@@ -1,0 +1,6 @@
+{% extends "project/_generic_form.html" %}
+{% block form_title %}{% if object %}Modifier la facture{% else %}Nouvelle facture{% endif %}{% endblock %}
+{% block form_heading %}{% if object %}Modifier la facture {{ object.number|default:'(brouillon)' }}{% else %}Créer une facture{% endif %}{% endblock %}
+{% block form_subtitle %}Remplissez les informations principales. Les lignes (prestations, frais, jalons) s'ajoutent ensuite depuis la fiche détail.{% endblock %}
+{% block back_url %}{% url 'invoice_list' %}{% endblock %}
+{% block cancel_url %}{% url 'invoice_list' %}{% endblock %}

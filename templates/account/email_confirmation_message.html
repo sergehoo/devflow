@@ -1,71 +1,69 @@
-<!doctype html>
+{% load i18n %}<!doctype html>
 <html lang="fr">
 <head>
     <meta charset="utf-8">
-    <title>Confirmez votre adresse e-mail</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Confirmez votre adresse e-mail · Dev'Flow</title>
 </head>
-<body style="margin:0; padding:0; background:#f1f5f9; font-family:Arial, Helvetica, sans-serif; color:#0f172a;">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9; padding:32px 16px;">
-    <tr>
-        <td align="center">
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px; background:#ffffff; border-radius:24px; overflow:hidden; border:1px solid #e2e8f0;">
-                <tr>
-                    <td style="background:linear-gradient(135deg,#4f46e5,#0ea5e9); padding:34px 32px; color:#ffffff;">
-                        <div style="font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; opacity:.9;">
-                            DevFlow
-                        </div>
-                        <h1 style="margin:12px 0 0; font-size:28px; line-height:1.25; font-weight:800;">
-                            Confirmez votre adresse e-mail
-                        </h1>
-                    </td>
-                </tr>
-
-                <tr>
-                    <td style="padding:34px 32px;">
-                        <p style="margin:0 0 18px; font-size:16px; line-height:1.7; color:#334155;">
-                            Bonjour,
-                        </p>
-
-                        <p style="margin:0 0 22px; font-size:15px; line-height:1.7; color:#475569;">
-                            Bienvenue sur <strong>DevFlow</strong>. Une demande de création de compte a été effectuée avec cette adresse e-mail.
-                        </p>
-
-                        <p style="margin:0 0 28px; font-size:15px; line-height:1.7; color:#475569;">
-                            Cliquez sur le bouton ci-dessous pour confirmer votre adresse et activer votre compte.
-                        </p>
-
-                        <p style="margin:0 0 30px; text-align:center;">
-                            <a href="{{ activate_url }}"
-                               style="display:inline-block; background:#4f46e5; color:#ffffff; text-decoration:none; padding:15px 24px; border-radius:14px; font-size:15px; font-weight:700;">
-                                Confirmer mon adresse
-                            </a>
-                        </p>
-
-                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; padding:16px;">
-                            <p style="margin:0 0 8px; font-size:13px; color:#64748b;">
-                                Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :
-                            </p>
-                            <p style="margin:0; font-size:12px; line-height:1.6; color:#475569; word-break:break-all;">
-                                {{ activate_url }}
-                            </p>
-                        </div>
-
-                        <p style="margin:24px 0 0; font-size:13px; line-height:1.6; color:#64748b;">
-                            Si vous n’êtes pas à l’origine de cette demande, vous pouvez ignorer cet e-mail.
-                        </p>
-                    </td>
-                </tr>
-
-                <tr>
-                    <td style="padding:22px 32px; background:#f8fafc; border-top:1px solid #e2e8f0;">
-                        <p style="margin:0; font-size:12px; line-height:1.6; color:#94a3b8;">
-                            © DevFlow — Plateforme de gestion de projets.
-                        </p>
-                    </td>
-                </tr>
-            </table>
+<body style="margin:0;padding:0;background:#f6f3ef;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1d1a17;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f3ef;padding:32px 16px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid rgba(0,0,0,.07);">
+      <tr>
+        <td style="padding:36px 36px 12px;">
+          <div style="font-size:11px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#FF5A1F;">Dev'Flow</div>
+          <h1 style="margin:14px 0 0;font-family:Georgia,serif;font-size:28px;line-height:1.2;font-weight:500;color:#1d1a17;">
+            Confirmez votre adresse e-mail
+          </h1>
         </td>
-    </tr>
+      </tr>
+
+      <tr>
+        <td style="padding:18px 36px 8px;color:#1d1a17;font-size:15px;line-height:1.65;">
+          <p style="margin:0 0 14px;">Bonjour {% if user_display %}<strong>{{ user_display }}</strong>{% endif %},</p>
+
+          <p style="margin:0 0 14px;">
+            Bienvenue sur <strong>Dev'Flow</strong>. Pour activer votre compte et commencer à piloter
+            vos projets, vos équipes et votre facturation, il ne reste qu'une étape : confirmer
+            que <strong style="color:#1d1a17;">{{ email|default:"cette adresse e-mail" }}</strong> vous appartient bien.
+          </p>
+
+          <p style="margin:0 0 6px;color:#6d655d;font-size:14px;">Cliquez sur le bouton ci-dessous :</p>
+        </td>
+      </tr>
+
+      <tr>
+        <td align="center" style="padding:14px 36px 12px;">
+          <a href="{{ activate_url }}"
+             style="display:inline-block;background:#ff5a1f;color:#ffffff;text-decoration:none;padding:15px 28px;border-radius:16px;font-size:15px;font-weight:600;letter-spacing:.2px;">
+            Confirmer mon adresse e-mail
+          </a>
+        </td>
+      </tr>
+
+      <tr>
+        <td style="padding:8px 36px 28px;">
+          <div style="background:#f6f3ef;border:1px solid rgba(0,0,0,.06);border-radius:18px;padding:16px 18px;margin-top:8px;">
+            <div style="font-size:12px;color:#6d655d;margin-bottom:6px;">Le lien ne fonctionne pas ? Copiez celui-ci :</div>
+            <div style="font-size:12px;color:#a79f97;word-break:break-all;font-family:Menlo,Consolas,monospace;">{{ activate_url }}</div>
+          </div>
+
+          <p style="margin:22px 0 0;font-size:12px;line-height:1.6;color:#a79f97;">
+            Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail :
+            sans confirmation de votre part, l'adresse ne sera pas activée.
+          </p>
+        </td>
+      </tr>
+
+      <tr>
+        <td style="padding:18px 36px;background:#f6f3ef;border-top:1px solid rgba(0,0,0,.06);text-align:center;">
+          <p style="margin:0;font-size:11px;line-height:1.6;color:#a79f97;">
+            © Dev'Flow — Plateforme de pilotage projet & facturation
+          </p>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
 </table>
 </body>
 </html>

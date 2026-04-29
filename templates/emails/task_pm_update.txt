@@ -1,11 +1,14 @@
 Bonjour {{ pm.first_name|default:pm.username }},
 
-Une tâche de votre projet « {{ project.name }} » a été mise à jour :
+Mise à jour sur le projet « {{ project.name }} » que vous pilotez :
 
-  • {{ task.title }}
-  • {{ message }}
-  {% if task.assignee %}• Assignée à : {{ task.assignee }}{% endif %}
-  • Statut : {{ task.get_status_display }}
-  • Progression : {{ task.progress_percent }}%
+  Tâche : {{ task.title }}
+  {{ message }}
+  {% if task.assignee %}Responsable : {{ task.assignee }}{% endif %}
+  Statut : {{ task.get_status_display }}
+  Progression : {{ task.progress_percent }}%
 
-— DevFlow (notification automatique)
+Ouvrir la tâche : /tasks/{{ task.pk }}/
+
+— Notification automatique Dev'Flow
+Pour ne plus recevoir ces digests, ajustez vos préférences dans votre profil.

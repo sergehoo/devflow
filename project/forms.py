@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from allauth.account.forms import SignupForm
 from django import forms
 from django.contrib.auth import get_user_model
@@ -56,6 +58,7 @@ from .models import (
     WorkspaceSettings,
     UserProfile, ProjectDocumentImport,
 )
+from .models import Invoice, InvoiceLine, InvoicePayment, InvoiceClient
 
 User = get_user_model()
 
@@ -320,6 +323,15 @@ class TeamForm(BaseStyledModelForm):
             "color": forms.TextInput(attrs={"type": "color"}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ws = self.current_workspace
+        if ws and "lead" in self.fields:
+            self.fields["lead"].queryset = User.objects.filter(
+                devflow_memberships__workspace=ws,
+                is_active=True,
+            ).distinct().order_by("last_name", "first_name", "username")
+
 
 class TeamMembershipForm(BaseStyledModelForm):
     class Meta:
@@ -344,11 +356,43 @@ class TeamMembershipForm(BaseStyledModelForm):
             "avatar_color": forms.TextInput(attrs={"type": "color"}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ws = self.current_workspace
+        if ws:
+            if "team" in self.fields:
+                self.fields["team"].queryset = Team.objects.filter(
+                    workspace=ws, is_archived=False
+                ).order_by("name")
+            if "user" in self.fields:
+                # Tous les users actifs : on autorise à ajouter un user
+                # pas encore membre du workspace (typique du flow d'onboarding).
+                self.fields["user"].queryset = User.objects.filter(
+                    is_active=True
+                ).order_by("last_name", "first_name", "username")
+
     def clean_current_load_percent(self):
         value = self.cleaned_data.get("current_load_percent") or 0
         if value < 0 or value > 100:
             raise forms.ValidationError("La charge actuelle doit être comprise entre 0 et 100.")
         return value
+
+    def clean(self):
+        cleaned = super().clean()
+        ws = cleaned.get("workspace") or self.current_workspace
+        user = cleaned.get("user")
+        team = cleaned.get("team")
+        if ws and user:
+            qs = TeamMembership.objects.filter(workspace=ws, user=user, team=team)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise ValidationError(
+                    "Cet utilisateur est déjà membre %s." % (
+                        f"de l'équipe « {team} »" if team else "du workspace (sans équipe)"
+                    )
+                )
+        return cleaned
 
 
 # =============================================================================
@@ -718,11 +762,65 @@ class ProjectMemberForm(BaseStyledModelForm):
             "is_primary",
         ]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ws = self.current_workspace
+        if ws:
+            if "project" in self.fields:
+                self.fields["project"].queryset = Project.objects.filter(
+                    workspace=ws, is_archived=False
+                ).order_by("name")
+            if "team" in self.fields:
+                self.fields["team"].queryset = Team.objects.filter(
+                    workspace=ws, is_archived=False
+                ).order_by("name")
+            if "user" in self.fields:
+                self.fields["user"].queryset = User.objects.filter(
+                    is_active=True,
+                    devflow_memberships__workspace=ws,
+                ).distinct().order_by("last_name", "first_name", "username")
+
     def clean_allocation_percent(self):
         value = self.cleaned_data.get("allocation_percent") or 0
         if value < 0 or value > 100:
             raise forms.ValidationError("L'allocation doit être comprise entre 0 et 100.")
         return value
+
+    def clean(self):
+        cleaned = super().clean()
+        user = cleaned.get("user")
+        project = cleaned.get("project")
+        new_alloc = cleaned.get("allocation_percent") or 0
+
+        if user and project:
+            # Vérifie qu'il n'y a pas déjà ce ProjectMember
+            qs = ProjectMember.objects.filter(project=project, user=user)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise ValidationError(
+                    f"{user} est déjà membre du projet « {project} »."
+                )
+
+            # Vérifie la capacité totale (allocation cumulée sur projets actifs)
+            from django.db.models import Sum
+            qs_active = ProjectMember.objects.filter(
+                user=user, project__is_archived=False
+            )
+            if self.instance.pk:
+                qs_active = qs_active.exclude(pk=self.instance.pk)
+            current = qs_active.aggregate(s=Sum("allocation_percent"))["s"] or 0
+            total = current + new_alloc
+            if total > 100:
+                # Avertissement non-bloquant via non_field_errors WARNING-niveau ?
+                # On bloque par sécurité ; pour un mode soft, basculer en
+                # self.add_error(None, ...).
+                raise ValidationError(
+                    f"Cette affectation porterait {user} à {total}% d'allocation "
+                    f"totale (limite 100%). Réduisez l'allocation ou désactivez "
+                    f"un autre projet."
+                )
+        return cleaned
 
 
 # =============================================================================
@@ -999,11 +1097,68 @@ class TaskAssignmentForm(BaseStyledModelForm):
             "is_active",
         ]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ws = self.current_workspace
+        if ws:
+            if "task" in self.fields:
+                self.fields["task"].queryset = Task.objects.filter(
+                    workspace=ws, is_archived=False
+                ).order_by("-updated_at")
+            if "user" in self.fields:
+                self.fields["user"].queryset = User.objects.filter(
+                    is_active=True,
+                    devflow_memberships__workspace=ws,
+                ).distinct().order_by("last_name", "first_name", "username")
+            if "assigned_by" in self.fields:
+                self.fields["assigned_by"].queryset = User.objects.filter(
+                    is_active=True,
+                    devflow_memberships__workspace=ws,
+                ).distinct().order_by("last_name", "first_name", "username")
+                self.fields["assigned_by"].required = False
+                # Si la requête est connue, on pré-remplit avec l'utilisateur courant.
+                if self.request and not self.instance.pk:
+                    self.fields["assigned_by"].initial = self.request.user
+
     def clean_allocation_percent(self):
         value = self.cleaned_data.get("allocation_percent") or 0
         if value < 0 or value > 100:
             raise forms.ValidationError("L'allocation doit être comprise entre 0 et 100.")
         return value
+
+    def clean(self):
+        cleaned = super().clean()
+        task = cleaned.get("task")
+        user = cleaned.get("user")
+        if task and user:
+            # L'utilisateur doit être membre du projet de la tâche
+            is_member = ProjectMember.objects.filter(
+                project=task.project, user=user
+            ).exists()
+            if not is_member:
+                raise ValidationError(
+                    f"{user} n'est pas membre du projet « {task.project} ». "
+                    f"Ajoutez-le d'abord comme membre projet."
+                )
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        # Synchroniser Task.assignee FK via Task.assign() pour cohérence
+        if commit:
+            if instance.is_active and instance.user_id and instance.task_id:
+                instance.task.assign(
+                    instance.user,
+                    assigned_by=instance.assigned_by,
+                    allocation_percent=instance.allocation_percent or 100,
+                )
+                # Récupérer l'instance créée par assign()
+                instance = TaskAssignment.objects.get(
+                    task=instance.task, user=instance.user
+                )
+            else:
+                instance.save()
+        return instance
 
 class TaskCommentQuickForm(forms.ModelForm):
     class Meta:
@@ -1659,31 +1814,68 @@ class BoardColumnForm(BaseStyledModelForm):
 # INVITATIONS / INTEGRATIONS / WEBHOOKS
 # =============================================================================
 class WorkspaceInvitationForm(BaseStyledModelForm):
+    """
+    Formulaire d'invitation : on n'expose ni `token` (généré côté serveur),
+    ni `accepted_at` / `status` (gérés par le workflow d'acceptation).
+    `expires_at` est calculé automatiquement à J+14 si non fourni.
+    """
+
     class Meta:
         model = WorkspaceInvitation
         fields = [
             "workspace",
             "email",
-            "invited_by",
             "role",
             "team",
-            "token",
-            "status",
             "expires_at",
-            "accepted_at",
         ]
         widgets = {
-            "expires_at": forms.DateTimeInput(),
-            "accepted_at": forms.DateTimeInput(),
+            "expires_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
         }
 
-    def clean(self):
-        cleaned_data = super().clean()
-        expires_at = cleaned_data.get("expires_at")
-        accepted_at = cleaned_data.get("accepted_at")
-        if expires_at and accepted_at and accepted_at > expires_at:
-            self.add_error("accepted_at", "La date d’acceptation ne peut pas dépasser la date d’expiration.")
-        return cleaned_data
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ws = self.current_workspace
+        if ws and "team" in self.fields:
+            self.fields["team"].queryset = Team.objects.filter(
+                workspace=ws, is_archived=False
+            ).order_by("name")
+            self.fields["team"].required = False
+        if "expires_at" in self.fields:
+            self.fields["expires_at"].required = False
+
+    def clean_email(self):
+        email = (self.cleaned_data.get("email") or "").strip().lower()
+        if not email:
+            raise ValidationError("Une adresse e-mail est requise.")
+        ws = self.cleaned_data.get("workspace") or self.current_workspace
+        if ws:
+            existing = WorkspaceInvitation.objects.filter(
+                workspace=ws, email__iexact=email,
+                status=WorkspaceInvitation.Status.PENDING,
+            )
+            if self.instance.pk:
+                existing = existing.exclude(pk=self.instance.pk)
+            if existing.exists():
+                raise ValidationError(
+                    "Une invitation est déjà en attente pour cette adresse."
+                )
+        return email
+
+    def save(self, commit=True, *, invited_by=None, workspace=None):
+        import secrets
+        from datetime import timedelta
+
+        self.instance.token = self.instance.token or secrets.token_urlsafe(48)
+        if not self.instance.expires_at:
+            self.instance.expires_at = timezone.now() + timedelta(days=14)
+        if invited_by and not self.instance.invited_by_id:
+            self.instance.invited_by = invited_by
+        if workspace and not self.instance.workspace_id:
+            self.instance.workspace = workspace
+        if not self.instance.status:
+            self.instance.status = WorkspaceInvitation.Status.PENDING
+        return super().save(commit=commit)
 
 
 class IntegrationForm(BaseStyledModelForm):
@@ -1842,3 +2034,160 @@ class KeyResultForm(BaseStyledModelForm):
             self.add_error("current_value", "La valeur actuelle doit être positive.")
 
         return cleaned_data
+
+# =============================================================================
+# FACTURATION — InvoiceClient / Invoice / InvoiceLine / InvoicePayment
+# =============================================================================
+class InvoiceClientForm(BaseStyledModelForm):
+    class Meta:
+        model = InvoiceClient
+        fields = [
+            "workspace", "name", "legal_name", "tax_id",
+            "email", "phone",
+            "address_line1", "address_line2",
+            "postal_code", "city", "country",
+            "contact_name", "notes",
+        ]
+
+
+class InvoiceForm(BaseStyledModelForm):
+    class Meta:
+        model = Invoice
+        fields = [
+            "workspace", "project", "client",
+            "number", "title", "notes",
+            "issue_date", "due_date", "period_start", "period_end",
+            "discount_amount", "tax_rate", "currency",
+            "status", "billing_mode",
+        ]
+        widgets = {
+            "issue_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+            "due_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+            "period_start": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+            "period_end": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+            "notes": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ws = self.current_workspace
+        if ws:
+            if "project" in self.fields:
+                self.fields["project"].queryset = Project.objects.filter(
+                    workspace=ws, is_archived=False
+                ).order_by("name")
+            if "client" in self.fields:
+                self.fields["client"].queryset = InvoiceClient.objects.filter(
+                    workspace=ws, is_archived=False
+                ).order_by("name")
+                self.fields["client"].required = False
+        for date_field in ("issue_date", "due_date", "period_start", "period_end"):
+            if date_field in self.fields:
+                self.fields[date_field].input_formats = ["%Y-%m-%d"]
+
+    def clean(self):
+        cleaned = super().clean()
+        issue = cleaned.get("issue_date")
+        due = cleaned.get("due_date")
+        if issue and due and due < issue:
+            self.add_error("due_date", "L'échéance doit être après la date d'émission.")
+        ps = cleaned.get("period_start")
+        pe = cleaned.get("period_end")
+        if ps and pe and pe < ps:
+            self.add_error("period_end", "La fin de période doit être après le début.")
+        rate = cleaned.get("tax_rate")
+        if rate is not None and (rate < 0 or rate > 100):
+            self.add_error("tax_rate", "Le taux doit être compris entre 0 et 100.")
+        return cleaned
+
+
+class InvoiceLineForm(BaseStyledModelForm):
+    class Meta:
+        model = InvoiceLine
+        fields = [
+            "invoice", "line_type", "label", "description",
+            "quantity", "unit_price", "position",
+        ]
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ws = self.current_workspace
+        if ws and "invoice" in self.fields:
+            self.fields["invoice"].queryset = Invoice.objects.filter(
+                workspace=ws, is_archived=False
+            ).order_by("-issue_date")
+
+
+class InvoicePaymentForm(BaseStyledModelForm):
+    class Meta:
+        model = InvoicePayment
+        fields = [
+            "invoice", "amount", "received_at", "method",
+            "reference", "status", "note",
+        ]
+        widgets = {
+            "received_at": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+            "note": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "received_at" in self.fields:
+            self.fields["received_at"].input_formats = ["%Y-%m-%d"]
+        ws = self.current_workspace
+        if ws and "invoice" in self.fields:
+            self.fields["invoice"].queryset = Invoice.objects.filter(
+                workspace=ws, is_archived=False
+            ).order_by("-issue_date")
+
+    def clean_amount(self):
+        amount = self.cleaned_data.get("amount")
+        if amount is None or amount <= 0:
+            raise forms.ValidationError("Le montant du paiement doit être > 0.")
+        return amount
+
+
+class InvoiceGenerateForm(forms.Form):
+    """Formulaire de génération automatique de facture depuis un projet."""
+    MODE_CHOICES = [
+        ("FIXED", "Forfait — depuis les Estimate Lines validés"),
+        ("TIME_AND_MATERIALS", "Régie — depuis les Timesheets approuvées"),
+        ("MILESTONE", "Sur jalons livrés"),
+    ]
+    mode = forms.ChoiceField(choices=MODE_CHOICES, initial="FIXED")
+    period_start = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}),
+        input_formats=["%Y-%m-%d"],
+        help_text="Pour le mode régie : début de la période facturée.",
+    )
+    period_end = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}),
+        input_formats=["%Y-%m-%d"],
+        help_text="Pour le mode régie : fin de la période facturée.",
+    )
+    tax_rate = forms.DecimalField(
+        max_digits=5, decimal_places=2, initial=Decimal("18.00"),
+        min_value=0, max_value=100,
+        help_text="Taux de TVA appliqué (%).",
+    )
+    currency = forms.CharField(max_length=10, initial="XOF")
+    title = forms.CharField(max_length=200, required=False)
+    notes = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 3}), required=False
+    )
+
+    def __init__(self, *args, **kwargs):
+        from decimal import Decimal as _D  # noqa: F401
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            widget = field.widget
+            existing = widget.attrs.get("class", "")
+            widget.attrs["class"] = (
+                existing + " w-full rounded-2xl border border-[var(--border)] "
+                "bg-[var(--bg3)] px-4 py-3 text-sm"
+            ).strip()

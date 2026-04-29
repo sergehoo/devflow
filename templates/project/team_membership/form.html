@@ -1,0 +1,16 @@
+{% extends "project/_generic_form.html" %}
+
+{% block form_title %}
+    {% if object %}
+        Modifier appartenance
+    {% else %}
+        Ajouter un membre à l'équipe
+    {% endif %}
+{% endblock %}
+{% block form_heading %}{% if object %}Modifier l'appartenance{% else %}Ajouter un membre à l'équipe
+{% endif %}{% endblock %}
+{% block form_subtitle %}Rattachez un utilisateur à une équipe avec son rôle (Tech Lead, Développeur, QA…), sa capacité
+    en story points et sa charge actuelle.{% endblock %}
+{% block back_url %}{% url 'team_membership_list' %}{% endblock %}
+{% block cancel_url %}{% url 'team_membership_list' %}{% endblock %}
+{% block submit_label %}{% if object %}Enregistrer{% else %}Ajouter le membre{% endif %}{% endblock %}

@@ -1,67 +1,130 @@
 {% extends "layout/base.html" %}
 
-{% block title %}Affectations tâche{% endblock %}
+{% block title %}Affectations de tâches{% endblock %}
+{% block page_title %}Affectations de tâches{% endblock %}
 
 {% block content %}
-<div class="space-y-6 max-w-7xl mx-auto">
-    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft p-6 lg:p-8">
-        <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+<div class="mx-auto max-w-7xl space-y-6">
+
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft lg:p-8">
+        <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">DevFlow</p>
-                <h1 class="mt-2 text-3xl font-serif text-devtext1">Affectations tâche</h1>
-                <p class="mt-2 text-sm text-devtext2">Liste des affectations tâche du workspace.</p>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--accent)]">DevFlow</p>
+                <h1 class="mt-2 font-serif text-3xl text-[var(--text1)]">Affectations de tâches</h1>
+                <p class="mt-2 text-sm text-[var(--text2)]">
+                    {{ paginator.count|default:object_list|length }} affectation(s) — qui travaille sur quoi, à quel taux.
+                </p>
             </div>
-            {% block list_actions %}{% if create_url %}<a href="{{ create_url }}" class="btn-main"><i class="fa-solid fa-plus"></i> Nouveau</a>{% endif %}{% endblock %}
+            <div class="flex flex-wrap gap-2">
+                <a href="{% url 'task_list' %}"
+                   class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-list-check"></i> Voir les tâches
+                </a>
+                <a href="{% url 'task_assignment_create' %}"
+                   class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(255,78,0,0.24)] transition hover:-translate-y-0.5">
+                    <i class="fa-solid fa-plus"></i> Nouvelle affectation
+                </a>
+            </div>
         </div>
     </section>
 
-    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+    {% include "components/list_search_bar.html" %}
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft overflow-hidden">
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
-                <thead class="bg-devbg3 text-devtext3 uppercase text-[11px] tracking-wide">
+                <thead class="bg-[var(--bg3)] text-[var(--text3)] uppercase text-[11px] tracking-wide">
                     <tr>
-                        <th class="px-6 py-3 text-left">Élément</th>
-                        <th class="px-6 py-3 text-left">Détails</th>
-                        <th class="px-6 py-3 text-left">Mis à jour</th>
+                        <th class="px-6 py-3 text-left">Tâche</th>
+                        <th class="px-6 py-3 text-left">Utilisateur</th>
+                        <th class="px-6 py-3 text-left">Affectée par</th>
+                        <th class="px-6 py-3 text-right">Allocation</th>
+                        <th class="px-6 py-3 text-center">Active</th>
+                        <th class="px-6 py-3 text-left">Date</th>
                         <th class="px-6 py-3 text-right">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-devborder">
-                    {% for obj in object_list|default:items %}
-                    <tr class="hover:bg-devbg3/40">
-                        <td class="px-6 py-3 font-medium text-devtext1">{{ obj }}</td>
-                        <td class="px-6 py-3 text-devtext2 text-xs">
-                            {% if obj.description %}{{ obj.description|truncatechars:80 }}{% else %}—{% endif %}
+                <tbody class="divide-y divide-[var(--border)]">
+                {% for a in object_list %}
+                    <tr class="hover:bg-[var(--bg3)]/40">
+                        <td class="px-6 py-3">
+                            <a href="{% url 'task_detail' a.task.pk %}"
+                               class="font-medium text-[var(--text1)] hover:text-[var(--accent)]">
+                                {{ a.task.title|truncatechars:60 }}
+                            </a>
+                            <div class="text-[11px] text-[var(--text3)]">{{ a.task.project.name }}</div>
                         </td>
-                        <td class="px-6 py-3 text-devtext3 text-xs">
-                            {% if obj.updated_at %}{{ obj.updated_at|date:"d/m/Y H:i" }}{% elif obj.created_at %}{{ obj.created_at|date:"d/m/Y H:i" }}{% endif %}
+                        <td class="px-6 py-3">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-[10px] font-semibold text-white">
+                                    {{ a.user.first_name|first|upper }}{{ a.user.last_name|first|upper }}
+                                </span>
+                                <span class="text-[var(--text1)]">{{ a.user.get_full_name|default:a.user.username }}</span>
+                            </div>
                         </td>
-                        <td class="px-6 py-3 text-right">
-                            {% if obj.pk %}
-                                <a href="?pk={{ obj.pk }}" class="text-devtext3 hover:text-devaccent" title="Voir">
-                                    <i class="fa-solid fa-eye"></i>
-                                </a>
+                        <td class="px-6 py-3 text-xs text-[var(--text2)]">
+                            {% if a.assigned_by %}{{ a.assigned_by.get_full_name|default:a.assigned_by.username }}{% else %}<span class="text-[var(--text3)]">—</span>{% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-right text-xs">
+                            <div class="inline-flex items-center gap-2">
+                                <div class="h-1.5 w-16 rounded-full bg-[var(--bg3)] overflow-hidden">
+                                    <div class="h-full rounded-full"
+                                         style="width: {{ a.allocation_percent|default:0 }}%;
+                                                background-color: {% if a.allocation_percent >= 90 %}#ef4444{% elif a.allocation_percent >= 70 %}#f59e0b{% else %}#22c55e{% endif %};"></div>
+                                </div>
+                                <span class="font-medium text-[var(--text1)]">{{ a.allocation_percent|default:"0" }}%</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-3 text-center">
+                            {% if a.is_active %}
+                                <span class="inline-flex rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-500">Active</span>
+                            {% else %}
+                                <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-[11px] font-semibold text-[var(--text3)]">Inactive</span>
                             {% endif %}
                         </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="4" class="px-6 py-12 text-center text-devtext3">
-                            <i class="fa-solid fa-inbox text-4xl mb-2 block"></i>
-                            Aucun élément à afficher.
+                        <td class="px-6 py-3 text-xs text-[var(--text3)]">{{ a.created_at|date:"d/m/Y" }}</td>
+                        <td class="px-6 py-3">
+                            <div class="flex items-center justify-end gap-1">
+                                <a href="{% url 'task_assignment_detail' a.pk %}"
+                                   class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text3)] transition hover:bg-[var(--bg3)] hover:text-[var(--accent)]"
+                                   title="Voir">
+                                    <i class="fa-solid fa-eye"></i>
+                                </a>
+                                <a href="{% url 'task_assignment_update' a.pk %}"
+                                   class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text3)] transition hover:bg-[var(--bg3)] hover:text-sky-500"
+                                   title="Modifier">
+                                    <i class="fa-solid fa-pen"></i>
+                                </a>
+                                <a href="{% url 'task_assignment_delete' a.pk %}"
+                                   class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text3)] transition hover:bg-red-500/10 hover:text-red-500"
+                                   title="Supprimer">
+                                    <i class="fa-solid fa-trash"></i>
+                                </a>
+                            </div>
                         </td>
                     </tr>
-                    {% endfor %}
+                {% empty %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-16 text-center">
+                            <i class="fa-solid fa-list-check text-4xl text-[var(--text3)] mb-3 block"></i>
+                            <p class="text-sm text-[var(--text2)]">Aucune affectation enregistrée.</p>
+                            <a href="{% url 'task_assignment_create' %}"
+                               class="mt-4 inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
+                                <i class="fa-solid fa-plus"></i> Première affectation
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
                 </tbody>
             </table>
         </div>
 
         {% if is_paginated %}
-        <div class="px-6 py-3 border-t border-devborder flex items-center justify-between text-xs text-devtext3">
+        <div class="flex items-center justify-between border-t border-[var(--border)] px-6 py-3 text-xs text-[var(--text3)]">
             <span>Page {{ page_obj.number }} sur {{ paginator.num_pages }}</span>
-            <div class="flex gap-1">
-                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" class="btn-soft text-xs">Précédent</a>{% endif %}
-                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" class="btn-soft text-xs">Suivant</a>{% endif %}
+            <div class="flex gap-2">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}{% if search_q %}&q={{ search_q }}{% endif %}" class="rounded-xl border border-[var(--border)] px-3 py-1">Précédent</a>{% endif %}
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}{% if search_q %}&q={{ search_q }}{% endif %}" class="rounded-xl border border-[var(--border)] px-3 py-1">Suivant</a>{% endif %}
             </div>
         </div>
         {% endif %}

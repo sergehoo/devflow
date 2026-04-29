@@ -1,0 +1,92 @@
+{% extends 'layout/base.html' %}
+
+
+
+{% block title %}DevFlow —
+    {% block form_title_window %}
+        {% block form_title %}
+            Formulaire
+        {% endblock %}
+    {% endblock %}
+{% endblock %}
+{% block page_title %}
+    {{ block.super|default:"" }}
+    {% block form_title_page %}
+        {{ block.super }}
+    {% endblock %}
+{% endblock %}
+
+{% block content %}
+    <div class="mx-auto max-w-4xl space-y-6">
+
+        <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--accent)]">DevFlow</p>
+                    <h1 class="mt-2 font-serif text-3xl font-medium text-[var(--text1)]">
+                        {% block form_heading %}{{ block.super }}{% endblock %}
+                    </h1>
+                    <p class="mt-2 text-sm text-[var(--text2)]">
+                        {% block form_subtitle %}Renseignez les informations ci-dessous puis enregistrez.{% endblock %}
+                    </p>
+                </div>
+
+                <a href="{% block back_url %}#{% endblock %}"
+                   class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-arrow-left"></i> Retour
+                </a>
+            </div>
+        </section>
+
+        <form method="post" enctype="multipart/form-data" novalidate class="space-y-6">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <section class="rounded-[22px] border border-red-500/20 bg-red-500/5 px-5 py-4 text-sm text-red-500">
+                    {% for error in form.non_field_errors %}
+                        <div>{{ error }}</div>{% endfor %}
+                </section>
+            {% endif %}
+
+            <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    {% for field in form %}
+                        {% if not field.is_hidden %}
+                            <div class="{% if field.field.widget.input_type == 'textarea' or field.name == 'description' or field.name == 'config' or field.name == 'events' %}md:col-span-2{% endif %}">
+                                <label for="{{ field.id_for_label }}"
+                                       class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                    {% if field.field.required %}<span class="text-orange-500">*</span>{% endif %}
+                                    {{ field.label }}
+                                </label>
+                                {{ field }}
+                                {% if field.help_text %}
+                                    <p class="mt-1 text-xs text-[var(--text3)]">{{ field.help_text }}</p>
+                                {% endif %}
+                                {% if field.errors %}
+                                    <div class="mt-1 text-xs text-red-500">
+                                        {% for e in field.errors %}
+                                            <div>{{ e }}</div>{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            {{ field }}
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
+                <a href="{% block cancel_url %}{{ block.super|default:'#' }}{% endblock %}"
+                   class="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-3 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
+                    Annuler
+                </a>
+                <button type="submit"
+                        class="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(255,78,0,0.24)] transition hover:-translate-y-0.5">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    {% block submit_label %}Enregistrer{% endblock %}
+                </button>
+            </section>
+        </form>
+    </div>
+{% endblock %}

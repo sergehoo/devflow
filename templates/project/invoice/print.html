@@ -1,0 +1,103 @@
+{% extends "layout/base.html" %}
+{% block title %}Facture {{ invoice.number }}{% endblock %}
+{% block page_title %}Facture {{ invoice.number }}{% endblock %}
+
+{% block content %}
+<style>
+    @media print { .no-print { display: none !important; } body { background: white; } }
+</style>
+<div class="mx-auto max-w-3xl bg-white text-gray-900 p-10 rounded-[28px] shadow-soft" style="font-family:Georgia,serif;">
+
+    <div class="flex items-start justify-between border-b border-gray-200 pb-6">
+        <div>
+            <h1 class="text-3xl font-bold tracking-tight">FACTURE</h1>
+            <p class="mt-1 text-sm text-gray-600">N° {{ invoice.number|default:'(brouillon)' }}</p>
+        </div>
+        <div class="text-right text-xs text-gray-700">
+            <p class="font-semibold">{{ invoice.workspace.name }}</p>
+            <p>Émise le {{ invoice.issue_date|date:"d/m/Y" }}</p>
+            <p>Échéance : {{ invoice.due_date|date:"d/m/Y"|default:"—" }}</p>
+        </div>
+    </div>
+
+    <div class="mt-6 grid grid-cols-2 gap-6 text-sm">
+        <div>
+            <p class="text-xs uppercase text-gray-500">Émetteur</p>
+            <p class="font-semibold">{{ invoice.workspace.name }}</p>
+            {% if invoice.issued_by %}<p>{{ invoice.issued_by.get_full_name|default:invoice.issued_by.username }}</p>{% endif %}
+        </div>
+        <div>
+            <p class="text-xs uppercase text-gray-500">Client</p>
+            {% if invoice.client %}
+                <p class="font-semibold">{{ invoice.client.legal_name|default:invoice.client.name }}</p>
+                {% if invoice.client.tax_id %}<p>ID fiscal : {{ invoice.client.tax_id }}</p>{% endif %}
+                <p>{{ invoice.client.address_line1 }}{% if invoice.client.address_line2 %}, {{ invoice.client.address_line2 }}{% endif %}</p>
+                <p>{{ invoice.client.postal_code }} {{ invoice.client.city }}</p>
+                <p>{{ invoice.client.country }}</p>
+            {% else %}
+                <p class="text-gray-500">— Aucun client lié —</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="mt-4 text-sm">
+        <p class="text-xs uppercase text-gray-500">Projet</p>
+        <p class="font-semibold">{{ invoice.project.name }}</p>
+        {% if invoice.period_start or invoice.period_end %}
+            <p class="text-xs text-gray-600">Période : {{ invoice.period_start|date:"d/m/Y"|default:"—" }} → {{ invoice.period_end|date:"d/m/Y"|default:"—" }}</p>
+        {% endif %}
+    </div>
+
+    {% if invoice.title %}<p class="mt-6 italic">{{ invoice.title }}</p>{% endif %}
+
+    <table class="mt-6 w-full text-sm border-t border-b border-gray-200">
+        <thead>
+            <tr class="bg-gray-50">
+                <th class="px-3 py-2 text-left">Désignation</th>
+                <th class="px-3 py-2 text-right">Qté</th>
+                <th class="px-3 py-2 text-right">PU HT</th>
+                <th class="px-3 py-2 text-right">Total HT</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for line in lines %}
+            <tr>
+                <td class="px-3 py-2">
+                    <div class="font-medium">{{ line.label }}</div>
+                    {% if line.description %}<div class="text-xs text-gray-500">{{ line.description }}</div>{% endif %}
+                </td>
+                <td class="px-3 py-2 text-right">{{ line.quantity|floatformat:2 }}</td>
+                <td class="px-3 py-2 text-right">{{ line.unit_price|floatformat:2 }}</td>
+                <td class="px-3 py-2 text-right">{{ line.total_amount|floatformat:2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="mt-4 ml-auto w-full max-w-sm text-sm">
+        <div class="flex justify-between py-1"><span>Sous-total HT</span><span>{{ invoice.subtotal_ht|floatformat:2 }} {{ invoice.currency }}</span></div>
+        {% if invoice.discount_amount %}<div class="flex justify-between py-1"><span>Remise</span><span>-{{ invoice.discount_amount|floatformat:2 }}</span></div>{% endif %}
+        <div class="flex justify-between py-1"><span>TVA ({{ invoice.tax_rate }}%)</span><span>{{ invoice.tax_amount|floatformat:2 }}</span></div>
+        <div class="flex justify-between py-2 border-t border-gray-300 mt-1 font-bold text-lg"><span>Total TTC</span><span>{{ invoice.total_ttc|floatformat:2 }} {{ invoice.currency }}</span></div>
+        {% if invoice.paid_amount %}<div class="flex justify-between py-1 text-emerald-700"><span>Encaissé</span><span>{{ invoice.paid_amount|floatformat:2 }}</span></div>{% endif %}
+        <div class="flex justify-between py-1 font-semibold"><span>Reste dû</span><span>{{ invoice.remaining_due|floatformat:2 }} {{ invoice.currency }}</span></div>
+    </div>
+
+    {% if invoice.notes %}
+    <div class="mt-6 text-sm">
+        <p class="text-xs uppercase text-gray-500">Notes</p>
+        <p class="whitespace-pre-line">{{ invoice.notes }}</p>
+    </div>
+    {% endif %}
+
+    <p class="mt-10 text-xs text-gray-500">
+        Conditions de paiement : 30 jours fin de mois sauf accord contraire.
+        En cas de retard, des pénalités peuvent s'appliquer conformément aux conditions générales.
+    </p>
+
+    <div class="mt-8 no-print flex justify-end gap-3">
+        <a href="{% url 'invoice_detail' invoice.pk %}" class="rounded-2xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700">Retour</a>
+        <button onclick="window.print();" class="rounded-2xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"><i class="fa-solid fa-print"></i> Imprimer</button>
+    </div>
+</div>
+{% endblock %}

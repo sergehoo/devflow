@@ -2,8 +2,10 @@
 {% load static %}
 
 {% block title %}Mon profil — DevFlow{% endblock %}
+{% block page_title %}Mon profil{% endblock %}
+{% block breadcrumb %}Mon compte · Profil{% endblock %}
 
-{% block auth_content %}
+{% block content %}
 <div class="space-y-6">
     <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
         <div class="p-6 lg:p-8 bg-gradient-to-r from-[var(--accent-bg)] to-[var(--cyan-bg)]">
@@ -46,6 +48,37 @@
                     <a href="{% url 'profile_password_change' %}" class="btn-soft">Changer mot de passe</a>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <!-- KPI BAR -->
+    <section class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div class="rounded-2xl border border-devborder bg-devbg2 p-4 shadow-soft">
+            <div class="text-[11px] uppercase tracking-wide text-devtext3">Allocation totale</div>
+            <div class="mt-1 text-2xl font-semibold text-devtext1">{{ total_allocation|default:0 }}%</div>
+            <div class="mt-2 h-1.5 rounded-full bg-devbg3 overflow-hidden">
+                <div class="h-full rounded-full"
+                     style="width: {{ total_allocation|default:0 }}%;
+                            background-color: {% if total_allocation >= 90 %}#ef4444{% elif total_allocation >= 70 %}#f59e0b{% else %}#22c55e{% endif %};"></div>
+            </div>
+            <div class="mt-1 text-[11px] text-devtext3">{{ capacity_left }}% disponible</div>
+        </div>
+        <div class="rounded-2xl border border-devborder bg-devbg2 p-4 shadow-soft">
+            <div class="text-[11px] uppercase tracking-wide text-devtext3">Tâches actives</div>
+            <div class="mt-1 text-2xl font-semibold text-devtext1">{{ active_tasks_count }}</div>
+            <div class="mt-1 text-[11px] text-devtext3">À faire / en cours / review</div>
+        </div>
+        <div class="rounded-2xl border border-devborder bg-devbg2 p-4 shadow-soft">
+            <div class="text-[11px] uppercase tracking-wide text-devtext3">En retard</div>
+            <div class="mt-1 text-2xl font-semibold {% if overdue_tasks_count > 0 %}text-red-500{% else %}text-devtext1{% endif %}">
+                {{ overdue_tasks_count }}
+            </div>
+            <div class="mt-1 text-[11px] text-devtext3">Date d'échéance dépassée</div>
+        </div>
+        <div class="rounded-2xl border border-devborder bg-devbg2 p-4 shadow-soft">
+            <div class="text-[11px] uppercase tracking-wide text-devtext3">Capacité hebdo</div>
+            <div class="mt-1 text-2xl font-semibold text-devtext1">{{ profile.capacity_hours_per_week }}h</div>
+            <div class="mt-1 text-[11px] text-devtext3">{{ profile.availability_percent }}% disponibilité</div>
         </div>
     </section>
 
@@ -156,6 +189,52 @@
                             </div>
                         </div>
                     {% endif %}
+
+                    {% if project_memberships %}
+                        <div>
+                            <div class="text-xs uppercase tracking-wide text-devtext3 mb-2">Affecté à</div>
+                            <div class="space-y-2">
+                                {% for pm in project_memberships %}
+                                    <div class="rounded-[14px] border border-devborder bg-devbg3 px-4 py-3 flex items-center justify-between">
+                                        <div>
+                                            <div class="text-sm font-semibold text-devtext1">{{ pm.project.name }}</div>
+                                            <div class="text-xs text-devtext3">{{ pm.role|default:"—" }}{% if pm.team %} · {{ pm.team.name }}{% endif %}</div>
+                                        </div>
+                                        <span class="text-xs font-semibold text-devtext1">{{ pm.allocation_percent }}%</span>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <!-- Tâches récentes -->
+            <section class="card">
+                <div class="card-head flex items-center justify-between">
+                    <div>
+                        <div class="card-title">Mes tâches récentes</div>
+                        <div class="card-sub">Mises à jour les plus récentes</div>
+                    </div>
+                    <a href="{% url 'task_list' %}?assignee={{ request.user.pk }}" class="text-xs text-devaccent">Voir tout</a>
+                </div>
+                <div class="p-4 space-y-2">
+                    {% for task in recent_tasks %}
+                        <a href="{% url 'task_detail' task.pk %}" class="flex items-center justify-between rounded-[14px] border border-devborder bg-devbg3 px-4 py-3 hover:bg-devbg2 transition">
+                            <div class="min-w-0">
+                                <div class="text-sm font-medium text-devtext1 truncate">{{ task.title }}</div>
+                                <div class="text-xs text-devtext3">{{ task.project.name }} · {{ task.get_status_display }}{% if task.due_date %} · échéance {{ task.due_date|date:"d/m/Y" }}{% endif %}</div>
+                            </div>
+                            <div class="flex items-center gap-2 ml-3">
+                                {% if task.priority == "CRITICAL" %}<span class="badge b-red text-[10px]">Critique</span>
+                                {% elif task.priority == "HIGH" %}<span class="badge b-amber text-[10px]">High</span>
+                                {% endif %}
+                                <span class="text-xs text-devtext3">{{ task.progress_percent }}%</span>
+                            </div>
+                        </a>
+                    {% empty %}
+                        <p class="text-sm text-devtext3 px-2 py-4">Aucune tâche en cours.</p>
+                    {% endfor %}
                 </div>
             </section>
         </div>
@@ -204,6 +283,57 @@
                     {% else %}
                         <p class="text-sm text-devtext3">Aucune adhésion enregistrée.</p>
                     {% endif %}
+                </div>
+            </section>
+
+            <!-- Factures émises -->
+            <section class="card">
+                <div class="card-head flex items-center justify-between">
+                    <div>
+                        <div class="card-title">Factures émises</div>
+                        <div class="card-sub">Que vous avez émises</div>
+                    </div>
+                    <a href="{% url 'invoice_list' %}" class="text-xs text-devaccent">Voir tout</a>
+                </div>
+                <div class="p-4 space-y-2">
+                    {% for inv in recent_invoices %}
+                        <a href="{% url 'invoice_detail' inv.pk %}" class="block rounded-[14px] border border-devborder bg-devbg3 px-4 py-3 hover:bg-devbg2 transition">
+                            <div class="flex items-center justify-between">
+                                <div class="text-sm font-semibold text-devtext1">{{ inv.number|default:"(brouillon)" }}</div>
+                                <div class="text-sm font-medium text-devtext1">{{ inv.total_ttc|floatformat:2 }} {{ inv.currency }}</div>
+                            </div>
+                            <div class="text-xs text-devtext3">
+                                {{ inv.project.name|truncatechars:30 }} · {{ inv.get_status_display }} · {{ inv.issue_date|date:"d/m/Y" }}
+                            </div>
+                        </a>
+                    {% empty %}
+                        <p class="text-sm text-devtext3">Aucune facture émise.</p>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <!-- Activité récente -->
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <div class="card-title">Activité récente</div>
+                        <div class="card-sub">Vos dernières actions</div>
+                    </div>
+                </div>
+                <div class="p-4">
+                    {% for log in recent_activity %}
+                        <div class="flex gap-3 py-2 {% if not forloop.last %}border-b border-devborder{% endif %}">
+                            <span class="mt-1 inline-block h-2 w-2 rounded-full bg-devaccent flex-shrink-0"></span>
+                            <div class="min-w-0">
+                                <div class="text-sm text-devtext1 line-clamp-2">{{ log.title }}</div>
+                                <div class="text-[11px] text-devtext3">{{ log.created_at|timesince }} ·
+                                    {% if log.project %}{{ log.project.name|truncatechars:24 }}{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% empty %}
+                        <p class="text-sm text-devtext3">Pas d'activité récente.</p>
+                    {% endfor %}
                 </div>
             </section>
         </div>

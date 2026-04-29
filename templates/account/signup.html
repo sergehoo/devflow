@@ -2,49 +2,54 @@
 {% load i18n %}
 {% load account %}
 
-{% block head_title %}Créer un compte{% endblock %}
+{% block title %}Créer un compte — Dev'Flow{% endblock %}
 
 {% block auth_content %}
-<div>
-    <p class="text-xs font-bold uppercase tracking-[0.22em] text-premium-600">Nouveau compte</p>
-    <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900">Inscription</h2>
-    <p class="mt-2 text-sm leading-6 text-slate-500">
-        Créez votre accès à la plateforme de gestion parcellaire et immobilière.
-    </p>
-</div>
+<div class="auth-eyebrow">Nouveau compte</div>
+<h2 class="auth-title">Rejoignez Dev'Flow</h2>
+<p class="auth-subtitle">
+    Créez votre compte pour piloter vos projets, vos équipes et votre facturation depuis un seul espace.
+</p>
 
-<form method="post" action="{% url 'account_signup' %}" class="mt-8 space-y-5">
+{% if messages %}
+    <div class="msg-list">
+        {% for message in messages %}
+            <div class="msg-item
+                {% if 'success' in message.tags %}msg-success
+                {% elif 'error' in message.tags %}msg-error
+                {% elif 'warning' in message.tags %}msg-warning
+                {% else %}msg-info{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<form method="post" action="{% url 'account_signup' %}" class="auth-form" novalidate>
     {% csrf_token %}
 
     {% if form.non_field_errors %}
-        <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {{ form.non_field_errors }}
+        <div class="msg-list">
+            <div class="msg-item msg-error">
+                {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+            </div>
         </div>
     {% endif %}
 
     {% for field in form %}
-        <div class="space-y-2">
-            <label for="{{ field.id_for_label }}"
-                   class="block text-sm font-bold text-slate-700">
-                {{ field.label }}
-                {% if field.field.required %}
-                    <span class="text-rose-500">*</span>
-                {% endif %}
+        <div class="field-group">
+            <label for="{{ field.id_for_label }}" class="field-label">
+                {{ field.label }}{% if field.field.required %} <span class="text-[var(--accent)]">*</span>{% endif %}
             </label>
-
-            <div class="relative">
+            <div class="input-shell">
                 {{ field }}
             </div>
-
             {% if field.help_text %}
-                <p class="text-xs leading-5 text-slate-500">
-                    {{ field.help_text|safe }}
-                </p>
+                <p class="mt-1.5 text-xs text-[var(--text3)]">{{ field.help_text|safe }}</p>
             {% endif %}
-
             {% if field.errors %}
-                <div class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                    {{ field.errors }}
+                <div class="mt-1.5 text-xs text-[var(--accent)]">
+                    {% for error in field.errors %}<div>{{ error }}</div>{% endfor %}
                 </div>
             {% endif %}
         </div>
@@ -54,49 +59,22 @@
         <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
     {% endif %}
 
-    <button type="submit" class="btn-primary w-full justify-center">
-        <i class="fa-solid fa-user-plus"></i>
-        <span>Créer mon compte</span>
-    </button>
+    <button type="submit" class="btn-auth">Créer mon compte</button>
 
-    <a href="{% url 'account_login' %}" class="btn-secondary w-full justify-center">
-        <i class="fa-solid fa-arrow-left"></i>
-        <span>J’ai déjà un compte</span>
-    </a>
+    <div class="auth-foot">
+        Vous avez déjà un compte ?
+        <a href="{% url 'account_login' %}" class="link-inline">Se connecter</a>
+    </div>
 </form>
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        const baseClass = [
-            "field-control",
-            "w-full",
-            "rounded-2xl",
-            "border",
-            "border-slate-200",
-            "bg-white",
-            "px-4",
-            "py-3",
-            "text-sm",
-            "font-medium",
-            "text-slate-800",
-            "shadow-sm",
-            "outline-none",
-            "transition",
-            "placeholder:text-slate-400",
-            "focus:border-premium-500",
-            "focus:ring-4",
-            "focus:ring-premium-500/10"
-        ].join(" ");
-
-        document
-            .querySelectorAll("form input, form select, form textarea")
+        document.querySelectorAll("form .input-shell input, form .input-shell select, form .input-shell textarea")
             .forEach(function (el) {
                 if (el.type === "hidden") return;
-
-                el.classList.add(...baseClass.split(" "));
-
+                el.classList.add("auth-input");
                 if (el.type === "checkbox") {
-                    el.className = "h-4 w-4 rounded border-slate-300 text-premium-600 focus:ring-premium-500";
+                    el.className = "h-4 w-4 rounded border-[var(--border)] text-[var(--accent)] focus:ring-[var(--accent)]";
                 }
             });
     });

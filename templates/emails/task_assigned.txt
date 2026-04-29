@@ -1,13 +1,15 @@
 Bonjour {{ recipient.get_full_name|default:recipient.username }},
 
-Une nouvelle tâche vous a été assignée dans DevFlow.
+{% if assigned_by %}{{ assigned_by.get_full_name|default:assigned_by.username }} vous a confié{% else %}Une nouvelle tâche vous a été confiée{% endif %} sur Dev'Flow :
 
-Tâche : {{ task.title }}
-Projet : {{ project.name }}
-{% if assigned_by %}Assignée par : {{ assigned_by.get_full_name|default:assigned_by.username }}{% endif %}
+  « {{ task.title }} »
+  Projet : {{ project.name }}
+  {% if task.priority %}Priorité : {{ task.get_priority_display }}{% endif %}
+  {% if task.due_date %}Échéance : {{ task.due_date|date:"d/m/Y" }}{% endif %}
 
-Consulter :
-/tasks/{{ task.pk }}/
+Ouvrez-la pour découvrir le détail et commencer à avancer :
 
-Cordialement,
-DevFlow
+    /tasks/{{ task.pk }}/
+
+Bonne mission,
+L'équipe Dev'Flow

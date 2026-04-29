@@ -33,7 +33,7 @@ def send_assignment_email(*, recipient, task, assigned_by=None):
     if not recipient or not recipient.email:
         return
 
-    subject = f"[DevFlow] Nouvelle tâche assignée : {task.title}"
+    subject = f"[Dev'Flow] Nouvelle tâche pour vous · {task.title}"
 
     context = {
         "recipient": recipient,
@@ -42,13 +42,18 @@ def send_assignment_email(*, recipient, task, assigned_by=None):
         "project": task.project,
     }
 
-    message = render_to_string("emails/task_assigned.txt", context)
+    message_txt = render_to_string("emails/task_assigned.txt", context)
+    try:
+        message_html = render_to_string("emails/task_assigned.html", context)
+    except Exception:
+        message_html = None
 
     send_mail(
         subject=subject,
-        message=message,
+        message=message_txt,
         from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
         recipient_list=[recipient.email],
+        html_message=message_html,
         fail_silently=True,
     )
 

@@ -45,6 +45,8 @@ from .forms import (
     MessageAttachmentForm, SprintReviewForm, SprintRetrospectiveForm,
     APIKeyForm, WorkspaceSettingsForm, ObjectiveForm, KeyResultForm, DevFlowPasswordChangeForm, UserAccountForm,
     UserProfileForm, TaskCommentQuickForm, ProjectDocumentImportForm,
+    InvoiceForm, InvoiceLineForm, InvoicePaymentForm, InvoiceClientForm,
+    InvoiceGenerateForm,
 )
 from .services.budget import ProjectBudgetService
 from .utils.workspaces import ensure_workspace
@@ -213,8 +215,81 @@ class DevflowBaseMixin(LoginRequiredMixin):
 
 
 class DevflowListView(WorkspaceSecurityMixin, DevflowBaseMixin, ListView):
+    """
+    ListView DevFlow avec :
+      - filtrage workspace (via WorkspaceSecurityMixin)
+      - recherche textuelle (search_fields → ?q=)
+      - filtres déclaratifs (filter_fields → ?<param>=)
+
+    Déclaration des filtres par sous-classe :
+
+        filter_fields = [
+            {"name": "status", "label": "Statut", "type": "choices",
+             "choices": dm.Task.Status.choices},
+            {"name": "project", "label": "Projet", "type": "model",
+             "queryset": "_projects_qs", "lookup": "project_id"},
+            {"name": "is_active", "label": "Active", "type": "bool"},
+        ]
+
+    `type` peut valoir "choices" (liste TextChoices), "model" (FK,
+    queryset string ou callable), "bool" ou "exact" (texte brut).
+    """
+
     paginate_by = 25
     context_object_name = "items"
+    filter_fields: list = []
+    search_placeholder: str = ""
+
+    # ---- Filtres déclaratifs ----------------------------------------------
+    def _resolve_filter_queryset(self, definition):
+        """Permet d'utiliser une chaîne ('_my_qs_method') ou un callable."""
+        qs = definition.get("queryset")
+        if callable(qs):
+            return qs(self)
+        if isinstance(qs, str) and hasattr(self, qs):
+            attr = getattr(self, qs)
+            return attr() if callable(attr) else attr
+        return qs
+
+    def _filter_definitions_resolved(self):
+        resolved = []
+        for f in self.filter_fields or []:
+            data = dict(f)
+            if data.get("type") == "model":
+                data["queryset"] = self._resolve_filter_queryset(data)
+            resolved.append(data)
+        return resolved
+
+    def apply_filters(self, queryset):
+        for f in self.filter_fields or []:
+            name = f["name"]
+            raw = (self.request.GET.get(name) or "").strip()
+            if not raw:
+                continue
+            lookup = f.get("lookup") or name
+            ftype = f.get("type", "exact")
+            try:
+                if ftype == "bool":
+                    if raw in ("1", "true", "True"):
+                        queryset = queryset.filter(**{lookup: True})
+                    elif raw in ("0", "false", "False"):
+                        queryset = queryset.filter(**{lookup: False})
+                elif ftype == "model":
+                    queryset = queryset.filter(**{lookup: raw})
+                elif ftype == "choices":
+                    queryset = queryset.filter(**{lookup: raw})
+                else:
+                    queryset = queryset.filter(**{f"{lookup}__icontains": raw})
+            except Exception:
+                # Filtre cassé → on ignore plutôt que crasher la liste
+                continue
+        return queryset
+
+    def get_active_filters(self):
+        return {
+            f["name"]: (self.request.GET.get(f["name"]) or "").strip()
+            for f in self.filter_fields or []
+        }
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -224,7 +299,20 @@ class DevflowListView(WorkspaceSecurityMixin, DevflowBaseMixin, ListView):
         if term and self.search_fields:
             queryset = queryset.filter(self.build_search_query(term))
 
+        queryset = self.apply_filters(queryset)
         return queryset.distinct()
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["search_q"] = self.request.GET.get("q", "").strip()
+        ctx["search_placeholder"] = self.search_placeholder or "Rechercher…"
+        ctx["filter_definitions"] = self._filter_definitions_resolved()
+        ctx["active_filters"] = self.get_active_filters()
+        ctx["has_filters_or_search"] = bool(
+            ctx["search_q"]
+            or any(v for v in ctx["active_filters"].values())
+        )
+        return ctx
 
 
 class DevflowDetailView(WorkspaceSecurityMixin, DevflowBaseMixin, DetailView):
@@ -416,12 +504,68 @@ class ProfileDetailView(DevflowBaseMixin, WorkspaceSecurityMixin, LoginRequiredM
             .order_by("project__name")[:8]
         )
 
+        # Allocation cumulée sur projets actifs
+        from django.db.models import Sum, Count
+        total_allocation = (
+            self.request.user.project_memberships
+            .filter(project__is_archived=False)
+            .aggregate(s=Sum("allocation_percent"))["s"] or 0
+        )
+        capacity_left = max(0, 100 - total_allocation)
+
+        # Tâches assignées
+        active_tasks_count = (
+            self.request.user.assigned_tasks
+            .filter(is_archived=False)
+            .exclude(status=dm.Task.Status.DONE)
+            .count()
+        )
+        overdue_tasks_count = (
+            self.request.user.assigned_tasks
+            .filter(is_archived=False, due_date__lt=timezone.localdate())
+            .exclude(status=dm.Task.Status.DONE)
+            .count()
+        )
+
+        recent_tasks = (
+            self.request.user.assigned_tasks
+            .filter(is_archived=False)
+            .select_related("project")
+            .order_by("-updated_at")[:6]
+        )
+
+        # Factures émises par l'utilisateur (si module billing actif)
+        recent_invoices = (
+            dm.Invoice.objects
+            .filter(issued_by=self.request.user, is_archived=False)
+            .select_related("project", "client")
+            .order_by("-issue_date")[:5]
+        )
+
+        # Activité récente
+        try:
+            recent_activity = (
+                dm.ActivityLog.objects
+                .filter(actor=self.request.user)
+                .select_related("project", "task")
+                .order_by("-created_at")[:8]
+            )
+        except Exception:
+            recent_activity = []
+
         ctx.update({
             "current_memberships": current_memberships,
             "owned_projects": owned_projects,
             "managed_projects": managed_projects,
             "project_memberships": project_memberships,
             "workspace": profile.workspace,
+            "total_allocation": total_allocation,
+            "capacity_left": capacity_left,
+            "active_tasks_count": active_tasks_count,
+            "overdue_tasks_count": overdue_tasks_count,
+            "recent_tasks": recent_tasks,
+            "recent_invoices": recent_invoices,
+            "recent_activity": recent_activity,
         })
         return ctx
 
@@ -1241,7 +1385,13 @@ class TeamListView(DevflowListView):
     template_name = "project/team/list.html"
     section = "team"
     page_title = "Équipes"
+    search_placeholder = "Rechercher par nom, slug ou description…"
     search_fields = ("name", "slug", "description", "team_type")
+    filter_fields = [
+        {"name": "team_type", "label": "Type", "type": "choices",
+         "choices": dm.Team.TeamType.choices},
+        {"name": "is_active", "label": "Active", "type": "bool"},
+    ]
 
 
 class TeamDetailView(DevflowDetailView):
@@ -1262,6 +1412,7 @@ class TeamDetailView(DevflowDetailView):
 class TeamCreateView(DevflowCreateView):
     model = dm.Team
     form_class = TeamForm
+    template_name = "project/team/form.html"
     section = "team"
     page_title = "Créer équipe"
     success_list_url_name = "team_list"
@@ -1270,6 +1421,7 @@ class TeamCreateView(DevflowCreateView):
 class TeamUpdateView(DevflowUpdateView):
     model = dm.Team
     form_class = TeamForm
+    template_name = "project/team/form.html"
     section = "team"
     page_title = "Modifier équipe"
     success_list_url_name = "team_list"
@@ -1292,7 +1444,23 @@ class TeamMembershipListView(DevflowListView):
     template_name = "project/team_membership/list.html"
     section = "team"
     page_title = "Membres d'équipe"
-    search_fields = ("job_title", "role", "status", "user__username", "user__first_name", "user__last_name")
+    search_placeholder = "Rechercher par nom, email ou job title…"
+    search_fields = (
+        "job_title", "role", "status",
+        "user__username", "user__first_name", "user__last_name", "user__email",
+    )
+    filter_fields = [
+        {"name": "team", "label": "Équipe", "type": "model",
+         "queryset": "_teams_qs", "lookup": "team_id"},
+        {"name": "role", "label": "Rôle", "type": "choices",
+         "choices": dm.TeamMembership.Role.choices},
+        {"name": "status", "label": "Statut", "type": "choices",
+         "choices": dm.TeamMembership.Status.choices},
+    ]
+
+    def _teams_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Team.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.Team.objects.none()
 
 
 class TeamMembershipDetailView(DevflowDetailView):
@@ -1305,14 +1473,26 @@ class TeamMembershipDetailView(DevflowDetailView):
 class TeamMembershipCreateView(DevflowCreateView):
     model = dm.TeamMembership
     form_class = TeamMembershipForm
+    template_name = "project/team_membership/form.html"
     section = "team"
     page_title = "Créer appartenance équipe"
     success_list_url_name = "team_membership_list"
+
+    def get_initial(self):
+        initial = super().get_initial()
+        team_id = self.request.GET.get("team")
+        user_id = self.request.GET.get("user")
+        if team_id:
+            initial["team"] = team_id
+        if user_id:
+            initial["user"] = user_id
+        return initial
 
 
 class TeamMembershipUpdateView(DevflowUpdateView):
     model = dm.TeamMembership
     form_class = TeamMembershipForm
+    template_name = "project/team_membership/form.html"
     section = "team"
     page_title = "Modifier appartenance équipe"
     success_list_url_name = "team_membership_list"
@@ -1336,7 +1516,22 @@ class ProjectListView(DevflowListView):
     page_title = "Projets"
     context_object_name = "items"
     paginate_by = 12
+    search_placeholder = "Rechercher par nom, code, description ou stack…"
     search_fields = ("name", "slug", "code", "description", "tech_stack", "ai_risk_label")
+    filter_fields = [
+        {"name": "status", "label": "Statut", "type": "choices",
+         "choices": dm.Project.Status.choices},
+        {"name": "priority", "label": "Priorité", "type": "choices",
+         "choices": dm.Project.Priority.choices},
+        {"name": "health_status", "label": "Santé", "type": "choices",
+         "choices": dm.Project.HealthStatus.choices},
+        {"name": "team", "label": "Équipe", "type": "model",
+         "queryset": "_teams_qs", "lookup": "team_id"},
+    ]
+
+    def _teams_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Team.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.Team.objects.none()
     PROJECT_TIME_FIELDS = {
         "estimated": ("estimated_hours", "planned_hours", "forecast_hours"),
         "spent": ("spent_hours", "actual_hours", "logged_hours", "consumed_hours"),
@@ -2936,7 +3131,12 @@ class ProjectDetailView(DevflowDetailView):
             ],
             "budget_estimatif": [],
             "budget_previsionnel": [],
-            "facturation_client": [],
+            "facturation_client": [
+                {"label": "Générer une facture", "url": reverse_lazy("invoice_generate_from_project", args=[project.pk]), "style": "primary", "icon": "sparkles"},
+                {"label": "Facture manuelle", "url": f"{reverse_lazy('invoice_create')}?project={project.pk}", "style": "soft", "icon": "file"},
+                {"label": "Voir toutes les factures", "url": f"{reverse_lazy('invoice_list')}?project={project.pk}", "style": "soft", "icon": "list"},
+                {"label": "Ajouter prévision revenu", "url": f"/project-revenues/create/?project={project.pk}", "style": "soft", "icon": "trending-up"},
+            ],
             "depenses": [],
             "equipes": [
                 {"label": "Ajouter membre projet", "url": f"/project-members/create/?project={project.pk}", "style": "primary", "icon": "users"},
@@ -3087,6 +3287,43 @@ class ProjectDetailView(DevflowDetailView):
             "task_dependencies": dependency_qs,
             "dependency_summary": dependency_summary,
         })
+
+        # ─── Module Facturation : factures rattachées au projet ────────
+        try:
+            invoices_qs = (
+                project.invoices.filter(is_archived=False)
+                .select_related("client", "issued_by")
+                .order_by("-issue_date")
+            )
+            invoice_agg = invoices_qs.aggregate(
+                total_ttc=Sum("total_ttc"),
+                total_paid=Sum("paid_amount"),
+                count_total=Count("id"),
+                count_overdue=Count("id", filter=Q(status=dm.Invoice.Status.OVERDUE)),
+                count_draft=Count("id", filter=Q(status=dm.Invoice.Status.DRAFT)),
+                count_paid=Count("id", filter=Q(status=dm.Invoice.Status.PAID)),
+            )
+            ctx["project_invoices"] = invoices_qs[:10]
+            ctx["all_project_invoices"] = invoices_qs
+            ctx["invoice_summary"] = {
+                "total_ttc": invoice_agg["total_ttc"] or Decimal("0"),
+                "total_paid": invoice_agg["total_paid"] or Decimal("0"),
+                "total_due": (invoice_agg["total_ttc"] or Decimal("0"))
+                              - (invoice_agg["total_paid"] or Decimal("0")),
+                "count_total": invoice_agg["count_total"] or 0,
+                "count_overdue": invoice_agg["count_overdue"] or 0,
+                "count_draft": invoice_agg["count_draft"] or 0,
+                "count_paid": invoice_agg["count_paid"] or 0,
+            }
+        except Exception:
+            ctx["project_invoices"] = []
+            ctx["all_project_invoices"] = []
+            ctx["invoice_summary"] = {
+                "total_ttc": Decimal("0"), "total_paid": Decimal("0"),
+                "total_due": Decimal("0"), "count_total": 0,
+                "count_overdue": 0, "count_draft": 0, "count_paid": 0,
+            }
+
         ctx["active_quick_actions"] = quick_actions.get(active_tab, [])
         return ctx
 
@@ -3452,7 +3689,26 @@ class ProjectMemberListView(DevflowListView):
     template_name = "project/project_member/list.html"
     section = "project"
     page_title = "Membres projet"
-    search_fields = ("role", "user__username", "user__first_name", "user__last_name")
+    search_placeholder = "Rechercher par nom, email, rôle ou projet…"
+    search_fields = (
+        "role", "project__name",
+        "user__username", "user__first_name", "user__last_name", "user__email",
+    )
+    filter_fields = [
+        {"name": "project", "label": "Projet", "type": "model",
+         "queryset": "_projects_qs", "lookup": "project_id"},
+        {"name": "team", "label": "Équipe", "type": "model",
+         "queryset": "_teams_qs", "lookup": "team_id"},
+        {"name": "is_primary", "label": "Primaire", "type": "bool"},
+    ]
+
+    def _projects_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Project.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.Project.objects.none()
+
+    def _teams_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Team.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.Team.objects.none()
 
 
 class ProjectMemberDetailView(DevflowDetailView):
@@ -3465,14 +3721,23 @@ class ProjectMemberDetailView(DevflowDetailView):
 class ProjectMemberCreateView(DevflowCreateView):
     model = dm.ProjectMember
     form_class = ProjectMemberForm
+    template_name = "project/project_member/form.html"
     section = "project"
     page_title = "Ajouter membre projet"
     success_list_url_name = "project_member_list"
+
+    def get_initial(self):
+        initial = super().get_initial()
+        project_id = self.request.GET.get("project")
+        if project_id:
+            initial["project"] = project_id
+        return initial
 
 
 class ProjectMemberUpdateView(DevflowUpdateView):
     model = dm.ProjectMember
     form_class = ProjectMemberForm
+    template_name = "project/project_member/form.html"
     section = "project"
     page_title = "Modifier membre projet"
     success_list_url_name = "project_member_list"
@@ -3559,7 +3824,24 @@ class SprintListView(DevflowListView):
     template_name = "project/sprint/list.html"
     section = "sprint"
     page_title = "Sprints"
+    search_placeholder = "Rechercher par nom, goal, projet ou équipe…"
     search_fields = ("name", "goal", "status", "project__name", "team__name")
+    filter_fields = [
+        {"name": "status", "label": "Statut", "type": "choices",
+         "choices": dm.Sprint.Status.choices},
+        {"name": "project", "label": "Projet", "type": "model",
+         "queryset": "_projects_qs", "lookup": "project_id"},
+        {"name": "team", "label": "Équipe", "type": "model",
+         "queryset": "_teams_qs", "lookup": "team_id"},
+    ]
+
+    def _projects_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Project.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.Project.objects.none()
+
+    def _teams_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Team.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.Team.objects.none()
 
     def get_queryset(self):
         open_tasks_preview_qs = (
@@ -3816,43 +4098,30 @@ class BacklogItemArchiveView(ArchiveObjectView):
 
 
 class TaskQuickAssignView(DevflowBaseMixin, View):
+    """
+    Assignation/désassignation rapide d'une tâche.
+    Accepte indifféremment 'assignee' ou 'user' dans le POST pour rester
+    rétro-compatible avec les anciens templates.
+    Utilise Task.assign() pour garantir la cohérence FK + TaskAssignment.
+    DevflowBaseMixin hérite déjà de LoginRequiredMixin.
+    """
     def post(self, request, pk):
-        task = self.filter_by_workspace(dm.Task.objects.all()).select_related("project", "workspace").get(pk=pk)
-        assignee_id = request.POST.get("assignee")
+        task = self.filter_by_workspace(
+            dm.Task.objects.all()
+        ).select_related("project", "workspace").get(pk=pk)
+
+        assignee_id = request.POST.get("assignee") or request.POST.get("user")
 
         if assignee_id:
-            assignee = get_object_or_404(User, pk=assignee_id)
-            task.assignee = assignee
-            task.save(update_fields=["assignee", "updated_at"])
-
-            dm.TaskAssignment.objects.update_or_create(
-                task=task,
-                user=assignee,
-                defaults={
-                    "assigned_by": request.user,
-                    "is_active": True,
-                    "allocation_percent": 100,
-                },
-            )
-
-            dm.ActivityLog.objects.create(
-                workspace=task.workspace,
-                actor=request.user,
-                project=task.project,
-                task=task,
-                activity_type=dm.ActivityLog.ActivityType.MEMBER_ASSIGNED,
-                title=f"Tâche assignée à {assignee}",
-                description=f"{request.user} a assigné la tâche « {task.title} » à {assignee}.",
-            )
-
-            messages.success(request, "Assignation mise à jour.")
+            assignee = get_object_or_404(User, pk=assignee_id, is_active=True)
+            task.assign(assignee, assigned_by=request.user)
+            messages.success(request, f"Tâche affectée à {assignee}.")
         else:
-            task.assignee = None
-            task.save(update_fields=["assignee", "updated_at"])
+            task.unassign(actor=request.user)
             messages.success(request, "Assignation supprimée.")
 
         next_url = request.POST.get("next")
-        return redirect(next_url or "task_list")
+        return redirect(next_url or request.META.get("HTTP_REFERER") or "task_list")
 
 
 class TaskQuickStatusView(DevflowBaseMixin, View):
@@ -3939,54 +4208,12 @@ class TaskToggleFlagView(DevflowBaseMixin, View):
         next_url = request.POST.get("next")
         return redirect(next_url or "task_list")
 
-class TaskQuickAssignView(LoginRequiredMixin, View):
-    def post(self, request, pk):
-        task = get_object_or_404(dm.Task, pk=pk, is_archived=False)
-        user_id = request.POST.get("user")
-
-        if not user_id:
-            messages.error(request, "Aucun utilisateur sélectionné.")
-            return redirect(request.META.get("HTTP_REFERER", "task_list"))
-
-        user = get_object_or_404(get_user_model(), pk=user_id, is_active=True)
-
-        task.assignee = user
-        task.save(update_fields=["assignee", "updated_at"])
-
-        dm.TaskAssignment.objects.update_or_create(
-            task=task,
-            user=user,
-            defaults={
-                "assigned_by": request.user,
-                "allocation_percent": 100,
-                "is_active": True,
-            },
-        )
-
-        messages.success(request, f"Tâche affectée à {user}.")
-        return redirect(request.META.get("HTTP_REFERER", "task_list"))
-class TaskQuickCommentView(LoginRequiredMixin, View):
-    def post(self, request, pk):
-        task = get_object_or_404(dm.Task, pk=pk, is_archived=False)
-        body = (request.POST.get("body") or "").strip()
-        is_internal = request.POST.get("is_internal") == "1"
-
-        if not body:
-            messages.error(request, "Le commentaire est vide.")
-            return redirect(request.META.get("HTTP_REFERER", "task_list"))
-
-        dm.TaskComment.objects.create(
-            task=task,
-            author=request.user,
-            body=body,
-            is_internal=is_internal,
-        )
-
-        task.comments_count = task.comments.count()
-        task.save(update_fields=["comments_count", "updated_at"])
-
-        messages.success(request, "Commentaire ajouté.")
-        return redirect(request.META.get("HTTP_REFERER", "task_list"))
+# ──────────────────────────────────────────────────────────────────────────
+# NOTE: Les classes TaskQuickAssignView et TaskQuickCommentView en doublon
+# ont été supprimées (audit 2026-04-29). Les versions canoniques utilisant
+# DevflowBaseMixin (filter_by_workspace + ActivityLog) sont conservées plus
+# haut dans ce fichier.
+# ──────────────────────────────────────────────────────────────────────────
 
 
 class TaskQuickAttachmentView(LoginRequiredMixin, View):
@@ -4049,16 +4276,35 @@ class TaskListView(DevflowListView):
     template_name = "project/task/list.html"
     section = "task"
     page_title = "Tâches"
+    search_placeholder = "Rechercher par titre, description ou projet…"
     search_fields = (
-        "title",
-        "description",
-        "status",
-        "priority",
-        "project__name",
-        "sprint__name",
-        "assignee__username",
+        "title", "description", "status", "priority",
+        "project__name", "sprint__name",
+        "assignee__username", "assignee__first_name", "assignee__last_name",
         "reporter__username",
     )
+    filter_fields = [
+        {"name": "status", "label": "Statut", "type": "choices",
+         "choices": dm.Task.Status.choices},
+        {"name": "priority", "label": "Priorité", "type": "choices",
+         "choices": dm.Task.Priority.choices},
+        {"name": "project", "label": "Projet", "type": "model",
+         "queryset": "_projects_qs", "lookup": "project_id"},
+        {"name": "assignee", "label": "Assigné à", "type": "model",
+         "queryset": "_users_qs", "lookup": "assignee_id"},
+    ]
+
+    def _projects_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Project.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.Project.objects.none()
+
+    def _users_qs(self):
+        ws = self.get_current_workspace()
+        if not ws:
+            return User.objects.none()
+        return User.objects.filter(
+            is_active=True, devflow_memberships__workspace=ws
+        ).distinct().order_by("last_name", "first_name", "username")
 
     def get_queryset(self):
         queryset = (
@@ -4464,7 +4710,24 @@ class TaskAssignmentListView(DevflowListView):
     template_name = "project/task_assignment/list.html"
     section = "task"
     page_title = "Affectations de tâches"
-    search_fields = ("user__username", "assigned_by__username")
+    search_placeholder = "Rechercher par utilisateur ou tâche…"
+    search_fields = (
+        "user__username", "user__first_name", "user__last_name",
+        "assigned_by__username", "task__title",
+    )
+    filter_fields = [
+        {"name": "user", "label": "Utilisateur", "type": "model",
+         "queryset": "_users_qs", "lookup": "user_id"},
+        {"name": "is_active", "label": "Active", "type": "bool"},
+    ]
+
+    def _users_qs(self):
+        ws = self.get_current_workspace()
+        if not ws:
+            return User.objects.none()
+        return User.objects.filter(
+            is_active=True, devflow_memberships__workspace=ws
+        ).distinct().order_by("last_name", "first_name", "username")
 
 
 class TaskAssignmentDetailView(DevflowDetailView):
@@ -4477,14 +4740,26 @@ class TaskAssignmentDetailView(DevflowDetailView):
 class TaskAssignmentCreateView(DevflowCreateView):
     model = dm.TaskAssignment
     form_class = TaskAssignmentForm
+    template_name = "project/task_assignment/form.html"
     section = "task"
     page_title = "Créer affectation tâche"
     success_list_url_name = "task_assignment_list"
+
+    def get_initial(self):
+        initial = super().get_initial()
+        task_id = self.request.GET.get("task")
+        user_id = self.request.GET.get("user")
+        if task_id:
+            initial["task"] = task_id
+        if user_id:
+            initial["user"] = user_id
+        return initial
 
 
 class TaskAssignmentUpdateView(DevflowUpdateView):
     model = dm.TaskAssignment
     form_class = TaskAssignmentForm
+    template_name = "project/task_assignment/form.html"
     section = "task"
     page_title = "Modifier affectation tâche"
     success_list_url_name = "task_assignment_list"
@@ -6647,6 +6922,26 @@ class WorkspaceInvitationCreateView(DevflowCreateView):
     page_title = "Créer invitation workspace"
     success_list_url_name = "workspace_invitation_list"
 
+    def form_valid(self, form):
+        invitation = form.save(
+            invited_by=self.request.user,
+            workspace=self.get_current_workspace(),
+        )
+        try:
+            from project.services.invitations import send_invitation_email
+            send_invitation_email(invitation, request=self.request)
+        except Exception as exc:
+            messages.warning(
+                self.request,
+                f"Invitation enregistrée mais l'e-mail n'a pas pu être envoyé : {exc}"
+            )
+        else:
+            messages.success(
+                self.request,
+                f"Invitation envoyée à {invitation.email}."
+            )
+        return redirect(self.get_success_url())
+
 
 class WorkspaceInvitationUpdateView(DevflowUpdateView):
     model = dm.WorkspaceInvitation
@@ -6664,13 +6959,140 @@ class WorkspaceInvitationDeleteView(DevflowDeleteView):
 
 
 class WorkspaceInvitationAcceptView(DevflowBaseMixin, View):
+    """Accept admin-side (réservée aux managers du workspace)."""
+
     def post(self, request, pk):
-        invitation = self.filter_by_workspace(dm.WorkspaceInvitation.objects.all()).get(pk=pk)
+        invitation = self.filter_by_workspace(
+            dm.WorkspaceInvitation.objects.all()
+        ).get(pk=pk)
         invitation.status = dm.WorkspaceInvitation.Status.ACCEPTED
         invitation.accepted_at = timezone.now()
         invitation.save(update_fields=["status", "accepted_at", "updated_at"])
         messages.success(request, "Invitation acceptée.")
         return redirect("workspace_invitation_list")
+
+
+class WorkspaceInvitationPublicAcceptView(View):
+    """
+    Vue publique : un invité clique sur le lien de l'email reçu.
+    GET → page d'accueil (présentation de l'invitation + form de signup si l'user n'existe pas).
+    POST → finalise : crée le User si nécessaire, le UserProfile et le TeamMembership.
+    """
+
+    template_name = "project/workspace_invitation/accept.html"
+
+    def get_invitation_or_404(self, token):
+        invitation = get_object_or_404(
+            dm.WorkspaceInvitation.objects.select_related("workspace", "team"),
+            token=token,
+        )
+        if invitation.status != dm.WorkspaceInvitation.Status.PENDING:
+            return invitation, "not_pending"
+        if invitation.is_expired():
+            invitation.status = dm.WorkspaceInvitation.Status.EXPIRED
+            invitation.save(update_fields=["status", "updated_at"])
+            return invitation, "expired"
+        return invitation, "ok"
+
+    def get(self, request, token):
+        invitation, state = self.get_invitation_or_404(token)
+        existing_user = User.objects.filter(email__iexact=invitation.email).first()
+        return render(request, self.template_name, {
+            "invitation": invitation,
+            "state": state,
+            "existing_user": existing_user,
+        })
+
+    def post(self, request, token):
+        invitation, state = self.get_invitation_or_404(token)
+        if state != "ok":
+            return render(request, self.template_name, {
+                "invitation": invitation,
+                "state": state,
+            })
+
+        from django.db import transaction
+        from django.contrib.auth import login
+
+        existing_user = User.objects.filter(email__iexact=invitation.email).first()
+        with transaction.atomic():
+            if existing_user:
+                user = existing_user
+            else:
+                first_name = (request.POST.get("first_name") or "").strip()
+                last_name = (request.POST.get("last_name") or "").strip()
+                password = request.POST.get("password") or ""
+                if not (first_name and last_name and len(password) >= 8):
+                    messages.error(
+                        request,
+                        "Renseigne prénom, nom et un mot de passe d'au moins 8 caractères."
+                    )
+                    return render(request, self.template_name, {
+                        "invitation": invitation, "state": "ok",
+                        "form_errors": True,
+                    })
+                username = invitation.email.split("@")[0][:30]
+                # Évite les collisions de username
+                base_username = username
+                idx = 1
+                while User.objects.filter(username=username).exists():
+                    username = f"{base_username}{idx}"
+                    idx += 1
+                user = User(
+                    username=username,
+                    email=invitation.email,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+                user.set_password(password)
+                # Posé pour le signal create_user_profile
+                user._invited_workspace = invitation.workspace
+                user.save()
+
+            # UserProfile
+            dm.UserProfile.objects.get_or_create(
+                user=user, workspace=invitation.workspace,
+            )
+            # TeamMembership
+            dm.TeamMembership.objects.update_or_create(
+                workspace=invitation.workspace,
+                user=user,
+                team=invitation.team,
+                defaults={
+                    "role": invitation.role,
+                    "status": dm.TeamMembership.Status.ACTIVE,
+                },
+            )
+            # Notification au demandeur
+            if invitation.invited_by_id:
+                try:
+                    from project.services.notifications import (
+                        create_in_app_notification,
+                    )
+                    create_in_app_notification(
+                        recipient=invitation.invited_by,
+                        workspace=invitation.workspace,
+                        notification_type=dm.Notification.NotificationType.INFO
+                        if hasattr(dm.Notification.NotificationType, "INFO")
+                        else dm.Notification.NotificationType.TASK,
+                        title="Invitation acceptée",
+                        body=f"{user} a accepté votre invitation au workspace.",
+                        url="/workspace-invitations/",
+                    )
+                except Exception:
+                    pass
+            invitation.status = dm.WorkspaceInvitation.Status.ACCEPTED
+            invitation.accepted_at = timezone.now()
+            invitation.save(update_fields=["status", "accepted_at", "updated_at"])
+
+        if not existing_user:
+            login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+
+        messages.success(
+            request,
+            f"Bienvenue dans {invitation.workspace.name} !"
+        )
+        return redirect("dashboard")
 
 
 class IntegrationListView(DevflowListView):
@@ -7133,3 +7555,367 @@ class KeyResultDeleteView(DevflowDeleteView):
     section = "analytics"
     page_title = "Supprimer key result"
     success_list_url_name = "key_result_list"
+
+
+# =============================================================================
+# FACTURATION
+# =============================================================================
+class InvoiceClientListView(DevflowListView):
+    model = dm.InvoiceClient
+    template_name = "project/invoice_client/list.html"
+    section = "billing"
+    page_title = "Clients de facturation"
+    search_placeholder = "Rechercher par nom, raison sociale, ID fiscal, ville…"
+    search_fields = ("name", "legal_name", "tax_id", "email", "city", "country")
+    filter_fields = [
+        {"name": "country", "label": "Pays", "type": "exact"},
+    ]
+
+
+class InvoiceClientDetailView(DevflowDetailView):
+    model = dm.InvoiceClient
+    template_name = "project/invoice_client/detail.html"
+    section = "billing"
+    page_title = "Détail client"
+
+
+class InvoiceClientCreateView(DevflowCreateView):
+    model = dm.InvoiceClient
+    form_class = InvoiceClientForm
+    template_name = "project/invoice_client/form.html"
+    section = "billing"
+    page_title = "Nouveau client"
+    success_list_url_name = "invoice_client_list"
+
+
+class InvoiceClientUpdateView(DevflowUpdateView):
+    model = dm.InvoiceClient
+    form_class = InvoiceClientForm
+    template_name = "project/invoice_client/form.html"
+    section = "billing"
+    page_title = "Modifier client"
+    success_list_url_name = "invoice_client_list"
+
+
+class InvoiceClientDeleteView(DevflowDeleteView):
+    model = dm.InvoiceClient
+    section = "billing"
+    page_title = "Supprimer client"
+    success_list_url_name = "invoice_client_list"
+
+
+class InvoiceListView(DevflowListView):
+    model = dm.Invoice
+    template_name = "project/invoice/list.html"
+    section = "billing"
+    page_title = "Factures"
+    paginate_by = 25
+    search_placeholder = "Rechercher par numéro, titre, projet ou client…"
+    search_fields = ("number", "title", "project__name", "client__name", "status")
+    filter_fields = [
+        {"name": "status", "label": "Statut", "type": "choices",
+         "choices": dm.Invoice.Status.choices},
+        {"name": "billing_mode", "label": "Mode", "type": "choices",
+         "choices": dm.Invoice.BillingMode.choices},
+        {"name": "project", "label": "Projet", "type": "model",
+         "queryset": "_projects_qs", "lookup": "project_id"},
+        {"name": "client", "label": "Client", "type": "model",
+         "queryset": "_clients_qs", "lookup": "client_id"},
+    ]
+
+    def _projects_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Project.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.Project.objects.none()
+
+    def _clients_qs(self):
+        ws = self.get_current_workspace()
+        return dm.InvoiceClient.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.InvoiceClient.objects.none()
+
+    def get_queryset(self):
+        return (
+            super().get_queryset()
+            .select_related("project", "client", "issued_by")
+            .order_by("-issue_date", "-id")
+        )
+
+    def get_context_data(self, **kwargs):
+        from django.db.models import Sum
+        ctx = super().get_context_data(**kwargs)
+        qs = self.get_queryset()
+        agg = qs.aggregate(
+            total_ttc=Sum("total_ttc"),
+            total_paid=Sum("paid_amount"),
+        )
+        ctx["agg_total_ttc"] = agg["total_ttc"] or 0
+        ctx["agg_total_paid"] = agg["total_paid"] or 0
+        ctx["agg_total_due"] = (agg["total_ttc"] or 0) - (agg["total_paid"] or 0)
+        ctx["count_overdue"] = qs.filter(status=dm.Invoice.Status.OVERDUE).count()
+        ctx["count_draft"] = qs.filter(status=dm.Invoice.Status.DRAFT).count()
+        return ctx
+
+
+class InvoiceDetailView(DevflowDetailView):
+    model = dm.Invoice
+    template_name = "project/invoice/detail.html"
+    section = "billing"
+    page_title = "Facture"
+    context_object_name = "invoice"
+
+    def get_queryset(self):
+        return (
+            super().get_queryset()
+            .select_related("project", "client", "issued_by", "workspace")
+            .prefetch_related("lines", "payments")
+        )
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        invoice = self.object
+        ctx["lines"] = invoice.lines.all().order_by("position", "id")
+        ctx["payments"] = invoice.payments.all().order_by("-received_at")
+        ctx["payment_form"] = InvoicePaymentForm(
+            current_workspace=invoice.workspace,
+            initial={"invoice": invoice.pk},
+        )
+        ctx["remaining"] = invoice.remaining_due
+        return ctx
+
+
+class InvoiceCreateView(DevflowCreateView):
+    model = dm.Invoice
+    form_class = InvoiceForm
+    template_name = "project/invoice/form.html"
+    section = "billing"
+    page_title = "Nouvelle facture"
+    success_list_url_name = "invoice_list"
+
+    def get_initial(self):
+        initial = super().get_initial()
+        project_id = self.request.GET.get("project")
+        if project_id:
+            initial["project"] = project_id
+        return initial
+
+    def form_valid(self, form):
+        invoice = form.save(commit=False)
+        invoice.issued_by = self.request.user
+        if not invoice.workspace_id and invoice.project_id:
+            invoice.workspace = invoice.project.workspace
+        invoice.save()
+        invoice.recompute_totals()
+        messages.success(self.request, f"Facture {invoice.number or 'brouillon'} créée.")
+        return redirect("invoice_detail", pk=invoice.pk)
+
+
+class InvoiceUpdateView(DevflowUpdateView):
+    model = dm.Invoice
+    form_class = InvoiceForm
+    template_name = "project/invoice/form.html"
+    section = "billing"
+    page_title = "Modifier facture"
+    success_list_url_name = "invoice_list"
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        self.object.recompute_totals()
+        return response
+
+
+class InvoiceDeleteView(DevflowDeleteView):
+    model = dm.Invoice
+    section = "billing"
+    page_title = "Supprimer facture"
+    success_list_url_name = "invoice_list"
+
+
+class InvoiceIssueView(DevflowBaseMixin, View):
+    """Passe une facture en statut ISSUED (lui attribue un numéro)."""
+
+    def post(self, request, pk):
+        invoice = self.filter_by_workspace(dm.Invoice.objects.all()).get(pk=pk)
+        if invoice.status == dm.Invoice.Status.DRAFT:
+            invoice.status = dm.Invoice.Status.ISSUED
+            invoice.save()  # Trigger numérotation
+            invoice.recompute_totals()
+            messages.success(request, f"Facture émise sous le numéro {invoice.number}.")
+        else:
+            messages.warning(request, "Seules les factures en brouillon peuvent être émises.")
+        return redirect("invoice_detail", pk=invoice.pk)
+
+
+class InvoiceMarkSentView(DevflowBaseMixin, View):
+    def post(self, request, pk):
+        invoice = self.filter_by_workspace(dm.Invoice.objects.all()).get(pk=pk)
+        invoice.status = dm.Invoice.Status.SENT
+        invoice.sent_at = timezone.now()
+        invoice.save(update_fields=["status", "sent_at", "updated_at"])
+        messages.success(request, "Facture marquée comme envoyée.")
+        return redirect("invoice_detail", pk=invoice.pk)
+
+
+class InvoiceCancelView(DevflowBaseMixin, View):
+    def post(self, request, pk):
+        invoice = self.filter_by_workspace(dm.Invoice.objects.all()).get(pk=pk)
+        invoice.status = dm.Invoice.Status.CANCELLED
+        invoice.save(update_fields=["status", "updated_at"])
+        messages.success(request, "Facture annulée.")
+        return redirect("invoice_detail", pk=invoice.pk)
+
+
+class InvoicePrintView(DevflowDetailView):
+    model = dm.Invoice
+    template_name = "project/invoice/print.html"
+    section = "billing"
+    page_title = "Aperçu facture"
+    context_object_name = "invoice"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["lines"] = self.object.lines.all().order_by("position", "id")
+        ctx["payments"] = self.object.payments.filter(
+            status=dm.InvoicePayment.Status.CONFIRMED
+        )
+        return ctx
+
+
+class InvoiceLineCreateView(DevflowCreateView):
+    model = dm.InvoiceLine
+    form_class = InvoiceLineForm
+    template_name = "project/invoice_line/form.html"
+    section = "billing"
+    page_title = "Nouvelle ligne"
+    success_list_url_name = "invoice_list"
+
+    def get_initial(self):
+        initial = super().get_initial()
+        invoice_id = self.request.GET.get("invoice")
+        if invoice_id:
+            initial["invoice"] = invoice_id
+        return initial
+
+    def get_success_url(self):
+        return reverse_lazy("invoice_detail", args=[self.object.invoice_id])
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        self.object.invoice.recompute_totals()
+        return response
+
+
+class InvoiceLineUpdateView(DevflowUpdateView):
+    model = dm.InvoiceLine
+    form_class = InvoiceLineForm
+    template_name = "project/invoice_line/form.html"
+    section = "billing"
+    page_title = "Modifier ligne"
+    success_list_url_name = "invoice_list"
+
+    def get_success_url(self):
+        return reverse_lazy("invoice_detail", args=[self.object.invoice_id])
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        self.object.invoice.recompute_totals()
+        return response
+
+
+class InvoiceLineDeleteView(DevflowDeleteView):
+    model = dm.InvoiceLine
+    section = "billing"
+    page_title = "Supprimer ligne"
+    success_list_url_name = "invoice_list"
+
+    def get_success_url(self):
+        invoice_id = self.object.invoice_id if hasattr(self, "object") else None
+        if invoice_id:
+            return reverse_lazy("invoice_detail", args=[invoice_id])
+        return reverse_lazy("invoice_list")
+
+    def delete(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        invoice = self.object.invoice
+        response = super().delete(request, *args, **kwargs)
+        invoice.recompute_totals()
+        return response
+
+
+class InvoicePaymentCreateView(DevflowBaseMixin, View):
+    """Création de paiement depuis la fiche facture."""
+
+    def post(self, request, pk):
+        invoice = self.filter_by_workspace(dm.Invoice.objects.all()).get(pk=pk)
+        form = InvoicePaymentForm(
+            request.POST,
+            current_workspace=invoice.workspace,
+        )
+        if not form.is_valid():
+            for err in form.errors.values():
+                messages.error(request, " ".join(err))
+            return redirect("invoice_detail", pk=invoice.pk)
+
+        payment = form.save(commit=False)
+        payment.invoice = invoice
+        payment.recorded_by = request.user
+        payment.save()
+        invoice.recompute_totals()
+        messages.success(request, "Paiement enregistré.")
+        return redirect("invoice_detail", pk=invoice.pk)
+
+
+class InvoiceGenerateFromProjectView(DevflowBaseMixin, View):
+    """
+    GET : affiche le form de génération.
+    POST : appelle le service InvoiceGenerator selon le mode et redirige
+    vers la facture créée.
+    """
+
+    template_name = "project/invoice/generate.html"
+
+    def get(self, request, project_pk):
+        project = self.filter_by_workspace(dm.Project.objects.all()).get(pk=project_pk)
+        form = InvoiceGenerateForm()
+        return render(request, self.template_name, {
+            "project": project, "form": form,
+        })
+
+    def post(self, request, project_pk):
+        from project.services.invoicing import generate_invoice_for_project
+
+        project = self.filter_by_workspace(dm.Project.objects.all()).get(pk=project_pk)
+        form = InvoiceGenerateForm(request.POST)
+        if not form.is_valid():
+            return render(request, self.template_name, {
+                "project": project, "form": form,
+            })
+
+        cleaned = form.cleaned_data
+        try:
+            invoice = generate_invoice_for_project(
+                project,
+                mode=cleaned["mode"],
+                issued_by=request.user,
+                tax_rate=cleaned["tax_rate"],
+                currency=cleaned["currency"],
+                title=cleaned.get("title") or None,
+                period_start=cleaned.get("period_start"),
+                period_end=cleaned.get("period_end"),
+                notes=cleaned.get("notes") or "",
+            )
+        except Exception as exc:
+            messages.error(request, f"Génération impossible : {exc}")
+            return render(request, self.template_name, {
+                "project": project, "form": form,
+            })
+
+        if invoice.lines.count() == 0:
+            messages.warning(
+                request,
+                "Aucune ligne facturable n'a été trouvée pour ce mode. "
+                "Ajustez les estimations / timesheets / jalons puis relancez."
+            )
+        else:
+            messages.success(
+                request,
+                f"Brouillon de facture généré ({invoice.lines.count()} lignes)."
+            )
+        return redirect("invoice_detail", pk=invoice.pk)

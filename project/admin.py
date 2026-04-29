@@ -1808,3 +1808,62 @@ class KeyResultAdmin(admin.ModelAdmin):
             color,
             p,
         )
+
+# =============================================================================
+# FACTURATION
+# =============================================================================
+from project.models import (
+    InvoiceClient as _InvoiceClient,
+    Invoice as _Invoice,
+    InvoiceLine as _InvoiceLine,
+    InvoicePayment as _InvoicePayment,
+)
+
+
+class InvoiceLineInline(admin.TabularInline):
+    model = _InvoiceLine
+    extra = 0
+    fields = ("position", "line_type", "label", "quantity", "unit_price", "total_amount")
+    readonly_fields = ("total_amount",)
+
+
+class InvoicePaymentInline(admin.TabularInline):
+    model = _InvoicePayment
+    extra = 0
+    fields = ("received_at", "amount", "method", "reference", "status")
+
+
+@admin.register(_InvoiceClient)
+class InvoiceClientAdmin(admin.ModelAdmin):
+    list_display = ("name", "workspace", "tax_id", "city", "country", "is_archived")
+    list_filter = ("workspace", "country", "is_archived")
+    search_fields = ("name", "legal_name", "tax_id", "email")
+
+
+@admin.register(_Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    list_display = (
+        "number", "project", "client", "issue_date", "due_date",
+        "total_ttc", "paid_amount", "status", "billing_mode",
+    )
+    list_filter = ("status", "billing_mode", "workspace", "issue_date")
+    search_fields = ("number", "title", "project__name", "client__name")
+    autocomplete_fields = ("project", "client", "issued_by")
+    date_hierarchy = "issue_date"
+    readonly_fields = ("subtotal_ht", "tax_amount", "total_ttc", "paid_amount")
+    inlines = [InvoiceLineInline, InvoicePaymentInline]
+
+    actions = ["recompute_totals_action"]
+
+    def recompute_totals_action(self, request, queryset):
+        for invoice in queryset:
+            invoice.recompute_totals()
+        self.message_user(request, f"{queryset.count()} facture(s) recalculée(s).")
+    recompute_totals_action.short_description = "Recalculer les totaux"
+
+
+@admin.register(_InvoicePayment)
+class InvoicePaymentAdmin(admin.ModelAdmin):
+    list_display = ("invoice", "amount", "received_at", "method", "status")
+    list_filter = ("method", "status", "received_at")
+    search_fields = ("invoice__number", "reference")

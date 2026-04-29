@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Invitation {{ workspace.name }}</title>
+</head>
+<body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:#f5f5f7; margin:0; padding:24px; color:#1a1a1a;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:560px;margin:0 auto;background:#fff;border-radius:24px;overflow:hidden;border:1px solid #e5e5ea;">
+  <tr>
+    <td style="padding:28px 32px 12px;">
+      <p style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#FF4E00;margin:0 0 6px;">DevFlow</p>
+      <h1 style="font-family:Georgia,serif;font-size:26px;line-height:1.2;margin:0;color:#1a1a1a;">
+        Vous êtes invité·e dans {{ workspace.name }}
+      </h1>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:6px 32px 8px;color:#444;font-size:14px;line-height:1.55;">
+      <p>Bonjour,</p>
+      <p>
+        {% if invited_by %}<strong>{{ invited_by.get_full_name|default:invited_by.username }}</strong>{% else %}Un collaborateur{% endif %}
+        vous invite à rejoindre le workspace <strong>{{ workspace.name }}</strong>
+        {% if team %}au sein de l'équipe <strong>{{ team.name }}</strong>,{% endif %}
+        en tant que <strong>{{ role_label }}</strong>.
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:14px 32px 8px;text-align:center;">
+      <a href="{{ accept_url }}"
+         style="display:inline-block;background:#FF4E00;color:#fff;padding:14px 26px;border-radius:14px;text-decoration:none;font-weight:600;font-size:14px;">
+        Accepter l'invitation
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:8px 32px 28px;color:#888;font-size:12px;line-height:1.5;">
+      <p>Le lien expire le {{ expires_at|date:"d/m/Y à H:i" }}.</p>
+      <p>Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br>
+        <a href="{{ accept_url }}" style="color:#0EA5C9;word-break:break-all;">{{ accept_url }}</a>
+      </p>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
