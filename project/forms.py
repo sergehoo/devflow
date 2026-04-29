@@ -62,6 +62,30 @@ from .models import Invoice, InvoiceLine, InvoicePayment, InvoiceClient
 
 User = get_user_model()
 
+
+def _user_choice_label(user) -> str:
+    """
+    Affichage standardisé d'un utilisateur dans les <select> de formulaire :
+    « Prénom Nom » si renseigné, sinon « Prénom » ou « Nom » seul,
+    sinon username, sinon email. On suffixe par l'email entre parenthèses
+    quand un nom complet existe, pour différencier les homonymes.
+    """
+    if user is None:
+        return ""
+    first = (getattr(user, "first_name", "") or "").strip()
+    last = (getattr(user, "last_name", "") or "").strip()
+    full = (first + " " + last).strip()
+    email = (getattr(user, "email", "") or "").strip()
+    username = (getattr(user, "username", "") or "").strip()
+
+    if full and email:
+        return f"{full} ({email})"
+    if full:
+        return full
+    if username:
+        return username
+    return email or f"User #{user.pk}"
+
 class CustomSignupForm(SignupForm):
 
     first_name = forms.CharField(
@@ -158,6 +182,15 @@ class BaseStyledModelForm(forms.ModelForm):
         self.allowed_workspaces = kwargs.pop("allowed_workspaces", None)
         self.request = kwargs.pop("request", None)
         super().__init__(*args, **kwargs)
+
+        # Affichage prénom + nom (fallback username) pour TOUS les selects User
+        _user_label = _user_choice_label
+        for field in self.fields.values():
+            if isinstance(field, (forms.ModelChoiceField, forms.ModelMultipleChoiceField)):
+                qs = getattr(field, "queryset", None)
+                model = getattr(qs, "model", None) if qs is not None else None
+                if model is User:
+                    field.label_from_instance = _user_label
 
         for name, field in self.fields.items():
             widget = field.widget
