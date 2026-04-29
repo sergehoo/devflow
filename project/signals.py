@@ -87,6 +87,13 @@ def notify_on_task_assignee_change(sender, instance, created, **kwargs):
         )
 
 
+# Note : pas de seed automatique d'entrée timesheet à 0h sur TaskAssignment.
+# La vue calendrier `TimesheetCalendarView` itère sur les TaskAssignment
+# actifs du user → la tâche apparaît immédiatement comme ligne saisissable
+# dès l'affectation. Une entrée n'est créée en base que lorsque l'user saisit
+# des heures > 0 (cf. TimesheetCalendarSaveView).
+
+
 @receiver(post_save, sender=dm.TaskAssignment)
 def notify_on_task_assignment_created(sender, instance, created, **kwargs):
     if not created or not instance.user_id:
@@ -343,4 +350,112 @@ def refresh_project_budget_on_task_change(sender, instance, created, **kwargs):
             refresh_project_budget_task.delay(instance.project_id)
     except Exception:
         # Ne JAMAIS planter le save d'une tâche à cause du budget.
+        pass
+
+
+# =========================================================================
+# Reversement automatique vers le timesheet à la clôture d'une tâche
+# =========================================================================
+@receiver(post_save, sender=dm.Task)
+def reverse_spent_hours_to_timesheet_on_done(sender, instance, created, **kwargs):
+    """
+    Quand une tâche bascule en statut DONE et que `spent_hours` est rempli,
+    on s'assure que ces heures sont bien tracées dans le timesheet du user
+    assigné — typiquement sur la ligne de la tâche.
+
+    Logique :
+      - Détecte le passage `status: * → DONE` via `instance._before_state`.
+      - Calcule `delta = spent_hours - somme des entries timesheet déjà saisies
+        sur (user, task)`.
+      - Si delta > 0, crée UNE entrée d'ajustement à la date de clôture.
+        Si la semaine de cette date est déjà APPROVED, on bascule sur la
+        semaine en cours pour ne pas violer le verrou de validation.
+      - Si delta <= 0, on ne fait rien (déjà couvert manuellement).
+    """
+    if created:
+        return
+
+    before = getattr(instance, "_before_state", {}) or {}
+    prev_status = before.get("status")
+    if instance.status != dm.Task.Status.DONE or prev_status == dm.Task.Status.DONE:
+        return
+
+    user_id = instance.assignee_id
+    if not user_id:
+        return
+
+    spent = instance.spent_hours or Decimal("0")
+    if spent <= 0:
+        return
+
+    try:
+        from django.db.models import Sum
+
+        already = (
+            dm.TimesheetEntry.objects.filter(
+                user_id=user_id, task=instance,
+            ).aggregate(s=Sum("hours"))["s"] or Decimal("0")
+        )
+        delta = (spent - already)
+        if delta <= 0:
+            return  # Tout est déjà saisi (voire plus que prévu).
+
+        # Date de clôture (par défaut today)
+        target_date = (
+            instance.completed_at.date()
+            if instance.completed_at else timezone.localdate()
+        )
+
+        # Si la semaine cible est verrouillée (toutes les entries APPROVED),
+        # on bascule sur la semaine courante pour ne pas violer le verrou.
+        from datetime import timedelta as _td
+        monday = target_date - _td(days=target_date.weekday())
+        sunday = monday + _td(days=6)
+        week_qs = dm.TimesheetEntry.objects.filter(
+            user_id=user_id, entry_date__gte=monday, entry_date__lte=sunday,
+        )
+        statuses = set(week_qs.values_list("approval_status", flat=True))
+        if statuses and statuses <= {dm.TimesheetEntry.ApprovalStatus.APPROVED}:
+            target_date = timezone.localdate()
+
+        dm.TimesheetEntry.objects.create(
+            user_id=user_id,
+            workspace=instance.workspace,
+            project=instance.project,
+            task=instance,
+            entry_date=target_date,
+            hours=delta,
+            is_billable=True,
+            approval_status=dm.TimesheetEntry.ApprovalStatus.DRAFT,
+            description=(
+                f"Reversement automatique à la clôture — {delta} h "
+                f"(spent {spent} h, déjà saisi {already} h)."
+            ),
+        )
+
+        # Activity log si le module est dispo
+        try:
+            log_activity(
+                workspace=instance.workspace,
+                actor=getattr(instance, "_assigned_by", None),
+                project=instance.project,
+                task=instance,
+                activity_type=dm.ActivityLog.ActivityType.TASK_MOVED,
+                title="Heures reversées au timesheet",
+                description=(
+                    f"{delta} h reversées dans le timesheet de l'utilisateur "
+                    f"à la clôture de la tâche."
+                ),
+                metadata={
+                    "task_id": instance.pk,
+                    "user_id": user_id,
+                    "hours_reversed": float(delta),
+                    "entry_date": target_date.isoformat(),
+                },
+            )
+        except Exception:
+            pass
+
+    except Exception:
+        # Ne jamais bloquer le save de la tâche à cause du timesheet.
         pass

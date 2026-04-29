@@ -295,14 +295,22 @@ class WorkspaceForm(BaseStyledModelForm):
     class Meta:
         model = Workspace
         fields = [
-            "name",
-            "description",
-            "logo",
-            "owner",
-            "is_active",
-            "timezone",
-            "quarter_label",
+            "name", "description", "logo",
+            "owner", "is_active", "timezone", "quarter_label",
+            # Papier en-tête / facturation
+            "legal_name", "tagline",
+            "legal_rccm", "legal_cc", "legal_tax_id",
+            "address_line1", "address_line2",
+            "postal_code", "city", "country",
+            "phone", "website", "email",
+            "bank_details", "invoice_footer_text",
+            "accent_color",
         ]
+        widgets = {
+            "accent_color": forms.TextInput(attrs={"type": "color"}),
+            "bank_details": forms.Textarea(attrs={"rows": 3}),
+            "invoice_footer_text": forms.Textarea(attrs={"rows": 2}),
+        }
 
 
 class TeamForm(BaseStyledModelForm):
@@ -963,6 +971,7 @@ class TaskForm(BaseStyledModelForm):
             "progress_percent",
             "estimate_hours",
             "spent_hours",
+            "start_date",
             "due_date",
             "started_at",
             "completed_at",
@@ -970,6 +979,10 @@ class TaskForm(BaseStyledModelForm):
             "is_flagged",
         ]
         widgets = {
+            "start_date": forms.DateInput(
+                format="%Y-%m-%d",
+                attrs={"type": "date"},
+            ),
             "due_date": forms.DateInput(
                 format="%Y-%m-%d",
                 attrs={"type": "date"},

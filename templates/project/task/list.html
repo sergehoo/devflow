@@ -209,8 +209,10 @@
                                                   {% elif task.status == 'REVIEW' %}bg-[var(--amber-bg)] text-[var(--amber)]
                                                   {% elif task.status == 'DONE' %}bg-[var(--green-bg)] text-[var(--green)]
                                                   {% elif task.status == 'BLOCKED' %}bg-[var(--red-bg)] text-[var(--red)]
+                                                  {% elif task.status == 'EXPIRED' %}bg-[var(--red-bg)] text-[var(--red)]
                                                   {% elif task.status == 'CANCELLED' %}bg-[var(--bg3)] text-[var(--text3)]
                                                   {% else %}bg-[var(--bg3)] text-[var(--text2)]{% endif %}">
+                                                {% if task.status == 'EXPIRED' %}<i class="fa-solid fa-ban mr-1"></i>{% endif %}
                                                 {{ task.get_status_display|default:task.status }}
                                             </span>
 

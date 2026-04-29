@@ -22,7 +22,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Q, Count, Sum, ExpressionWrapper, F, DecimalField, Prefetch, Min, Max, Avg, Value, \
     FloatField
-from django.shortcuts import redirect, get_object_or_404
+from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import path, reverse_lazy, reverse
 from django.utils import timezone
 from django.utils.text import slugify
@@ -204,6 +204,8 @@ class DevflowBaseMixin(LoginRequiredMixin):
             return queryset.filter(objective__workspace_id=workspace_id)
         if "message" in direct_field_names:
             return queryset.filter(message__channel__workspace_id=workspace_id)
+        if "invoice" in direct_field_names:
+            return queryset.filter(invoice__workspace_id=workspace_id)
 
         return queryset
 
@@ -3805,6 +3807,8 @@ def task_status_update(request):
             dm.Task.Status.IN_PROGRESS,
             dm.Task.Status.REVIEW,
             dm.Task.Status.DONE,
+            dm.Task.Status.BLOCKED,
+            dm.Task.Status.EXPIRED,
         }
 
         if status not in allowed_statuses:
@@ -4408,6 +4412,7 @@ class TaskListView(DevflowListView):
                 type("Col", (), {"name": "Review", "mapped_status": dm.Task.Status.REVIEW, "color": "#F59E0B", "wip_limit": None, "is_done_column": False}),
                 type("Col", (), {"name": "Terminé", "mapped_status": dm.Task.Status.DONE, "color": "#10B981", "wip_limit": None, "is_done_column": True}),
                 type("Col", (), {"name": "Bloqué", "mapped_status": dm.Task.Status.BLOCKED, "color": "#EF4444", "wip_limit": None, "is_done_column": False}),
+                type("Col", (), {"name": "Expirée", "mapped_status": dm.Task.Status.EXPIRED, "color": "#7F1D1D", "wip_limit": None, "is_done_column": True}),
             ]
 
         for col in board_columns:
@@ -4552,7 +4557,14 @@ class TaskDetailView(DevflowDetailView):
             .order_by("-updated_at")[:6]
         )
 
-        is_overdue = bool(task.due_date and task.due_date < today and task.status != dm.Task.Status.DONE)
+        is_overdue = bool(
+            task.due_date and task.due_date < today
+            and task.status not in (
+                dm.Task.Status.DONE,
+                dm.Task.Status.CANCELLED,
+                dm.Task.Status.EXPIRED,
+            )
+        )
 
         ctx.update({
             "comments": comments,
@@ -4691,6 +4703,127 @@ class TaskMoveView(DevflowBaseMixin, View):
             task.position = int(position)
         task.save()
         messages.success(request, "Tâche déplacée avec succès.")
+        return redirect("task_detail", pk=task.pk)
+
+
+class TaskExtendView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """
+    Reconduire une tâche en retard : nouveau couple (start_date, due_date)
+    posé par le PM. Retour au statut TODO si elle était EXPIRED.
+    """
+    template_name = "project/task/extend.html"
+
+    def _get_task_or_403(self, request, pk):
+        task = self.filter_by_workspace(
+            dm.Task.objects.all()
+        ).select_related("project", "workspace").filter(pk=pk).first()
+        if not task:
+            return None
+        # Seul le PM ou l'owner peut arbitrer
+        pm = task.project.product_manager_id if task.project_id else None
+        owner = task.project.owner_id if task.project_id else None
+        if request.user.id not in (pm, owner) and not request.user.is_staff:
+            return False
+        return task
+
+    def get(self, request, pk):
+        task = self._get_task_or_403(request, pk)
+        if task is None:
+            messages.error(request, "Tâche introuvable.")
+            return redirect("task_list")
+        if task is False:
+            messages.error(request, "Action réservée au chef de projet ou propriétaire.")
+            return redirect("task_detail", pk=pk)
+        return render(request, self.template_name, {"task": task})
+
+    def post(self, request, pk):
+        from datetime import date as _date
+        task = self._get_task_or_403(request, pk)
+        if task is None:
+            messages.error(request, "Tâche introuvable.")
+            return redirect("task_list")
+        if task is False:
+            messages.error(request, "Action réservée au chef de projet ou propriétaire.")
+            return redirect("task_detail", pk=pk)
+
+        new_start = request.POST.get("start_date") or ""
+        new_due = request.POST.get("due_date") or ""
+        try:
+            new_due_d = _date.fromisoformat(new_due) if new_due else None
+        except ValueError:
+            new_due_d = None
+        try:
+            new_start_d = _date.fromisoformat(new_start) if new_start else None
+        except ValueError:
+            new_start_d = None
+        if not new_due_d:
+            messages.error(request, "Une nouvelle échéance est requise.")
+            return render(request, self.template_name, {"task": task})
+        if new_due_d < timezone.localdate():
+            messages.error(request, "L'échéance doit être dans le futur.")
+            return render(request, self.template_name, {"task": task})
+
+        task.start_date = new_start_d or task.start_date
+        task.due_date = new_due_d
+        task.expired_at = None
+        task.pm_overdue_notified_at = None
+        if task.status == dm.Task.Status.EXPIRED:
+            task.status = dm.Task.Status.TODO
+        task.save(update_fields=[
+            "start_date", "due_date", "expired_at",
+            "pm_overdue_notified_at", "status", "updated_at",
+        ])
+
+        try:
+            dm.ActivityLog.objects.create(
+                workspace=task.workspace, actor=request.user,
+                project=task.project, task=task,
+                activity_type=dm.ActivityLog.ActivityType.TASK_MOVED,
+                title="Tâche reconduite",
+                description=(
+                    f"{request.user} a reconduit la tâche « {task.title} » "
+                    f"jusqu'au {new_due_d:%d/%m/%Y}."
+                ),
+            )
+        except Exception:
+            pass
+        messages.success(
+            request,
+            f"Tâche reconduite jusqu'au {new_due_d:%d/%m/%Y}."
+        )
+        return redirect("task_detail", pk=task.pk)
+
+
+class TaskMarkExpiredView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """Marque la tâche comme EXPIRED — statut définitif côté planning."""
+
+    def post(self, request, pk):
+        task = self.filter_by_workspace(
+            dm.Task.objects.all()
+        ).select_related("project", "workspace").filter(pk=pk).first()
+        if not task:
+            messages.error(request, "Tâche introuvable.")
+            return redirect("task_list")
+        pm = task.project.product_manager_id if task.project_id else None
+        owner = task.project.owner_id if task.project_id else None
+        if request.user.id not in (pm, owner) and not request.user.is_staff:
+            messages.error(request, "Action réservée au chef de projet ou propriétaire.")
+            return redirect("task_detail", pk=pk)
+
+        task.status = dm.Task.Status.EXPIRED
+        task.expired_at = timezone.localdate()
+        task.save(update_fields=["status", "expired_at", "updated_at"])
+        try:
+            dm.ActivityLog.objects.create(
+                workspace=task.workspace, actor=request.user,
+                project=task.project, task=task,
+                activity_type=dm.ActivityLog.ActivityType.TASK_MOVED,
+                title="Tâche marquée expirée",
+                description=f"{request.user} a marqué la tâche « {task.title} » comme expirée non traitée.",
+            )
+        except Exception:
+            pass
+        messages.success(request, "Tâche marquée comme expirée non traitée.")
         return redirect("task_detail", pk=task.pk)
 
 
@@ -5615,7 +5748,125 @@ class TimesheetEntryListView(DevflowListView):
     template_name = "project/timesheet_entry/list.html"
     section = "timesheet"
     page_title = "Timesheets"
-    search_fields = ("description", "user__username")
+    search_fields = ("description", "user__username", "user__first_name", "user__last_name", "project__name")
+    paginate_by = 50
+
+    def get_context_data(self, **kwargs):
+        from datetime import timedelta as _td
+        from collections import defaultdict
+        from django.db.models import Sum, Count
+
+        ctx = super().get_context_data(**kwargs)
+        qs = self.get_queryset()
+        ws = self.get_current_workspace()
+
+        groups_dict = {}
+        for entry in qs.select_related("user").order_by("-entry_date", "user_id"):
+            monday = entry.entry_date - _td(days=entry.entry_date.weekday())
+            key = (entry.user_id, monday)
+            if key not in groups_dict:
+                groups_dict[key] = {
+                    "user": entry.user,
+                    "monday": monday,
+                    "sunday": monday + _td(days=6),
+                    "iso_week": monday.isocalendar()[1],
+                    "year": monday.year,
+                    "total_hours": 0.0,
+                    "entry_count": 0,
+                    "statuses": set(),
+                }
+            grp = groups_dict[key]
+            grp["total_hours"] += float(entry.hours or 0)
+            grp["entry_count"] += 1
+            grp["statuses"].add(entry.approval_status)
+
+        # Calcul du statut consolidé
+        for grp in groups_dict.values():
+            statuses = grp["statuses"]
+            if statuses == {dm.TimesheetEntry.ApprovalStatus.APPROVED}:
+                grp["status"] = dm.TimesheetEntry.ApprovalStatus.APPROVED
+            elif dm.TimesheetEntry.ApprovalStatus.REJECTED in statuses:
+                grp["status"] = dm.TimesheetEntry.ApprovalStatus.REJECTED
+            elif dm.TimesheetEntry.ApprovalStatus.SUBMITTED in statuses:
+                grp["status"] = dm.TimesheetEntry.ApprovalStatus.SUBMITTED
+            else:
+                grp["status"] = dm.TimesheetEntry.ApprovalStatus.DRAFT
+            grp["status_label"] = dict(dm.TimesheetEntry.ApprovalStatus.choices).get(
+                grp["status"], "—"
+            )
+            del grp["statuses"]
+
+        groups = sorted(groups_dict.values(), key=lambda g: (g["monday"], g["user"].username), reverse=True)
+        ctx["weekly_groups"] = groups
+        ctx["status_choices"] = dm.TimesheetEntry.ApprovalStatus.choices
+        return ctx
+
+
+class TimesheetWeekValidateView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """
+    POST /timesheets/week/validate/  — valide (APPROVED) toutes les entries
+    de la semaine d'un utilisateur.
+    POST avec params : user (pk), monday (YYYY-MM-DD), action (approve|reject|reopen|submit).
+    """
+
+    def post(self, request, *args, **kwargs):
+        from datetime import date as _date, timedelta as _td
+
+        user_id = request.POST.get("user")
+        monday_raw = request.POST.get("monday")
+        action = (request.POST.get("action") or "approve").strip()
+
+        if not (user_id and monday_raw):
+            messages.error(request, "Paramètres manquants.")
+            return redirect("timesheet_entry_list")
+        try:
+            monday = _date.fromisoformat(monday_raw)
+        except ValueError:
+            messages.error(request, "Date invalide.")
+            return redirect("timesheet_entry_list")
+
+        target_user = get_object_or_404(User, pk=user_id)
+        sunday = monday + _td(days=6)
+        qs = self.filter_by_workspace(
+            dm.TimesheetEntry.objects.filter(
+                user=target_user,
+                entry_date__gte=monday,
+                entry_date__lte=sunday,
+            )
+        )
+
+        if not qs.exists():
+            messages.warning(request, "Aucune entrée pour cette semaine.")
+            return redirect("timesheet_entry_list")
+
+        action_map = {
+            "submit": dm.TimesheetEntry.ApprovalStatus.SUBMITTED,
+            "approve": dm.TimesheetEntry.ApprovalStatus.APPROVED,
+            "reject": dm.TimesheetEntry.ApprovalStatus.REJECTED,
+            "reopen": dm.TimesheetEntry.ApprovalStatus.DRAFT,
+        }
+        if action not in action_map:
+            messages.error(request, "Action inconnue.")
+            return redirect("timesheet_entry_list")
+
+        new_status = action_map[action]
+        update_fields = {"approval_status": new_status}
+        if action in ("approve", "reject"):
+            update_fields["approved_by"] = request.user
+            update_fields["approved_at"] = timezone.now()
+        elif action == "reopen":
+            update_fields["approved_by"] = None
+            update_fields["approved_at"] = None
+        qs.update(**update_fields)
+
+        labels = {
+            "submit": "Semaine soumise pour validation",
+            "approve": f"Semaine du {monday:%d/%m/%Y} validée pour {target_user}",
+            "reject": "Semaine rejetée — l'utilisateur peut la modifier puis re-soumettre",
+            "reopen": "Semaine rouverte pour modifications",
+        }
+        messages.success(request, labels[action])
+        return redirect(request.META.get("HTTP_REFERER") or "timesheet_entry_list")
 
 
 class TimesheetEntryDetailView(DevflowDetailView):
@@ -5646,6 +5897,397 @@ class TimesheetEntryDeleteView(DevflowDeleteView):
     section = "timesheet"
     page_title = "Supprimer entrée timesheet"
     success_list_url_name = "timesheet_entry_list"
+
+
+# =========================================================================
+# CALENDRIER TIMESHEETS — saisie hebdomadaire style Microsoft Teams
+# =========================================================================
+class TimesheetCalendarView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """
+    Vue calendrier hebdomadaire :
+      - lignes = tâches actives assignées au user
+      - colonnes = 7 jours de la semaine sélectionnée
+      - cellules = total d'heures saisies pour (task, day)
+      - saisie inline : POST AJAX vers timesheet_calendar_save
+    """
+
+    template_name = "project/timesheet_entry/calendar.html"
+
+    def _resolve_week(self, request):
+        from datetime import date as _date, timedelta as _td
+
+        raw = request.GET.get("date")
+        try:
+            cur = _date.fromisoformat(raw) if raw else timezone.localdate()
+        except ValueError:
+            cur = timezone.localdate()
+        # Monday of the week
+        monday = cur - _td(days=cur.weekday())
+        days = [monday + _td(days=i) for i in range(7)]
+        return monday, days
+
+    def get(self, request, *args, **kwargs):
+        from datetime import timedelta as _td
+        from django.db.models import Sum
+
+        ws = self.get_current_workspace()
+        monday, days = self._resolve_week(request)
+        labels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+        # Liste de couples (label, date) pour itération directe en template
+        days_meta = [{"label": labels[i], "date": d} for i, d in enumerate(days)]
+
+        # ── 1. Tâches actives ───────────────────────────────────────
+        # Une tâche apparaît sur la semaine si :
+        #   - elle est assignée à l'utilisateur (FK ou TaskAssignment actif), ET
+        #   - sa période [start, end] intersecte la semaine [monday, sunday]
+        # Périmètre période :
+        #   - début = task.start_date  (sinon task.created_at, sinon -∞)
+        #   - fin   = task.due_date    (sinon +∞ ; si tâche DONE, fin = completed_at)
+        # Exception : on garde la tâche si l'utilisateur a déjà saisi
+        # des heures dessus dans la semaine (pour ne pas perdre une saisie).
+        sunday_date = days[-1]
+        all_assigned_ids = set(
+            dm.TaskAssignment.objects.filter(
+                user=request.user, is_active=True,
+                task__is_archived=False,
+            ).values_list("task_id", flat=True)
+        )
+        all_assigned_ids |= set(
+            dm.Task.objects.filter(
+                assignee=request.user, is_archived=False,
+            ).exclude(status__in=[
+                dm.Task.Status.DONE,
+                dm.Task.Status.CANCELLED,
+                dm.Task.Status.EXPIRED,
+            ]).values_list("id", flat=True)
+        )
+
+        candidate_tasks = (
+            dm.Task.objects.filter(pk__in=all_assigned_ids)
+            .select_related("project")
+        )
+
+        def _task_visible_on_week(t):
+            # Borne gauche
+            left = t.start_date or (t.created_at.date() if t.created_at else None)
+            if left and left > sunday_date:
+                return False
+            # Borne droite : si la tâche a été terminée AVANT le lundi, on cache.
+            if t.status == dm.Task.Status.DONE and t.completed_at:
+                if t.completed_at.date() < monday:
+                    return False
+            # Si due_date est strictement < monday ET la tâche n'est pas complétée,
+            # on cache aussi (la tâche est "hors période") sauf si EXPIRED → cachée
+            # car le PM a tranché.
+            if t.due_date and t.due_date < monday and t.status not in (
+                dm.Task.Status.DONE,
+            ):
+                # Tâche hors période : on cache, sauf si l'utilisateur a saisi
+                # des heures dessus cette semaine (cas géré ensuite).
+                return False
+            return True
+
+        tasks_qs = sorted(
+            (t for t in candidate_tasks if _task_visible_on_week(t)),
+            key=lambda t: (t.project.name if t.project_id else "", t.title),
+        )
+
+        entry_qs = (
+            dm.TimesheetEntry.objects.filter(
+                user=request.user,
+                entry_date__gte=monday,
+                entry_date__lte=days[-1],
+            )
+            .select_related("task", "project")
+        )
+
+        existing_task_ids = {t.id for t in tasks_qs}
+        # Tâches qui ont des entries cette semaine mais qu'on aurait masquées :
+        # on les ré-injecte pour ne jamais perdre une saisie.
+        extra_ids = set(
+            entry_qs.exclude(task__isnull=True)
+            .exclude(task_id__in=existing_task_ids)
+            .values_list("task_id", flat=True)
+        )
+        tasks_list = list(tasks_qs)
+        if extra_ids:
+            tasks_list += list(
+                dm.Task.objects.filter(pk__in=extra_ids).select_related("project")
+            )
+
+        # ── 2. Statut semaine (verrou si APPROVED) ──────────────────
+        week_status = self._compute_week_status(entry_qs)
+        is_locked = week_status == dm.TimesheetEntry.ApprovalStatus.APPROVED
+
+        # Map (task_id, day) -> hours pour les lignes "tâches"
+        task_cell_map = {}
+        for e in entry_qs.filter(task__isnull=False):
+            key = (e.task_id, e.entry_date)
+            task_cell_map[key] = (task_cell_map.get(key) or 0) + float(e.hours or 0)
+
+        # Construit la grille des tâches
+        grid = []
+        day_totals = {d: 0.0 for d in days}
+        for t in tasks_list:
+            row = {
+                "kind": "task",
+                "task": t,
+                "project": t.project,
+                "label": t.title,
+                "row_id": f"task-{t.id}",
+                "cells": [],
+                "total": 0.0,
+            }
+            for d in days:
+                hours = float(task_cell_map.get((t.id, d)) or 0)
+                row["cells"].append({"date": d, "hours": hours})
+                row["total"] += hours
+                day_totals[d] += hours
+            grid.append(row)
+
+        # ── 3. Activités libres (entries sans tâche) ────────────────
+        # Regroupement par (project_id, description normalisée).
+        free_groups = {}  # key -> dict
+        for e in entry_qs.filter(task__isnull=True):
+            desc = (e.description or "Activité").strip()
+            key = (e.project_id, desc.lower())
+            if key not in free_groups:
+                free_groups[key] = {
+                    "kind": "activity",
+                    "project": e.project,
+                    "label": desc,
+                    "row_id": f"activity-{e.project_id or 0}-{abs(hash(desc.lower())) % 10**8}",
+                    "description": desc,
+                    "project_id": e.project_id,
+                    "cells_map": {},
+                    "total": 0.0,
+                }
+            grp = free_groups[key]
+            grp["cells_map"][e.entry_date] = float(e.hours or 0)
+            grp["total"] += float(e.hours or 0)
+            day_totals[e.entry_date] = day_totals.get(e.entry_date, 0.0) + float(e.hours or 0)
+
+        for grp in free_groups.values():
+            cells = []
+            for d in days:
+                cells.append({"date": d, "hours": grp["cells_map"].get(d, 0.0)})
+            grp["cells"] = cells
+            del grp["cells_map"]
+            grid.append(grp)
+
+        week_total = sum(day_totals.values())
+
+        # Projets disponibles pour la modale "Nouvelle activité"
+        if ws:
+            projects_qs = dm.Project.objects.filter(
+                workspace=ws, is_archived=False
+            ).order_by("name")
+        else:
+            projects_qs = dm.Project.objects.none()
+
+        prev_week = monday - _td(days=7)
+        next_week = monday + _td(days=7)
+        today = timezone.localdate()
+
+        ctx = {
+            "section": "timesheet",
+            "page_title": "Calendrier des heures",
+            "current_workspace": ws,
+            "monday": monday,
+            "days": days,
+            "days_meta": days_meta,
+            "today": today,
+            "grid": grid,
+            "day_totals": day_totals,
+            "week_total": week_total,
+            "prev_week": prev_week,
+            "next_week": next_week,
+            "iso_week": monday.isocalendar()[1],
+            "year": monday.year,
+            "week_status": week_status,
+            "week_status_label": dict(dm.TimesheetEntry.ApprovalStatus.choices).get(
+                week_status, "Aucune saisie"
+            ),
+            "is_locked": is_locked,
+            "projects": projects_qs,
+        }
+        return render(request, self.template_name, ctx)
+
+    @staticmethod
+    def _compute_week_status(entry_qs):
+        """
+        Retourne :
+          APPROVED si toutes approved
+          REJECTED si au moins une rejetée
+          SUBMITTED si au moins une soumise
+          DRAFT sinon
+          "" si aucune entrée
+        """
+        statuses = set(entry_qs.values_list("approval_status", flat=True))
+        if not statuses:
+            return ""
+        if statuses == {dm.TimesheetEntry.ApprovalStatus.APPROVED}:
+            return dm.TimesheetEntry.ApprovalStatus.APPROVED
+        if dm.TimesheetEntry.ApprovalStatus.REJECTED in statuses:
+            return dm.TimesheetEntry.ApprovalStatus.REJECTED
+        if dm.TimesheetEntry.ApprovalStatus.SUBMITTED in statuses:
+            return dm.TimesheetEntry.ApprovalStatus.SUBMITTED
+        return dm.TimesheetEntry.ApprovalStatus.DRAFT
+
+
+class TimesheetCalendarSaveView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """
+    Endpoint AJAX appelé par le calendrier.
+    POST { task_id, date (YYYY-MM-DD), hours (decimal) }
+    Update or create la TimesheetEntry. Si hours == 0, supprime.
+    Retourne JSON { success, hours, day_total, week_total }.
+    """
+
+    def post(self, request, *args, **kwargs):
+        from datetime import date as _date, timedelta as _td
+        from decimal import Decimal, InvalidOperation
+        from django.db.models import Sum
+        from django.http import JsonResponse
+
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except Exception:
+            payload = request.POST
+
+        task_id = payload.get("task_id") or payload.get("task")
+        project_id = payload.get("project_id") or payload.get("project")
+        description = (payload.get("description") or "").strip()
+        raw_date = payload.get("date")
+        raw_hours = payload.get("hours")
+
+        if not raw_date or (not task_id and not project_id):
+            return JsonResponse({"success": False, "error": "Paramètres manquants."}, status=400)
+
+        try:
+            target_date = _date.fromisoformat(raw_date)
+        except (TypeError, ValueError):
+            return JsonResponse({"success": False, "error": "Date invalide."}, status=400)
+
+        try:
+            hours = Decimal(str(raw_hours or "0").replace(",", "."))
+        except (InvalidOperation, TypeError):
+            return JsonResponse({"success": False, "error": "Heures invalides."}, status=400)
+        if hours < 0 or hours > 24:
+            return JsonResponse({"success": False, "error": "Heures hors plage 0–24."}, status=400)
+
+        # Verrou : si la semaine est APPROVED, on refuse toute modification
+        monday = target_date - _td(days=target_date.weekday())
+        sunday = monday + _td(days=6)
+        week_qs = dm.TimesheetEntry.objects.filter(
+            user=request.user, entry_date__gte=monday, entry_date__lte=sunday,
+        )
+        week_status_set = set(week_qs.values_list("approval_status", flat=True))
+        if (
+            week_status_set
+            and week_status_set <= {dm.TimesheetEntry.ApprovalStatus.APPROVED}
+        ):
+            return JsonResponse(
+                {"success": False, "error": "Cette semaine est validée et verrouillée."},
+                status=403,
+            )
+
+        task = None
+        project = None
+        if task_id:
+            task = (
+                self.filter_by_workspace(dm.Task.objects.all())
+                .select_related("project", "workspace")
+                .filter(pk=task_id).first()
+            )
+            if not task:
+                return JsonResponse({"success": False, "error": "Tâche introuvable."}, status=404)
+            is_assigned = (
+                task.assignee_id == request.user.id
+                or dm.TaskAssignment.objects.filter(task=task, user=request.user).exists()
+            )
+            if not is_assigned:
+                return JsonResponse(
+                    {"success": False, "error": "Vous n'êtes pas affecté à cette tâche."},
+                    status=403,
+                )
+            project = task.project
+        else:
+            project = (
+                self.filter_by_workspace(dm.Project.objects.all())
+                .filter(pk=project_id, is_archived=False).first()
+            )
+            if not project:
+                return JsonResponse({"success": False, "error": "Projet introuvable."}, status=404)
+            if not description:
+                return JsonResponse(
+                    {"success": False, "error": "Un libellé est requis pour une activité libre."},
+                    status=400,
+                )
+
+        ws = (task.workspace if task else project.workspace) if (task or project) else None
+
+        if hours == 0:
+            qs_del = dm.TimesheetEntry.objects.filter(
+                user=request.user, entry_date=target_date,
+            )
+            if task:
+                qs_del = qs_del.filter(task=task)
+            else:
+                qs_del = qs_del.filter(task__isnull=True, project=project, description__iexact=description)
+            qs_del.delete()
+        else:
+            lookup = {
+                "user": request.user,
+                "entry_date": target_date,
+            }
+            defaults = {
+                "workspace": ws,
+                "project": project,
+                "hours": hours,
+                "is_billable": True,
+                "approval_status": dm.TimesheetEntry.ApprovalStatus.DRAFT,
+            }
+            if task:
+                lookup["task"] = task
+            else:
+                lookup["task"] = None
+                lookup["project"] = project
+                lookup["description__iexact"] = description
+                defaults["description"] = description
+
+            # update_or_create ne supporte pas les __ dans lookup, on fait à la main
+            existing = dm.TimesheetEntry.objects.filter(**lookup).first()
+            if existing:
+                for k, v in defaults.items():
+                    setattr(existing, k, v)
+                existing.save()
+            else:
+                # nettoyer le lookup pour create
+                clean_lookup = {
+                    k.replace("__iexact", ""): v
+                    for k, v in lookup.items()
+                }
+                dm.TimesheetEntry.objects.create(**{**clean_lookup, **defaults})
+
+        # Recalcul totaux
+        week_qs = dm.TimesheetEntry.objects.filter(
+            user=request.user, entry_date__gte=monday, entry_date__lte=sunday,
+        )
+        day_total = float(
+            week_qs.filter(entry_date=target_date).aggregate(s=Sum("hours"))["s"] or 0
+        )
+        week_total = float(week_qs.aggregate(s=Sum("hours"))["s"] or 0)
+
+        return JsonResponse({
+            "success": True,
+            "task_id": task.id if task else None,
+            "project_id": project.id if project else None,
+            "description": description or None,
+            "date": target_date.isoformat(),
+            "hours": float(hours),
+            "day_total": day_total,
+            "week_total": week_total,
+        })
 
 
 class DashboardSnapshotListView(DevflowListView):
@@ -6905,7 +7547,23 @@ class WorkspaceInvitationListView(DevflowListView):
     template_name = "project/workspace_invitation/list.html"
     section = "workspace"
     page_title = "Invitations workspace"
-    search_fields = ("email", "token", "status")
+    search_placeholder = "Rechercher par email…"
+    search_fields = ("email", "invited_by__username", "invited_by__first_name", "invited_by__last_name")
+    filter_fields = [
+        {"name": "status", "label": "Statut", "type": "choices",
+         "choices": dm.WorkspaceInvitation.Status.choices},
+        {"name": "role", "label": "Rôle", "type": "choices",
+         "choices": dm.TeamMembership.Role.choices},
+        {"name": "team", "label": "Équipe", "type": "model",
+         "queryset": "_teams_qs", "lookup": "team_id"},
+    ]
+
+    def _teams_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Team.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.Team.objects.none()
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("invited_by", "team", "workspace")
 
 
 class WorkspaceInvitationDetailView(DevflowDetailView):
@@ -6918,9 +7576,23 @@ class WorkspaceInvitationDetailView(DevflowDetailView):
 class WorkspaceInvitationCreateView(DevflowCreateView):
     model = dm.WorkspaceInvitation
     form_class = WorkspaceInvitationForm
+    template_name = "project/workspace_invitation/form.html"
     section = "workspace"
-    page_title = "Créer invitation workspace"
+    page_title = "Inviter un membre"
     success_list_url_name = "workspace_invitation_list"
+
+    def get_initial(self):
+        initial = super().get_initial()
+        team_id = self.request.GET.get("team")
+        role = self.request.GET.get("role")
+        email = self.request.GET.get("email")
+        if team_id:
+            initial["team"] = team_id
+        if role:
+            initial["role"] = role
+        if email:
+            initial["email"] = email
+        return initial
 
     def form_valid(self, form):
         invitation = form.save(
@@ -6943,9 +7615,58 @@ class WorkspaceInvitationCreateView(DevflowCreateView):
         return redirect(self.get_success_url())
 
 
+class WorkspaceInvitationResendView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """Renvoie l'email d'invitation pour une invitation PENDING."""
+
+    def post(self, request, pk):
+        from datetime import timedelta as _td
+        invitation = self.filter_by_workspace(
+            dm.WorkspaceInvitation.objects.all()
+        ).filter(pk=pk).first()
+        if not invitation:
+            messages.error(request, "Invitation introuvable.")
+            return redirect("workspace_invitation_list")
+        if invitation.status != dm.WorkspaceInvitation.Status.PENDING:
+            messages.warning(request, "Seules les invitations en attente peuvent être renvoyées.")
+            return redirect("workspace_invitation_list")
+
+        # Prolonge l'expiration si proche / dépassée
+        if not invitation.expires_at or invitation.expires_at <= timezone.now() + _td(days=1):
+            invitation.expires_at = timezone.now() + _td(days=14)
+            invitation.save(update_fields=["expires_at", "updated_at"])
+
+        try:
+            from project.services.invitations import send_invitation_email
+            send_invitation_email(invitation, request=request)
+            messages.success(request, f"Invitation renvoyée à {invitation.email}.")
+        except Exception as exc:
+            messages.error(request, f"Échec d'envoi : {exc}")
+        return redirect("workspace_invitation_list")
+
+
+class WorkspaceInvitationRevokeView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """Révoque une invitation (PENDING → REVOKED)."""
+
+    def post(self, request, pk):
+        invitation = self.filter_by_workspace(
+            dm.WorkspaceInvitation.objects.all()
+        ).filter(pk=pk).first()
+        if not invitation:
+            messages.error(request, "Invitation introuvable.")
+            return redirect("workspace_invitation_list")
+        if invitation.status != dm.WorkspaceInvitation.Status.PENDING:
+            messages.warning(request, "Seules les invitations en attente peuvent être révoquées.")
+            return redirect("workspace_invitation_list")
+        invitation.status = dm.WorkspaceInvitation.Status.REVOKED
+        invitation.save(update_fields=["status", "updated_at"])
+        messages.success(request, f"Invitation pour {invitation.email} révoquée.")
+        return redirect("workspace_invitation_list")
+
+
 class WorkspaceInvitationUpdateView(DevflowUpdateView):
     model = dm.WorkspaceInvitation
     form_class = WorkspaceInvitationForm
+    template_name = "project/workspace_invitation/form.html"
     section = "workspace"
     page_title = "Modifier invitation workspace"
     success_list_url_name = "workspace_invitation_list"
@@ -7776,6 +8497,36 @@ class InvoicePrintView(DevflowDetailView):
             status=dm.InvoicePayment.Status.CONFIRMED
         )
         return ctx
+
+
+class InvoicePDFView(DevflowBaseMixin, View):
+    """
+    Génère et télécharge un PDF A4 avec papier en-tête du workspace.
+    URL: /billing/invoices/<pk>/pdf/  → name="invoice_pdf"
+    Param ?inline=1 pour afficher dans le navigateur au lieu de télécharger.
+    """
+
+    def get(self, request, pk):
+        from django.http import HttpResponse, Http404
+        from project.services.invoice_pdf import render_invoice_pdf
+
+        invoice = self.filter_by_workspace(
+            dm.Invoice.objects.all()
+        ).select_related("project", "client", "workspace", "issued_by").filter(pk=pk).first()
+        if not invoice:
+            raise Http404("Facture introuvable.")
+
+        try:
+            pdf_bytes = render_invoice_pdf(invoice, request=request)
+        except Exception as exc:
+            messages.error(request, f"Impossible de générer le PDF : {exc}")
+            return redirect("invoice_detail", pk=invoice.pk)
+
+        filename = (invoice.number or f"facture-{invoice.pk}").replace("/", "-")
+        disposition = "inline" if request.GET.get("inline") == "1" else "attachment"
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'{disposition}; filename="{filename}.pdf"'
+        return response
 
 
 class InvoiceLineCreateView(DevflowCreateView):

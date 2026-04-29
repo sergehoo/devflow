@@ -1,0 +1,17 @@
+Bonjour {{ pm.first_name|default:pm.username }},
+
+La tâche « {{ task.title }} » du projet {{ project.name }} est en retard
+de {{ days_overdue }} jour(s) sur son échéance ({{ task.due_date|date:"d/m/Y" }}).
+
+Deux décisions possibles :
+
+  1) Reconduire la tâche pour une nouvelle période :
+     {{ extend_url }}
+
+  2) La marquer comme « expirée non traitée » (statut définitif) :
+     {{ expire_url }}
+
+Sans action de votre part, la tâche restera bloquée en retard et sortira
+des plannings hebdomadaires des collaborateurs.
+
+— Notification automatique Dev'Flow

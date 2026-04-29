@@ -209,7 +209,8 @@
         <a class="nav-subitem {% if current_url == 'team_list' or current_url == 'team_detail' or current_url == 'team_create' or current_url == 'team_update' %}lenk-active{% endif %}" href="{% url 'team_list' %}">Équipes</a>
         <a class="nav-subitem {% if current_url == 'team_membership_list' or current_url == 'team_membership_detail' or current_url == 'team_membership_create' or current_url == 'team_membership_update' %}lenk-active{% endif %}" href="{% url 'team_membership_list' %}">Membres d’équipe</a>
         <a class="nav-subitem {% if current_url == 'project_member_list' or current_url == 'project_member_detail' or current_url == 'project_member_create' or current_url == 'project_member_update' %}lenk-active{% endif %}" href="{% url 'project_member_list' %}">Membres projets</a>
-        <a class="nav-subitem {% if current_url == 'timesheet_entry_list' or current_url == 'timesheet_entry_detail' or current_url == 'timesheet_entry_create' or current_url == 'timesheet_entry_update' %}lenk-active{% endif %}" href="{% url 'timesheet_entry_list' %}">Timesheets</a>
+        <a class="nav-subitem {% if current_url == 'timesheet_calendar' %}lenk-active{% endif %}" href="{% url 'timesheet_calendar' %}">Timesheets · Calendrier</a>
+        <a class="nav-subitem {% if current_url == 'timesheet_entry_list' or current_url == 'timesheet_entry_detail' or current_url == 'timesheet_entry_create' or current_url == 'timesheet_entry_update' %}lenk-active{% endif %}" href="{% url 'timesheet_entry_list' %}">Timesheets · Liste</a>
       </div>
     </details>
 

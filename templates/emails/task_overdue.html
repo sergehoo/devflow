@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Tâche en retard · Dev'Flow</title></head>
+<body style="margin:0;padding:0;background:#f6f3ef;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1d1a17;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f3ef;padding:32px 16px;">
+  <tr><td align="center">
+    <table role="presentation" cellspacing="0" cellpadding="0" style="max-width:560px;background:#fff;border-radius:28px;overflow:hidden;border:1px solid rgba(0,0,0,.07);">
+      <tr>
+        <td style="padding:32px 32px 8px;">
+          <div style="font-size:11px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#FF5A1F;">Dev'Flow · Pilotage</div>
+          <h1 style="margin:12px 0 0;font-family:Georgia,serif;font-size:26px;line-height:1.25;color:#1d1a17;">
+            Tâche en retard — votre arbitrage
+          </h1>
+        </td>
+      </tr>
+
+      <tr>
+        <td style="padding:8px 32px 4px;font-size:15px;line-height:1.6;color:#1d1a17;">
+          <p style="margin:0 0 14px;">Bonjour <strong>{{ pm.first_name|default:pm.username }}</strong>,</p>
+          <p style="margin:0 0 14px;">
+            La tâche « <strong>{{ task.title }}</strong> » du projet
+            <strong>{{ project.name }}</strong> est en retard de
+            <strong>{{ days_overdue }} jour(s)</strong> sur son échéance ({{ task.due_date|date:"d/m/Y" }}).
+          </p>
+          <p style="margin:0 0 6px;color:#6d655d;font-size:14px;">Vous devez arbitrer entre deux options :</p>
+        </td>
+      </tr>
+
+      <tr>
+        <td align="center" style="padding:14px 32px 20px;">
+          <a href="{{ extend_url }}"
+             style="display:inline-block;background:#ff5a1f;color:#fff;text-decoration:none;padding:13px 22px;border-radius:14px;font-weight:600;font-size:14px;margin:6px 4px;">
+            Reconduire la tâche
+          </a>
+          <a href="{{ expire_url }}"
+             style="display:inline-block;background:#1d1a17;color:#fff;text-decoration:none;padding:13px 22px;border-radius:14px;font-weight:600;font-size:14px;margin:6px 4px;">
+            Maintenir expirée
+          </a>
+        </td>
+      </tr>
+
+      <tr>
+        <td style="padding:8px 32px 28px;font-size:12px;color:#a79f97;line-height:1.6;text-align:center;">
+          Sans décision, la tâche restera en retard. La marquer expirée la
+          retire du planning hebdomadaire des collaborateurs.
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

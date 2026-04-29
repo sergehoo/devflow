@@ -21,7 +21,9 @@ from project.views import HomeView, DashboardView, WorkspaceListView, WorkspaceC
     IntegrationDetailView, IntegrationCreateView, IntegrationListView, WorkspaceInvitationAcceptView, \
     WorkspaceInvitationPublicAcceptView, \
     WorkspaceInvitationDeleteView, WorkspaceInvitationUpdateView, WorkspaceInvitationDetailView, \
-    WorkspaceInvitationCreateView, WorkspaceInvitationListView, BoardColumnDeleteView, BoardColumnUpdateView, \
+    WorkspaceInvitationCreateView, WorkspaceInvitationListView, \
+    WorkspaceInvitationResendView, WorkspaceInvitationRevokeView, \
+    BoardColumnDeleteView, BoardColumnUpdateView, \
     BoardColumnDetailView, BoardColumnCreateView, BoardColumnListView, RoadmapItemDeleteView, RoadmapItemUpdateView, \
     RoadmapItemDetailView, RoadmapItemCreateView, RoadmapItemListView, RoadmapArchiveView, RoadmapDeleteView, \
     RoadmapUpdateView, RoadmapDetailView, RoadmapCreateView, RoadmapListView, ReleaseArchiveView, ReleaseDeleteView, \
@@ -38,7 +40,9 @@ from project.views import HomeView, DashboardView, WorkspaceListView, WorkspaceC
     UserPreferenceDeleteView, UserPreferenceUpdateView, UserPreferenceDetailView, UserPreferenceCreateView, \
     UserPreferenceListView, DashboardSnapshotDeleteView, DashboardSnapshotUpdateView, DashboardSnapshotDetailView, \
     DashboardSnapshotCreateView, DashboardSnapshotListView, TimesheetEntryDeleteView, TimesheetEntryUpdateView, \
-    TimesheetEntryDetailView, TimesheetEntryCreateView, TimesheetEntryListView, MessageDeleteView, MessageUpdateView, \
+    TimesheetEntryDetailView, TimesheetEntryCreateView, TimesheetEntryListView, \
+    TimesheetCalendarView, TimesheetCalendarSaveView, TimesheetWeekValidateView, \
+    MessageDeleteView, MessageUpdateView, \
     MessageDetailView, MessageCreateView, MessageListView, ChannelMembershipDeleteView, ChannelMembershipUpdateView, \
     ChannelMembershipDetailView, ChannelMembershipCreateView, ChannelMembershipListView, DirectChannelDeleteView, \
     DirectChannelUpdateView, DirectChannelDetailView, DirectChannelCreateView, DirectChannelListView, \
@@ -52,6 +56,7 @@ from project.views import HomeView, DashboardView, WorkspaceListView, WorkspaceC
     TaskCommentDeleteView, TaskCommentUpdateView, TaskCommentDetailView, TaskCommentCreateView, TaskCommentListView, \
     TaskAssignmentDeleteView, TaskAssignmentUpdateView, TaskAssignmentDetailView, TaskAssignmentCreateView, \
     TaskAssignmentListView, TaskMarkDoneView, TaskMoveView, TaskArchiveView, TaskDeleteView, TaskUpdateView, \
+    TaskExtendView, TaskMarkExpiredView, \
     TaskDetailView, TaskCreateView, TaskListView, BacklogItemArchiveView, BacklogItemDeleteView, BacklogItemUpdateView, \
     BacklogItemDetailView, BacklogItemCreateView, BacklogItemListView, SprintMetricDeleteView, SprintMetricUpdateView, \
     SprintMetricDetailView, SprintMetricCreateView, SprintMetricListView, SprintArchiveView, SprintDeleteView, \
@@ -175,6 +180,8 @@ urlpatterns = [
     path("tasks/<int:pk>/archive/", TaskArchiveView.as_view(), name="task_archive"),
     path("tasks/<int:pk>/move/", TaskMoveView.as_view(), name="task_move"),
     path("tasks/<int:pk>/mark-done/", TaskMarkDoneView.as_view(), name="task_mark_done"),
+    path("tasks/<int:pk>/extend/", TaskExtendView.as_view(), name="task_extend"),
+    path("tasks/<int:pk>/mark-expired/", TaskMarkExpiredView.as_view(), name="task_mark_expired"),
 
     path("task-assignments/", TaskAssignmentListView.as_view(), name="task_assignment_list"),
     path("task-assignments/create/", TaskAssignmentCreateView.as_view(), name="task_assignment_create"),
@@ -254,7 +261,10 @@ urlpatterns = [
     path("messages/<int:pk>/update/", MessageUpdateView.as_view(), name="message_update"),
     path("messages/<int:pk>/delete/", MessageDeleteView.as_view(), name="message_delete"),
 
-    path("timesheets/", TimesheetEntryListView.as_view(), name="timesheet_entry_list"),
+    path("timesheets/", TimesheetCalendarView.as_view(), name="timesheet_calendar"),
+    path("timesheets/list/", TimesheetEntryListView.as_view(), name="timesheet_entry_list"),
+    path("timesheets/calendar/save/", TimesheetCalendarSaveView.as_view(), name="timesheet_calendar_save"),
+    path("timesheets/week/validate/", TimesheetWeekValidateView.as_view(), name="timesheet_week_validate"),
     path("timesheets/create/", TimesheetEntryCreateView.as_view(), name="timesheet_entry_create"),
     path("timesheets/<int:pk>/", TimesheetEntryDetailView.as_view(), name="timesheet_entry_detail"),
     path("timesheets/<int:pk>/update/", TimesheetEntryUpdateView.as_view(), name="timesheet_entry_update"),
@@ -368,6 +378,10 @@ urlpatterns = [
          name="workspace_invitation_delete"),
     path("workspace-invitations/<int:pk>/accept/", WorkspaceInvitationAcceptView.as_view(),
          name="workspace_invitation_accept"),
+    path("workspace-invitations/<int:pk>/resend/", WorkspaceInvitationResendView.as_view(),
+         name="workspace_invitation_resend"),
+    path("workspace-invitations/<int:pk>/revoke/", WorkspaceInvitationRevokeView.as_view(),
+         name="workspace_invitation_revoke"),
     path("invitations/<str:token>/", WorkspaceInvitationPublicAcceptView.as_view(),
          name="workspace_invitation_public_accept"),
 
@@ -458,7 +472,7 @@ from project.views import (  # noqa: E402  -- Facturation
     InvoiceClientListView, InvoiceClientCreateView, InvoiceClientDetailView,
     InvoiceClientUpdateView, InvoiceClientDeleteView,
     InvoiceListView, InvoiceCreateView, InvoiceDetailView,
-    InvoiceUpdateView, InvoiceDeleteView, InvoicePrintView,
+    InvoiceUpdateView, InvoiceDeleteView, InvoicePrintView, InvoicePDFView,
     InvoiceIssueView, InvoiceMarkSentView, InvoiceCancelView,
     InvoicePaymentCreateView,
     InvoiceLineCreateView, InvoiceLineUpdateView, InvoiceLineDeleteView,
@@ -621,6 +635,7 @@ urlpatterns += [
     path("billing/invoices/<int:pk>/update/", InvoiceUpdateView.as_view(), name="invoice_update"),
     path("billing/invoices/<int:pk>/delete/", InvoiceDeleteView.as_view(), name="invoice_delete"),
     path("billing/invoices/<int:pk>/print/", InvoicePrintView.as_view(), name="invoice_print"),
+    path("billing/invoices/<int:pk>/pdf/", InvoicePDFView.as_view(), name="invoice_pdf"),
     path("billing/invoices/<int:pk>/issue/", InvoiceIssueView.as_view(), name="invoice_issue"),
     path("billing/invoices/<int:pk>/mark-sent/", InvoiceMarkSentView.as_view(), name="invoice_mark_sent"),
     path("billing/invoices/<int:pk>/cancel/", InvoiceCancelView.as_view(), name="invoice_cancel"),

@@ -114,8 +114,20 @@
                     </div>
 
                     <div>
+                        <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Début planifié</label>
+                        {{ form.start_date }}
+                        <p class="mt-1 text-xs text-[var(--text3)]">
+                            Date à partir de laquelle la tâche apparaît dans le calendrier hebdomadaire.
+                        </p>
+                        {% include "components/forms/field_errors.html" with field=form.start_date %}
+                    </div>
+
+                    <div>
                         <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Échéance</label>
                         {{ form.due_date }}
+                        <p class="mt-1 text-xs text-[var(--text3)]">
+                            Date après laquelle la tâche est considérée en retard et notifiée au PM.
+                        </p>
                         {% include "components/forms/field_errors.html" with field=form.due_date %}
                     </div>
 

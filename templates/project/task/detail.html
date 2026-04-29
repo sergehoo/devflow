@@ -46,6 +46,12 @@
                     {% if is_overdue %}
                     <span class="inline-flex rounded-full bg-[var(--amber-bg)] px-3 py-1 text-xs font-semibold text-[var(--amber)]">En retard</span>
                     {% endif %}
+
+                    {% if item.status == "EXPIRED" %}
+                    <span class="inline-flex rounded-full bg-[var(--red-bg)] px-3 py-1 text-xs font-semibold text-[var(--red)]">
+                        <i class="fa-solid fa-ban mr-1"></i> Expirée non traitée
+                    </span>
+                    {% endif %}
                 </div>
 
                 <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--text3)]">
@@ -63,6 +69,12 @@
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
+                {% if is_overdue or item.status == "EXPIRED" %}
+                <a href="{% url 'task_extend' item.pk %}"
+                   class="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white">
+                    <i class="fa-solid fa-rotate-right"></i> Reconduire
+                </a>
+                {% endif %}
                 <a href="{% url 'task_update' item.pk %}"
                    class="inline-flex items-center rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
                     Modifier
@@ -104,13 +116,55 @@
                 <div class="mt-1 text-sm font-semibold text-[var(--text1)]">{{ subtasks.count }}</div>
             </div>
             <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Début planifié</div>
+                <div class="mt-1 text-sm font-semibold text-[var(--text1)]">
+                    {{ item.start_date|date:"d/m/Y"|default:"—" }}
+                </div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
                 <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Échéance</div>
                 <div class="mt-1 text-sm font-semibold {% if is_overdue %}text-[var(--red)]{% else %}text-[var(--text1)]{% endif %}">
                     {{ item.due_date|date:"d/m/Y"|default:"—" }}
                 </div>
             </div>
+            {% if item.expired_at %}
+            <div class="rounded-2xl border border-red-500/30 bg-red-500/5 p-4">
+                <div class="text-[10px] uppercase tracking-wide text-red-500">Expirée le</div>
+                <div class="mt-1 text-sm font-semibold text-red-500">
+                    {{ item.expired_at|date:"d/m/Y" }}
+                </div>
+            </div>
+            {% endif %}
         </div>
     </section>
+
+    {% if is_overdue and item.status != "EXPIRED" %}
+    <section class="rounded-[24px] border border-amber-500/30 bg-amber-500/5 p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-start gap-3">
+            <i class="fa-solid fa-triangle-exclamation text-amber-500 text-xl mt-0.5"></i>
+            <div>
+                <p class="text-sm font-semibold text-[var(--text1)]">Cette tâche a dépassé son échéance</p>
+                <p class="text-xs text-[var(--text2)] mt-1">
+                    Le chef de projet doit arbitrer : reconduire la tâche pour une nouvelle période,
+                    ou la marquer comme expirée non traitée.
+                </p>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{% url 'task_extend' item.pk %}"
+               class="inline-flex items-center gap-2 rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white">
+                <i class="fa-solid fa-rotate-right"></i> Reconduire
+            </a>
+            <form method="post" action="{% url 'task_mark_expired' item.pk %}"
+                  onsubmit="return confirm('Marquer cette tâche comme expirée non traitée ? Cette action est définitive.');">
+                {% csrf_token %}
+                <button class="inline-flex items-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-500 hover:bg-red-500 hover:text-white">
+                    <i class="fa-solid fa-ban"></i> Maintenir expirée
+                </button>
+            </form>
+        </div>
+    </section>
+    {% endif %}
 
     <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_.9fr]">
 

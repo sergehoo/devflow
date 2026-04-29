@@ -46,6 +46,32 @@ class Workspace(TimeStampedModel, SoftDeleteModel):
     timezone = models.CharField(max_length=64, default="Africa/Abidjan")
     quarter_label = models.CharField(max_length=30, blank=True, help_text="Ex: Q2 2026")
 
+    # ─── Papier en-tête (utilisé pour les PDF facture, devis, etc.) ───
+    legal_name = models.CharField(max_length=200, blank=True,
+                                  help_text="Raison sociale complète (ex: SARL DATARIUM)")
+    tagline = models.CharField(max_length=120, blank=True,
+                               help_text="Slogan affiché en pied de page (ex: DIGITAL & TECHNOLOGIES)")
+    legal_rccm = models.CharField(max_length=60, blank=True,
+                                  help_text="Numéro RCCM")
+    legal_cc = models.CharField(max_length=60, blank=True,
+                                help_text="Numéro Compte Contribuable")
+    legal_tax_id = models.CharField(max_length=60, blank=True,
+                                    help_text="Identifiant fiscal / TVA")
+    address_line1 = models.CharField(max_length=200, blank=True)
+    address_line2 = models.CharField(max_length=200, blank=True)
+    postal_code = models.CharField(max_length=20, blank=True)
+    city = models.CharField(max_length=120, blank=True)
+    country = models.CharField(max_length=80, blank=True)
+    phone = models.CharField(max_length=40, blank=True)
+    website = models.URLField(blank=True)
+    email = models.EmailField(blank=True)
+    bank_details = models.TextField(blank=True,
+                                    help_text="IBAN / RIB / coordonnées bancaires affichées sur la facture")
+    invoice_footer_text = models.TextField(blank=True,
+                                           help_text="Mentions légales additionnelles (TVA non applicable, etc.)")
+    accent_color = models.CharField(max_length=20, default="#F4722B",
+                                    help_text="Couleur de la barre orange du papier en-tête")
+
     class Meta:
         ordering = ["name"]
         verbose_name = "Workspace"
@@ -1104,6 +1130,7 @@ class Task(TimeStampedModel, SoftDeleteModel):
         DONE = "DONE", "Terminé"
         BLOCKED = "BLOCKED", "Bloqué"
         CANCELLED = "CANCELLED", "Annulé"
+        EXPIRED = "EXPIRED", "Expirée non traitée"
 
     class Priority(models.TextChoices):
         LOW = "LOW", "Low"
@@ -1125,9 +1152,21 @@ class Task(TimeStampedModel, SoftDeleteModel):
     progress_percent = models.PositiveSmallIntegerField(default=0)
     estimate_hours = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     spent_hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    start_date = models.DateField(
+        null=True, blank=True,
+        help_text="Date à partir de laquelle la tâche est planifiée (borne gauche du calendrier).",
+    )
     due_date = models.DateField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    expired_at = models.DateField(
+        null=True, blank=True,
+        help_text="Date à laquelle la tâche a été marquée expirée non traitée.",
+    )
+    pm_overdue_notified_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Dernière fois que le PM a été notifié du dépassement d'échéance.",
+    )
     reporter = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1600,8 +1639,13 @@ class TimesheetEntry(TimeStampedModel):
         ordering = ["-entry_date", "-created_at"]
 
     def clean(self):
-        if self.hours is not None and self.hours <= 0:
-            raise ValidationError({"hours": "Le nombre d'heures doit être supérieur à 0."})
+        # Les heures peuvent être 0 (saisie en attente) — on bloque seulement les valeurs négatives
+        # ou abusives (> 24h sur une journée).
+        if self.hours is not None:
+            if self.hours < 0:
+                raise ValidationError({"hours": "Le nombre d'heures ne peut pas être négatif."})
+            if self.hours > 24:
+                raise ValidationError({"hours": "Le nombre d'heures ne peut pas dépasser 24 sur une même journée."})
 
     def __str__(self):
         return f"{self.user} · {self.hours}h · {self.entry_date}"

@@ -1,0 +1,386 @@
+{% extends "layout/base.html" %}
+{% load devflow_extras %}
+{% load l10n %}
+
+{% block title %}Calendrier des heures — Dev'Flow{% endblock %}
+{% block page_title %}Calendrier des heures{% endblock %}
+{% block breadcrumb %}Pilotage · Timesheets · Calendrier{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-7xl space-y-6"
+     x-data="timesheetCalendar({
+         saveUrl: '{% url 'timesheet_calendar_save' %}',
+         csrfToken: '{{ csrf_token }}',
+         weekTotal: {% localize off %}{{ week_total|default:0|floatformat:'2u' }}{% endlocalize %},
+         dayTotals: { {% for d, t in day_totals.items %}'{{ d|date:'Y-m-d' }}': {% localize off %}{{ t|default:0|floatformat:'2u' }}{% endlocalize %}{% if not forloop.last %},{% endif %}{% endfor %} }
+     })">
+
+    <!-- HERO + NAV -->
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 lg:p-7 shadow-soft">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--accent)]">Dev'Flow · Timesheets</p>
+                <h1 class="mt-2 font-serif text-3xl text-[var(--text1)]">
+                    Semaine {{ iso_week }} — {{ year }}
+                </h1>
+                <p class="mt-2 text-sm text-[var(--text2)]">
+                    Du {{ monday|date:"d/m/Y" }} au {{ days|last|date:"d/m/Y" }} · saisissez vos heures directement dans les cellules.
+                </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="?date={{ prev_week|date:'Y-m-d' }}"
+                   class="inline-flex h-10 items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 text-sm font-semibold text-[var(--text2)] hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-chevron-left"></i> Semaine précédente
+                </a>
+                <a href="?date={{ today|date:'Y-m-d' }}"
+                   class="inline-flex h-10 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-white">
+                    Aujourd'hui
+                </a>
+                <a href="?date={{ next_week|date:'Y-m-d' }}"
+                   class="inline-flex h-10 items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 text-sm font-semibold text-[var(--text2)] hover:text-[var(--text1)]">
+                    Semaine suivante <i class="fa-solid fa-chevron-right"></i>
+                </a>
+                <a href="{% url 'timesheet_entry_list' %}"
+                   class="inline-flex h-10 items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 text-sm font-semibold text-[var(--text2)] hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-list"></i> Vue liste
+                </a>
+            </div>
+        </div>
+
+        <!-- KPIs -->
+        <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Total semaine</div>
+                <div class="mt-1 text-2xl font-semibold text-[var(--text1)]" x-text="formatHours(weekTotal) + ' h'"></div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Tâches actives</div>
+                <div class="mt-1 text-2xl font-semibold text-[var(--text1)]">{{ grid|length }}</div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Aujourd'hui</div>
+                <div class="mt-1 text-2xl font-semibold text-[var(--text1)]"
+                     x-text="formatHours(dayTotals['{{ today|date:'Y-m-d' }}'] || 0) + ' h'"></div>
+            </div>
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] p-4">
+                <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Capacité hebdo</div>
+                <div class="mt-1 text-2xl font-semibold text-[var(--text1)]">
+                    {{ user.profile.capacity_hours_per_week|default:40 }} h
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- GRILLE -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="bg-[var(--bg3)] text-[var(--text3)] uppercase text-[11px] tracking-wide">
+                        <th class="px-4 py-3 text-left sticky left-0 bg-[var(--bg3)] z-10 min-w-[280px]">Tâche / Activité</th>
+                        {% for dm in days_meta %}
+                        <th class="px-3 py-3 text-center min-w-[100px] {% if dm.date == today %}bg-[var(--accent-bg)] text-[var(--accent)]{% endif %}">
+                            <div class="font-semibold">{{ dm.label }}</div>
+                            <div class="font-normal text-[10px] mt-0.5">{{ dm.date|date:"d/m" }}</div>
+                        </th>
+                        {% endfor %}
+                        <th class="px-3 py-3 text-center min-w-[80px] bg-[var(--bg3)]">Total</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-[var(--border)]">
+                    {% for row in grid %}
+                    <tr class="hover:bg-[var(--bg3)]/30">
+                        <td class="px-4 py-3 sticky left-0 bg-[var(--bg2)] z-[1]">
+                            {% if row.kind == 'task' %}
+                                <a href="{% url 'task_detail' row.task.pk %}" class="block group">
+                                    <div class="font-medium text-[var(--text1)] group-hover:text-[var(--accent)] line-clamp-1">
+                                        {{ row.task.title }}
+                                    </div>
+                                    <div class="text-[11px] text-[var(--text3)] mt-0.5">
+                                        {{ row.task.project.name }} ·
+                                        <span class="inline-block px-1.5 py-0.5 rounded
+                                            {% if row.task.status == 'IN_PROGRESS' %}bg-sky-500/15 text-sky-500
+                                            {% elif row.task.status == 'REVIEW' %}bg-amber-500/15 text-amber-500
+                                            {% elif row.task.status == 'BLOCKED' %}bg-red-500/15 text-red-500
+                                            {% else %}bg-[var(--bg3)] text-[var(--text2)]{% endif %}">
+                                            {{ row.task.get_status_display }}
+                                        </span>
+                                    </div>
+                                </a>
+                            {% else %}
+                                <div>
+                                    <div class="font-medium text-[var(--text1)] line-clamp-1">
+                                        <i class="fa-solid fa-bolt text-amber-500 text-[10px] mr-1"></i>{{ row.label }}
+                                    </div>
+                                    <div class="text-[11px] text-[var(--text3)] mt-0.5">
+                                        {{ row.project.name|default:"Sans projet" }} ·
+                                        <span class="inline-block px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500">Activité libre</span>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        </td>
+                        {% for cell in row.cells %}
+                        <td class="px-2 py-2 text-center {% if cell.date == today %}bg-[var(--accent-bg)]/30{% endif %}">
+                            <input type="number"
+                                   step="0.25" min="0" max="24"
+                                   value="{% localize off %}{% if cell.hours %}{{ cell.hours|floatformat:'2u' }}{% endif %}{% endlocalize %}"
+                                   {% if row.kind == 'task' %}data-task-id="{{ row.task.pk }}"{% else %}data-project-id="{{ row.project_id }}" data-description="{{ row.description }}"{% endif %}
+                                   data-date="{{ cell.date|date:'Y-m-d' }}"
+                                   data-row-total-id="row-total-{{ row.row_id }}"
+                                   data-day-total-id="col-total-{{ cell.date|date:'Y-m-d' }}"
+                                   placeholder="—"
+                                   {% if is_locked %}disabled{% endif %}
+                                   @change="saveCell($event)"
+                                   class="ts-cell w-16 rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-sm text-center text-[var(--text1)] hover:border-[var(--border)] focus:outline-none focus:border-[var(--accent)] focus:bg-[var(--bg2)] transition disabled:opacity-50 disabled:cursor-not-allowed">
+                        </td>
+                        {% endfor %}
+                        <td class="px-3 py-3 text-center font-semibold text-[var(--text1)] bg-[var(--bg3)]/40"
+                            id="row-total-{{ row.row_id }}"
+                            data-base-total="{% localize off %}{{ row.total|default:0|floatformat:'2u' }}{% endlocalize %}">
+                            {{ row.total|floatformat:2 }} h
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="px-4 py-16 text-center">
+                            <i class="fa-solid fa-calendar-day text-4xl text-[var(--text3)] mb-3 block"></i>
+                            <p class="text-sm text-[var(--text2)]">Aucune tâche ni activité saisie pour cette semaine.</p>
+                            <p class="mt-1 text-xs text-[var(--text3)]">
+                                Demandez à votre PM de vous affecter une tâche, ou ajoutez une activité libre ci-dessous.
+                            </p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% if grid %}
+                <tfoot>
+                    <tr class="bg-[var(--bg3)] text-[var(--text2)]">
+                        <td class="px-4 py-3 text-right font-semibold sticky left-0 bg-[var(--bg3)]">Total / jour</td>
+                        {% for d in days %}
+                        <td class="px-3 py-3 text-center font-semibold text-[var(--text1)] {% if d == today %}text-[var(--accent)]{% endif %}"
+                            id="col-total-{{ d|date:'Y-m-d' }}">
+                            {{ day_totals|get_item:d|default:0|floatformat:2 }} h
+                        </td>
+                        {% endfor %}
+                        <td class="px-3 py-3 text-center font-bold text-[var(--accent)]" id="week-total">
+                            {{ week_total|floatformat:2 }} h
+                        </td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </section>
+
+    <!-- Statut semaine + actions ───────────────────────────────── -->
+    <section class="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto]">
+        <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft">
+            <div class="flex flex-wrap items-center gap-3">
+                <span class="text-xs uppercase tracking-wide text-[var(--text3)]">Statut</span>
+                {% if week_status == 'APPROVED' %}
+                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-500">
+                        <i class="fa-solid fa-lock"></i> Validée — verrouillée
+                    </span>
+                {% elif week_status == 'SUBMITTED' %}
+                    <span class="inline-flex rounded-full bg-sky-500/15 px-3 py-1 text-xs font-semibold text-sky-500">En attente de validation</span>
+                {% elif week_status == 'REJECTED' %}
+                    <span class="inline-flex rounded-full bg-red-500/15 px-3 py-1 text-xs font-semibold text-red-500">Rejetée — corrigez et re-soumettez</span>
+                {% elif week_status == 'DRAFT' %}
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text2)]">Brouillon</span>
+                {% else %}
+                    <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-xs font-semibold text-[var(--text3)]">Aucune saisie</span>
+                {% endif %}
+            </div>
+            <p class="mt-3 text-xs text-[var(--text3)]">
+                <i class="fa-solid fa-circle-info text-[var(--accent)] mr-1"></i>
+                Cliquez dans une cellule, saisissez les heures (ex. <strong>2.5</strong>), puis <kbd class="rounded bg-[var(--bg3)] px-1.5 py-0.5 border border-[var(--border)] text-[10px]">Tab</kbd> pour enregistrer. Saisissez <strong>0</strong> pour supprimer.
+            </p>
+        </div>
+
+        <div class="flex flex-wrap items-end gap-2">
+            {% if not is_locked and week_status %}
+            <form method="post" action="{% url 'timesheet_week_validate' %}">
+                {% csrf_token %}
+                <input type="hidden" name="user" value="{{ request.user.pk }}">
+                <input type="hidden" name="monday" value="{{ monday|date:'Y-m-d' }}">
+                <input type="hidden" name="action" value="submit">
+                <button class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm font-semibold text-[var(--text2)] hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-paper-plane"></i> Soumettre la semaine
+                </button>
+            </form>
+            {% endif %}
+
+            {% if request.user.is_staff or request.user.is_superuser %}
+                {% if not is_locked and week_status %}
+                <form method="post" action="{% url 'timesheet_week_validate' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="user" value="{{ request.user.pk }}">
+                    <input type="hidden" name="monday" value="{{ monday|date:'Y-m-d' }}">
+                    <input type="hidden" name="action" value="approve">
+                    <button class="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white">
+                        <i class="fa-solid fa-circle-check"></i> Valider la semaine
+                    </button>
+                </form>
+                {% endif %}
+                {% if is_locked %}
+                <form method="post" action="{% url 'timesheet_week_validate' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="user" value="{{ request.user.pk }}">
+                    <input type="hidden" name="monday" value="{{ monday|date:'Y-m-d' }}">
+                    <input type="hidden" name="action" value="reopen">
+                    <button class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm font-semibold text-[var(--text2)] hover:text-[var(--text1)]">
+                        <i class="fa-solid fa-lock-open"></i> Rouvrir
+                    </button>
+                </form>
+                {% endif %}
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- Bloc Nouvelle activité libre ─────────────────────────────── -->
+    {% if not is_locked %}
+    <section class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-5 shadow-soft" x-data="{open: false}">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-[var(--text1)]">Pas de tâche dédiée ?</h3>
+                <p class="mt-1 text-xs text-[var(--text3)]">Renseignez une activité libre liée à un projet (réunion, support, R&D, etc.).</p>
+            </div>
+            <button @click="open = !open"
+                    class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
+                <i class="fa-solid fa-plus"></i> Nouvelle activité
+            </button>
+        </div>
+
+        <div x-show="open" x-cloak class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_2fr_auto]">
+            <select x-ref="actProject"
+                    class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2.5 text-sm text-[var(--text1)]">
+                <option value="">— Choisir un projet —</option>
+                {% for p in projects %}
+                <option value="{{ p.pk }}">{{ p.name }}</option>
+                {% endfor %}
+            </select>
+            <input x-ref="actDesc" type="text" placeholder="Libellé (ex: Réunion projet, Veille techno…)"
+                   class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2.5 text-sm text-[var(--text1)] placeholder:text-[var(--text3)]">
+            <button @click="addActivity($refs.actProject.value, $refs.actDesc.value); open = false; $refs.actProject.value=''; $refs.actDesc.value=''"
+                    class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] hover:text-[var(--text1)]">
+                <i class="fa-solid fa-arrow-right"></i> Ajouter la ligne
+            </button>
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- Toast -->
+    <div x-show="toastMessage" x-cloak x-transition
+         class="fixed bottom-6 right-6 z-50 rounded-2xl px-4 py-3 shadow-lg text-sm font-semibold"
+         :class="toastError ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'">
+        <span x-text="toastMessage"></span>
+    </div>
+</div>
+
+<script>
+function timesheetCalendar(opts) {
+    return {
+        saveUrl: opts.saveUrl,
+        csrfToken: opts.csrfToken,
+        weekTotal: opts.weekTotal,
+        dayTotals: opts.dayTotals || {},
+        toastMessage: "",
+        toastError: false,
+
+        formatHours(value) {
+            const v = Number(value || 0);
+            return v.toFixed(2);
+        },
+
+        toast(msg, isError) {
+            this.toastMessage = msg;
+            this.toastError = !!isError;
+            setTimeout(() => { this.toastMessage = ""; }, 2200);
+        },
+
+        async saveCell(ev) {
+            const el = ev.target;
+            const taskId = el.dataset.taskId;
+            const projectId = el.dataset.projectId;
+            const description = el.dataset.description;
+            const date = el.dataset.date;
+            const hours = parseFloat((el.value || "0").toString().replace(",", "."));
+            if (isNaN(hours) || hours < 0 || hours > 24) {
+                this.toast("Heures invalides (0–24)", true);
+                el.value = "";
+                return;
+            }
+            const body = { date: date, hours: hours };
+            if (taskId) body.task_id = taskId;
+            else { body.project_id = projectId; body.description = description; }
+            try {
+                const r = await fetch(this.saveUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": this.csrfToken,
+                    },
+                    body: JSON.stringify(body),
+                });
+                const data = await r.json();
+                if (!r.ok || !data.success) throw new Error(data.error || "Erreur");
+
+                const colEl = document.getElementById(el.dataset.dayTotalId);
+                const rowEl = document.getElementById(el.dataset.rowTotalId);
+                if (colEl) colEl.textContent = this.formatHours(data.day_total) + " h";
+                if (rowEl) {
+                    // Recalcule total ligne en additionnant les inputs présents
+                    let total = 0;
+                    const tr = rowEl.closest("tr");
+                    if (tr) tr.querySelectorAll("input.ts-cell").forEach(inp => {
+                        total += parseFloat((inp.value || "0").replace(",", ".")) || 0;
+                    });
+                    rowEl.textContent = this.formatHours(total) + " h";
+                }
+                const weekEl = document.getElementById("week-total");
+                if (weekEl) weekEl.textContent = this.formatHours(data.week_total) + " h";
+                this.weekTotal = data.week_total;
+                this.dayTotals[date] = data.day_total;
+
+                this.toast(hours === 0 ? "Entrée supprimée" : "Heures enregistrées");
+                if (hours === 0) el.value = "";
+            } catch (e) {
+                this.toast(e.message || "Erreur d'enregistrement", true);
+            }
+        },
+
+        addActivity(projectId, description) {
+            if (!projectId || !description.trim()) {
+                this.toast("Choisissez un projet et un libellé", true);
+                return;
+            }
+            // Recharge la page avec un focus sur le jour courant : la prochaine
+            // saisie sur la ligne nouvellement créée alimentera l'activité.
+            // On crée immédiatement une entry à 0.5h aujourd'hui pour matérialiser la ligne.
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, "0");
+            const dd = String(today.getDate()).padStart(2, "0");
+            fetch(this.saveUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-CSRFToken": this.csrfToken },
+                body: JSON.stringify({
+                    project_id: projectId,
+                    description: description.trim(),
+                    date: `${yyyy}-${mm}-${dd}`,
+                    hours: 0.5,
+                }),
+            }).then(r => r.json()).then(data => {
+                if (data && data.success) {
+                    this.toast("Activité ajoutée — ajustez les heures dans la grille");
+                    setTimeout(() => window.location.reload(), 600);
+                } else {
+                    this.toast((data && data.error) || "Erreur d'ajout", true);
+                }
+            }).catch(() => this.toast("Erreur réseau", true));
+        },
+    };
+}
+</script>
+{% endblock %}

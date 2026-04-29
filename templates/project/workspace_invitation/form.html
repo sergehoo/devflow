@@ -1,0 +1,8 @@
+{% extends "project/_generic_form.html" %}
+
+{% block form_title %}{% if object %}Modifier l'invitation{% else %}Inviter un nouveau membre{% endif %}{% endblock %}
+{% block form_heading %}{% if object %}Modifier l'invitation envoyée{% else %}Inviter un membre par e-mail{% endif %}{% endblock %}
+{% block form_subtitle %}L'invité recevra un e-mail avec un lien sécurisé. Il créera son compte et rejoindra automatiquement le workspace{% if request.GET.team or object.team %}, et l'équipe choisie{% endif %} avec le rôle indiqué. Le lien est valable 14 jours.{% endblock %}
+{% block back_url %}{% url 'workspace_invitation_list' %}{% endblock %}
+{% block cancel_url %}{% url 'workspace_invitation_list' %}{% endblock %}
+{% block submit_label %}{% if object %}Enregistrer{% else %}Envoyer l'invitation{% endif %}{% endblock %}

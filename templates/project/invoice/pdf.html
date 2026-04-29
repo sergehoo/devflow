@@ -1,0 +1,391 @@
+{% load humanize %}<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Facture {{ invoice.number|default:'(brouillon)' }}</title>
+<style>
+    @page {
+        size: A4;
+        margin: 32mm 18mm 38mm 18mm;
+
+        /* ──── PAPIER EN-TÊTE : marge haute (logo + barre orange) ──── */
+        @top-left {
+            content: "";
+            background-image: url("{{ logo_uri }}");
+            background-repeat: no-repeat;
+            background-position: right top;
+            background-size: contain;
+            width: 100%;
+            height: 22mm;
+            border-bottom: 1.5pt solid {{ workspace.accent_color|default:"#F4722B" }};
+        }
+
+        /* ──── PIED DE PAGE 3 colonnes ──── */
+        @bottom-left {
+            content: "{% if workspace.legal_rccm %}RCCM : {{ workspace.legal_rccm }}{% endif %}{% if workspace.legal_cc %}\A CC : {{ workspace.legal_cc }}{% endif %}";
+            white-space: pre;
+            font-size: 8pt;
+            color: #1d1a17;
+            padding-top: 6mm;
+            border-top: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
+            text-align: left;
+        }
+        @bottom-center {
+            content: "{{ workspace.address_line1 }}{% if workspace.address_line1 and workspace.address_line2 %}\A {{ workspace.address_line2 }}{% elif workspace.address_line2 %}{{ workspace.address_line2 }}{% endif %}{% if workspace.postal_code or workspace.city %}\A {{ workspace.postal_code }} {{ workspace.city }}{% endif %}";
+            white-space: pre;
+            font-size: 8pt;
+            color: #1d1a17;
+            padding-top: 6mm;
+            border-top: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
+            text-align: center;
+        }
+        @bottom-right {
+            content: "{% if workspace.phone %}Tél. : {{ workspace.phone }}{% endif %}{% if workspace.website %}\A Site web : {{ workspace.website }}{% endif %}";
+            white-space: pre;
+            font-size: 8pt;
+            color: #1d1a17;
+            padding-top: 6mm;
+            border-top: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
+            text-align: right;
+        }
+    }
+
+    /* Tagline juste sous les coordonnées */
+    .tagline-band {
+        position: fixed;
+        left: 0; right: 0; bottom: -32mm;
+        text-align: center;
+        font-size: 9pt;
+        font-weight: 700;
+        letter-spacing: 4pt;
+        color: {{ workspace.accent_color|default:"#F4722B" }};
+    }
+
+    body {
+        font-family: "Helvetica", "Arial", sans-serif;
+        color: #1d1a17;
+        font-size: 10pt;
+        line-height: 1.55;
+    }
+
+    h1, h2, h3 { color: #1d1a17; margin: 0; }
+
+    .invoice-title {
+        font-size: 22pt;
+        font-weight: 700;
+        letter-spacing: -0.5pt;
+        margin-bottom: 2mm;
+    }
+    .invoice-number {
+        color: {{ workspace.accent_color|default:"#F4722B" }};
+        font-weight: 700;
+        font-size: 11pt;
+        letter-spacing: 1pt;
+        text-transform: uppercase;
+    }
+
+    .meta-grid {
+        width: 100%;
+        margin-top: 6mm;
+        margin-bottom: 8mm;
+    }
+    .meta-grid td {
+        vertical-align: top;
+        padding: 0;
+    }
+    .meta-block {
+        background: #f6f3ef;
+        border-radius: 6pt;
+        padding: 4mm 5mm;
+    }
+    .meta-label {
+        font-size: 8pt;
+        color: #6d655d;
+        text-transform: uppercase;
+        letter-spacing: 1pt;
+        margin-bottom: 1.5mm;
+    }
+    .meta-value { font-size: 10pt; color: #1d1a17; line-height: 1.5; }
+    .meta-value strong { color: #1d1a17; }
+
+    .info-strip {
+        width: 100%;
+        margin-bottom: 6mm;
+        border-top: 1pt solid #e9e1d8;
+        border-bottom: 1pt solid #e9e1d8;
+    }
+    .info-strip td {
+        padding: 3mm 0;
+        font-size: 9pt;
+        color: #6d655d;
+    }
+    .info-strip .label {
+        text-transform: uppercase;
+        font-size: 8pt;
+        letter-spacing: 1pt;
+        color: #a79f97;
+    }
+    .info-strip .value {
+        color: #1d1a17;
+        font-weight: 600;
+        margin-top: 1mm;
+        display: block;
+    }
+
+    table.lines {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 4mm;
+    }
+    table.lines th {
+        background: #1d1a17;
+        color: #ffffff;
+        text-transform: uppercase;
+        font-size: 8pt;
+        letter-spacing: 0.6pt;
+        padding: 3mm 3mm;
+        text-align: left;
+        font-weight: 600;
+    }
+    table.lines th.num { text-align: right; }
+    table.lines td {
+        padding: 3mm 3mm;
+        border-bottom: 0.5pt solid #e9e1d8;
+        vertical-align: top;
+    }
+    table.lines td.num { text-align: right; white-space: nowrap; }
+    table.lines tr.line-row { page-break-inside: avoid; }
+    .line-label { font-weight: 600; }
+    .line-desc { font-size: 8.5pt; color: #6d655d; margin-top: 1mm; }
+
+    .totals {
+        width: 60mm;
+        margin-left: auto;
+        margin-top: 5mm;
+        font-size: 10pt;
+    }
+    .totals tr td { padding: 1.5mm 2mm; }
+    .totals tr.total-line td {
+        border-top: 1.2pt solid {{ workspace.accent_color|default:"#F4722B" }};
+        font-weight: 700;
+        font-size: 12pt;
+        color: {{ workspace.accent_color|default:"#F4722B" }};
+    }
+
+    .notes-block {
+        margin-top: 8mm;
+        padding: 4mm 5mm;
+        background: #f6f3ef;
+        border-left: 3pt solid {{ workspace.accent_color|default:"#F4722B" }};
+        border-radius: 4pt;
+        font-size: 9pt;
+        color: #1d1a17;
+        page-break-inside: avoid;
+    }
+    .notes-title {
+        font-size: 8pt;
+        text-transform: uppercase;
+        letter-spacing: 1pt;
+        color: #6d655d;
+        margin-bottom: 2mm;
+    }
+
+    .legal-mentions {
+        margin-top: 6mm;
+        font-size: 8.5pt;
+        color: #6d655d;
+        line-height: 1.55;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 1mm 3mm;
+        border-radius: 3pt;
+        font-size: 8pt;
+        font-weight: 700;
+        letter-spacing: 0.5pt;
+        text-transform: uppercase;
+    }
+    .badge-paid { background: #dcfce7; color: #15803d; }
+    .badge-overdue { background: #fee2e2; color: #b91c1c; }
+    .badge-draft { background: #f6f3ef; color: #6d655d; }
+    .badge-issued { background: #dbeafe; color: #1d4ed8; }
+
+    .status-color-{{ invoice.status|lower }} { }
+</style>
+</head>
+<body>
+
+<div class="tagline-band">{{ workspace.tagline|default:"" }}</div>
+
+<!-- TITRE -->
+<div class="invoice-number">Facture</div>
+<h1 class="invoice-title">N° {{ invoice.number|default:"(brouillon)" }}</h1>
+
+{% if invoice.status == "PAID" %}
+    <div style="margin-top:2mm;"><span class="badge badge-paid">Payée</span></div>
+{% elif invoice.status == "OVERDUE" %}
+    <div style="margin-top:2mm;"><span class="badge badge-overdue">En retard</span></div>
+{% elif invoice.status == "DRAFT" %}
+    <div style="margin-top:2mm;"><span class="badge badge-draft">Brouillon</span></div>
+{% elif invoice.status == "CANCELLED" %}
+    <div style="margin-top:2mm;"><span class="badge badge-overdue">Annulée</span></div>
+{% else %}
+    <div style="margin-top:2mm;"><span class="badge badge-issued">{{ invoice.get_status_display }}</span></div>
+{% endif %}
+
+<!-- ÉMETTEUR / CLIENT -->
+<table class="meta-grid">
+    <tr>
+        <td style="width:50%; padding-right:4mm;">
+            <div class="meta-block">
+                <div class="meta-label">Émetteur</div>
+                <div class="meta-value">
+                    <strong>{{ workspace.legal_name|default:workspace.name }}</strong>
+                    {% if workspace.address_line1 %}<br>{{ workspace.address_line1 }}{% endif %}
+                    {% if workspace.address_line2 %}<br>{{ workspace.address_line2 }}{% endif %}
+                    {% if workspace.postal_code or workspace.city %}<br>{{ workspace.postal_code }} {{ workspace.city }}{% endif %}
+                    {% if workspace.country %}<br>{{ workspace.country }}{% endif %}
+                    {% if workspace.email %}<br>{{ workspace.email }}{% endif %}
+                </div>
+            </div>
+        </td>
+        <td style="width:50%; padding-left:4mm;">
+            <div class="meta-block">
+                <div class="meta-label">Client</div>
+                <div class="meta-value">
+                    {% if client %}
+                        <strong>{{ client.legal_name|default:client.name }}</strong>
+                        {% if client.tax_id %}<br>ID fiscal : {{ client.tax_id }}{% endif %}
+                        {% if client.address_line1 %}<br>{{ client.address_line1 }}{% endif %}
+                        {% if client.address_line2 %}<br>{{ client.address_line2 }}{% endif %}
+                        {% if client.postal_code or client.city %}<br>{{ client.postal_code }} {{ client.city }}{% endif %}
+                        {% if client.country %}<br>{{ client.country }}{% endif %}
+                        {% if client.contact_name %}<br>À l'attention de : {{ client.contact_name }}{% endif %}
+                    {% else %}
+                        <em style="color:#a79f97;">Aucun client renseigné</em>
+                    {% endif %}
+                </div>
+            </div>
+        </td>
+    </tr>
+</table>
+
+<!-- BANDEAU INFO -->
+<table class="info-strip">
+    <tr>
+        <td>
+            <div class="label">Date d'émission</div>
+            <span class="value">{{ invoice.issue_date|date:"d/m/Y" }}</span>
+        </td>
+        <td>
+            <div class="label">Échéance</div>
+            <span class="value">{{ invoice.due_date|date:"d/m/Y"|default:"—" }}</span>
+        </td>
+        <td>
+            <div class="label">Projet</div>
+            <span class="value">{{ project.name|default:"—" }}</span>
+        </td>
+        <td>
+            <div class="label">Devise</div>
+            <span class="value">{{ invoice.currency }}</span>
+        </td>
+    </tr>
+</table>
+
+{% if invoice.title %}
+<p style="font-style:italic; color:#6d655d; margin-bottom:5mm;">{{ invoice.title }}</p>
+{% endif %}
+
+{% if invoice.period_start or invoice.period_end %}
+<p style="font-size:9pt; color:#6d655d; margin-bottom:3mm;">
+    Période facturée : {{ invoice.period_start|date:"d/m/Y"|default:"—" }} — {{ invoice.period_end|date:"d/m/Y"|default:"—" }}
+</p>
+{% endif %}
+
+<!-- LIGNES -->
+<table class="lines">
+    <thead>
+        <tr>
+            <th style="width:55%;">Désignation</th>
+            <th class="num" style="width:11%;">Qté</th>
+            <th class="num" style="width:17%;">Prix unitaire HT</th>
+            <th class="num" style="width:17%;">Total HT</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for line in lines %}
+        <tr class="line-row">
+            <td>
+                <div class="line-label">{{ line.label }}</div>
+                {% if line.description %}<div class="line-desc">{{ line.description }}</div>{% endif %}
+            </td>
+            <td class="num">{{ line.quantity|floatformat:2 }}</td>
+            <td class="num">{{ line.unit_price|floatformat:2|intcomma }}</td>
+            <td class="num">{{ line.total_amount|floatformat:2|intcomma }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" style="text-align:center; padding:8mm 0; color:#a79f97; font-style:italic;">Aucune ligne</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- TOTAUX -->
+<table class="totals">
+    <tr>
+        <td>Sous-total HT</td>
+        <td class="num" style="text-align:right;">{{ invoice.subtotal_ht|floatformat:2|intcomma }}</td>
+    </tr>
+    {% if invoice.discount_amount %}
+    <tr>
+        <td>Remise</td>
+        <td class="num" style="text-align:right;">- {{ invoice.discount_amount|floatformat:2|intcomma }}</td>
+    </tr>
+    {% endif %}
+    <tr>
+        <td>TVA ({{ invoice.tax_rate }} %)</td>
+        <td class="num" style="text-align:right;">{{ invoice.tax_amount|floatformat:2|intcomma }}</td>
+    </tr>
+    <tr class="total-line">
+        <td>Total TTC</td>
+        <td class="num" style="text-align:right;">{{ invoice.total_ttc|floatformat:2|intcomma }} {{ invoice.currency }}</td>
+    </tr>
+    {% if invoice.paid_amount %}
+    <tr>
+        <td style="color:#15803d;">Encaissé</td>
+        <td class="num" style="text-align:right; color:#15803d;">{{ invoice.paid_amount|floatformat:2|intcomma }}</td>
+    </tr>
+    <tr>
+        <td><strong>Reste dû</strong></td>
+        <td class="num" style="text-align:right;"><strong>{{ invoice.remaining_due|floatformat:2|intcomma }} {{ invoice.currency }}</strong></td>
+    </tr>
+    {% endif %}
+</table>
+
+<!-- NOTES & CONDITIONS -->
+{% if invoice.notes %}
+<div class="notes-block">
+    <div class="notes-title">Notes</div>
+    {{ invoice.notes|linebreaksbr }}
+</div>
+{% endif %}
+
+{% if workspace.bank_details %}
+<div class="notes-block">
+    <div class="notes-title">Coordonnées de paiement</div>
+    {{ workspace.bank_details|linebreaksbr }}
+</div>
+{% endif %}
+
+<div class="legal-mentions">
+    <p>Conditions de paiement : 30 jours fin de mois sauf accord contraire. En cas de retard, des pénalités peuvent s'appliquer conformément aux conditions générales.</p>
+    {% if workspace.invoice_footer_text %}
+        <p>{{ workspace.invoice_footer_text|linebreaksbr }}</p>
+    {% endif %}
+    {% if workspace.legal_tax_id %}
+        <p>Identifiant fiscal : {{ workspace.legal_tax_id }}</p>
+    {% endif %}
+</div>
+
+</body>
+</html>

@@ -1,70 +1,168 @@
 {% extends "layout/base.html" %}
 
-{% block title %}Invitations workspace{% endblock %}
+{% block title %}Invitations — Dev'Flow{% endblock %}
+{% block page_title %}Invitations workspace{% endblock %}
+{% block breadcrumb %}Workspace · Invitations{% endblock %}
 
 {% block content %}
-<div class="space-y-6 max-w-7xl mx-auto">
-    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft p-6 lg:p-8">
-        <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+<div class="mx-auto max-w-7xl space-y-6">
+
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft lg:p-8">
+        <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">DevFlow</p>
-                <h1 class="mt-2 text-3xl font-serif text-devtext1">Invitations workspace</h1>
-                <p class="mt-2 text-sm text-devtext2">Liste des invitations workspace du workspace.</p>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--accent)]">Dev'Flow · Onboarding</p>
+                <h1 class="mt-2 font-serif text-3xl text-[var(--text1)]">Invitations par e-mail</h1>
+                <p class="mt-2 text-sm text-[var(--text2)]">
+                    {{ paginator.count|default:object_list|length }} invitation(s) — suivez celles en attente, renvoyez ou révoquez si besoin.
+                </p>
             </div>
-            {% block list_actions %}{% if create_url %}<a href="{{ create_url }}" class="btn-main"><i class="fa-solid fa-plus"></i> Nouveau</a>{% endif %}{% endblock %}
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{% url 'team_membership_list' %}"
+                   class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-xs font-semibold text-[var(--text2)] hover:text-[var(--text1)]">
+                    <i class="fa-solid fa-users"></i> Membres d'équipe
+                </a>
+                <a href="{% url 'workspace_invitation_create' %}"
+                   class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(255,78,0,0.24)]">
+                    <i class="fa-solid fa-paper-plane"></i> Nouvelle invitation
+                </a>
+            </div>
         </div>
     </section>
 
-    <section class="rounded-[24px] border border-devborder bg-devbg2 shadow-soft overflow-hidden">
+    {% include "components/list_search_bar.html" %}
+
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft overflow-hidden">
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
-                <thead class="bg-devbg3 text-devtext3 uppercase text-[11px] tracking-wide">
+                <thead class="bg-[var(--bg3)] text-[var(--text3)] uppercase text-[11px] tracking-wide">
                     <tr>
-                        <th class="px-6 py-3 text-left">Élément</th>
-                        <th class="px-6 py-3 text-left">Détails</th>
-                        <th class="px-6 py-3 text-left">Mis à jour</th>
+                        <th class="px-6 py-3 text-left">E-mail</th>
+                        <th class="px-6 py-3 text-left">Équipe</th>
+                        <th class="px-6 py-3 text-left">Rôle</th>
+                        <th class="px-6 py-3 text-left">Invité par</th>
+                        <th class="px-6 py-3 text-left">Expire</th>
+                        <th class="px-6 py-3 text-center">Statut</th>
                         <th class="px-6 py-3 text-right">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-devborder">
-                    {% for obj in object_list|default:items %}
-                    <tr class="hover:bg-devbg3/40">
-                        <td class="px-6 py-3 font-medium text-devtext1">{{ obj }}</td>
-                        <td class="px-6 py-3 text-devtext2 text-xs">
-                            {% if obj.description %}{{ obj.description|truncatechars:80 }}{% else %}—{% endif %}
+                <tbody class="divide-y divide-[var(--border)]">
+                {% for inv in object_list %}
+                    <tr class="hover:bg-[var(--bg3)]/30">
+                        <td class="px-6 py-3">
+                            <div class="font-medium text-[var(--text1)]">{{ inv.email }}</div>
+                            <div class="text-[11px] text-[var(--text3)] mt-0.5">Envoyée le {{ inv.created_at|date:"d/m/Y H:i" }}</div>
                         </td>
-                        <td class="px-6 py-3 text-devtext3 text-xs">
-                            {% if obj.updated_at %}{{ obj.updated_at|date:"d/m/Y H:i" }}{% elif obj.created_at %}{{ obj.created_at|date:"d/m/Y H:i" }}{% endif %}
-                        </td>
-                        <td class="px-6 py-3 text-right">
-                            {% if obj.pk %}
-                                <a href="?pk={{ obj.pk }}" class="text-devtext3 hover:text-devaccent" title="Voir">
-                                    <i class="fa-solid fa-eye"></i>
-                                </a>
+                        <td class="px-6 py-3 text-xs text-[var(--text2)]">
+                            {% if inv.team %}
+                                <span class="inline-flex items-center gap-1.5 rounded-full bg-[var(--bg3)] px-2.5 py-1">
+                                    <span class="inline-block h-2 w-2 rounded-full" style="background-color: {{ inv.team.color|default:'#7C6FF7' }};"></span>
+                                    {{ inv.team.name }}
+                                </span>
+                            {% else %}
+                                <span class="text-[var(--text3)]">Sans équipe</span>
                             {% endif %}
                         </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="4" class="px-6 py-12 text-center text-devtext3">
-                            <i class="fa-solid fa-inbox text-4xl mb-2 block"></i>
-                            Aucun élément à afficher.
+                        <td class="px-6 py-3 text-xs text-[var(--text2)]">{{ inv.get_role_display }}</td>
+                        <td class="px-6 py-3 text-xs text-[var(--text2)]">
+                            {% if inv.invited_by %}
+                                {{ inv.invited_by.get_full_name|default:inv.invited_by.username }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-xs">
+                            {% if inv.expires_at %}
+                                <span class="{% if inv.is_expired %}text-red-500 font-semibold{% else %}text-[var(--text2)]{% endif %}">
+                                    {{ inv.expires_at|date:"d/m/Y H:i" }}
+                                </span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-center">
+                            {% if inv.status == "PENDING" %}
+                                {% if inv.is_expired %}
+                                    <span class="inline-flex rounded-full bg-red-500/15 px-3 py-1 text-[11px] font-semibold text-red-500">Expirée</span>
+                                {% else %}
+                                    <span class="inline-flex rounded-full bg-amber-500/15 px-3 py-1 text-[11px] font-semibold text-amber-500">En attente</span>
+                                {% endif %}
+                            {% elif inv.status == "ACCEPTED" %}
+                                <span class="inline-flex rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-500">
+                                    <i class="fa-solid fa-check mr-1"></i> Acceptée
+                                </span>
+                            {% elif inv.status == "REVOKED" %}
+                                <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-[11px] font-semibold text-[var(--text3)]">Révoquée</span>
+                            {% elif inv.status == "DECLINED" %}
+                                <span class="inline-flex rounded-full bg-red-500/15 px-3 py-1 text-[11px] font-semibold text-red-500">Refusée</span>
+                            {% else %}
+                                <span class="inline-flex rounded-full bg-[var(--bg3)] px-3 py-1 text-[11px] font-semibold text-[var(--text2)]">{{ inv.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-3">
+                            <div class="flex items-center justify-end gap-1 flex-wrap">
+                                <a href="{% url 'workspace_invitation_public_accept' inv.token %}" target="_blank"
+                                   class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text3)] hover:bg-[var(--bg3)] hover:text-[var(--accent)]"
+                                   title="Voir le lien public envoyé à l'invité">
+                                    <i class="fa-solid fa-link"></i>
+                                </a>
+                                <a href="{% url 'workspace_invitation_detail' inv.pk %}"
+                                   class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text3)] hover:bg-[var(--bg3)] hover:text-[var(--accent)]"
+                                   title="Détail">
+                                    <i class="fa-solid fa-eye"></i>
+                                </a>
+                                {% if inv.status == "PENDING" %}
+                                    <form method="post" action="{% url 'workspace_invitation_resend' inv.pk %}" class="inline">
+                                        {% csrf_token %}
+                                        <button class="inline-flex h-8 px-3 items-center rounded-xl bg-emerald-500/10 text-[11px] font-semibold text-emerald-600 hover:bg-emerald-500 hover:text-white"
+                                                title="Renvoyer l'e-mail">
+                                            <i class="fa-solid fa-paper-plane mr-1"></i> Renvoyer
+                                        </button>
+                                    </form>
+                                    <form method="post" action="{% url 'workspace_invitation_revoke' inv.pk %}" class="inline"
+                                          onsubmit="return confirm('Révoquer cette invitation ? Le lien sera désactivé.');">
+                                        {% csrf_token %}
+                                        <button class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text3)] hover:bg-red-500/10 hover:text-red-500"
+                                                title="Révoquer">
+                                            <i class="fa-solid fa-ban"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+                                <a href="{% url 'workspace_invitation_delete' inv.pk %}"
+                                   class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text3)] hover:bg-red-500/10 hover:text-red-500"
+                                   title="Supprimer">
+                                    <i class="fa-solid fa-trash"></i>
+                                </a>
+                            </div>
                         </td>
                     </tr>
-                    {% endfor %}
+                {% empty %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-16 text-center">
+                            <i class="fa-solid fa-paper-plane text-4xl text-[var(--text3)] mb-3 block"></i>
+                            <p class="text-sm text-[var(--text2)]">Aucune invitation envoyée pour le moment.</p>
+                            <a href="{% url 'workspace_invitation_create' %}"
+                               class="mt-4 inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
+                                <i class="fa-solid fa-paper-plane"></i> Envoyer la première invitation
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
                 </tbody>
             </table>
         </div>
 
         {% if is_paginated %}
-        <div class="px-6 py-3 border-t border-devborder flex items-center justify-between text-xs text-devtext3">
+        <div class="flex items-center justify-between border-t border-[var(--border)] px-6 py-3 text-xs text-[var(--text3)]">
             <span>Page {{ page_obj.number }} sur {{ paginator.num_pages }}</span>
-            <div class="flex gap-1">
-                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" class="btn-soft text-xs">Précédent</a>{% endif %}
-                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" class="btn-soft text-xs">Suivant</a>{% endif %}
+            <div class="flex gap-2">
+                {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" class="rounded-xl border border-[var(--border)] px-3 py-1">Précédent</a>{% endif %}
+                {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" class="rounded-xl border border-[var(--border)] px-3 py-1">Suivant</a>{% endif %}
             </div>
         </div>
         {% endif %}
+    </section>
+
+    <section class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-soft text-xs text-[var(--text3)]">
+        <i class="fa-solid fa-circle-info text-[var(--accent)] mr-1"></i>
+        L'invité reçoit un e-mail avec un lien sécurisé valable 14 jours.
+        À l'ouverture du lien, il crée son mot de passe et rejoint automatiquement le workspace
+        (et l'équipe choisie) avec le rôle indiqué.
     </section>
 </div>
 {% endblock %}
