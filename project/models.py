@@ -388,7 +388,15 @@ class Project(TimeStampedModel, SoftDeleteModel):
         related_name="projects"
     )
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="projects")
-    team = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name="projects")
+    team = models.ForeignKey(
+        Team, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="projects",
+        help_text="Équipe principale (référent). Pour plusieurs équipes, utilisez le champ Équipes contributrices.",
+    )
+    teams = models.ManyToManyField(
+        Team, blank=True, related_name="contributing_projects",
+        help_text="Toutes les équipes qui contribuent au projet (multi-sélection).",
+    )
     name = models.CharField(max_length=160)
     slug = models.SlugField(max_length=180, blank=True)
     code = models.CharField(max_length=30, blank=True)
@@ -430,6 +438,30 @@ class Project(TimeStampedModel, SoftDeleteModel):
 
     def __str__(self):
         return self.name
+
+    # ────────────────────────────────────────────────────────────────────
+    # Pool d'utilisateurs disponibles pour l'IA d'affectation et les
+    # widgets de sélection. Combine :
+    #   - les ProjectMember explicites
+    #   - les TeamMembership ACTIVE des équipes contributrices (M2M `teams`)
+    #     et de l'équipe principale (FK `team`).
+    # Retourne un queryset de TeamMembership distinct par utilisateur, avec
+    # leur rôle utile pour l'IA.
+    # ────────────────────────────────────────────────────────────────────
+    def get_assignable_memberships(self):
+        from django.db.models import Q
+        team_ids = set(self.teams.values_list("id", flat=True))
+        if self.team_id:
+            team_ids.add(self.team_id)
+        if not team_ids:
+            return TeamMembership.objects.none()
+        return (
+            TeamMembership.objects
+            .filter(workspace=self.workspace, team_id__in=team_ids,
+                    status=TeamMembership.Status.ACTIVE)
+            .select_related("user", "user__profile", "team")
+            .order_by("team__name", "user__last_name")
+        )
 
     def save(self, *args, **kwargs):
         if not self.slug:

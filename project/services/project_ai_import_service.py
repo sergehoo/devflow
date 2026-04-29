@@ -220,6 +220,18 @@ class ProjectAIImportService:
 
             for task_data in feature.get("tasks", []):
                 assignee = cls._find_user_by_email(task_data.get("assignee_email"))
+                # Fallback : si aucun email valide ou utilisateur non trouvé,
+                # on délègue à l'auto-assigneur qui choisit selon le rôle /
+                # profil dans le pool des équipes contributrices.
+                if assignee is None:
+                    if not hasattr(cls, "_assigner_cache"):
+                        cls._assigner_cache = {}
+                    auto = cls._assigner_cache.get(project.pk)
+                    if auto is None:
+                        from project.services.task_auto_assigner import TaskAutoAssigner
+                        auto = TaskAutoAssigner.for_project(project)
+                        cls._assigner_cache[project.pk] = auto
+                    assignee = auto.pick_for_payload(task_data)
                 task = dm.Task.objects.create(
                     workspace=context.workspace,
                     project=project,

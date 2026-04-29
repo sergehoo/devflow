@@ -80,10 +80,24 @@
 
                         <div>
                             <label for="{{ form.team.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
-                                {% if form.team.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Équipe
+                                {% if form.team.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Équipe principale
                             </label>
                             {{ form.team }}
+                            <p class="mt-1 text-xs text-[var(--text3)]">
+                                Référent du projet. Laisser vide si plusieurs équipes : la première sera prise.
+                            </p>
                             {% include "components/forms/field_errors.html" with field=form.team %}
+                        </div>
+
+                        <div class="md:col-span-2">
+                            <label for="{{ form.teams.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {{ form.teams.label }}
+                            </label>
+                            {{ form.teams }}
+                            {% if form.teams.help_text %}
+                                <p class="mt-1 text-xs text-[var(--text3)]">{{ form.teams.help_text }}</p>
+                            {% endif %}
+                            {% include "components/forms/field_errors.html" with field=form.teams %}
                         </div>
 
                         <div>
@@ -269,12 +283,23 @@
                     </div>
                 </section>
 
-                <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft"
+                         x-data="{ submitting: false }">
                     <h3 class="text-base font-semibold text-[var(--text1)]">Actions</h3>
+                    <p class="mt-2 text-xs text-[var(--text3)]">
+                        À l'enregistrement, les membres actifs des équipes contributrices seront ajoutés
+                        automatiquement comme membres projet, et l'IA proposera roadmap, jalons, sprints,
+                        backlog et tâches affectées selon leur rôle.
+                    </p>
                     <div class="mt-5 flex flex-col gap-3">
                         <button type="submit"
-                                class="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(255,78,0,0.24)] transition hover:-translate-y-0.5">
-                            Enregistrer le projet
+                                @click="submitting = true"
+                                :disabled="submitting"
+                                class="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(255,78,0,0.24)] transition hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-wait">
+                            <i class="fa-solid fa-floppy-disk" x-show="!submitting"></i>
+                            <i class="fa-solid fa-spinner fa-spin" x-show="submitting" x-cloak></i>
+                            <span x-show="!submitting">Enregistrer le projet</span>
+                            <span x-show="submitting" x-cloak>Création en cours…</span>
                         </button>
 
                         <a href="{% url 'project_list' %}"

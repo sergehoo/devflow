@@ -453,6 +453,8 @@ class ProjectForm(BaseStyledModelForm):
 
             "team",
 
+            "teams",
+
             "name",
 
             "code",
@@ -547,11 +549,32 @@ class ProjectForm(BaseStyledModelForm):
 
             self.fields["category"].help_text = "Permet de classer le projet par typologie."
 
+        # Filtrage des équipes selon le workspace courant
+        ws = self.current_workspace
         if "team" in self.fields:
-
             self.fields["team"].required = False
+            self.fields["team"].empty_label = "Sélectionner l'équipe principale"
+            if ws:
+                self.fields["team"].queryset = Team.objects.filter(
+                    workspace=ws, is_archived=False
+                ).order_by("name")
 
-            self.fields["team"].empty_label = "Sélectionner une équipe"
+        if "teams" in self.fields:
+            self.fields["teams"].required = False
+            self.fields["teams"].label = "Équipes contributrices"
+            self.fields["teams"].help_text = (
+                "Cochez toutes les équipes qui interviennent sur le projet. "
+                "Les membres de ces équipes seront automatiquement disponibles "
+                "pour l'affectation des tâches (manuelle ou par IA)."
+            )
+            if ws:
+                self.fields["teams"].queryset = Team.objects.filter(
+                    workspace=ws, is_archived=False
+                ).order_by("name")
+            self.fields["teams"].widget.attrs.update({
+                "data-control": "select2",
+                "data-placeholder": "Choisissez plusieurs équipes",
+            })
 
         if "owner" in self.fields:
 
