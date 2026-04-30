@@ -8,8 +8,7 @@ services:
     # Au démarrage : migrate (idempotent) + collectstatic (force pour générer
     # le manifest WhiteNoise) + lancement gunicorn ASGI/Uvicorn.
     command: >
-      sh -c "python manage.py migrate --noinput &&
-             python manage.py collectstatic --noinput --clear &&
+      sh -c "python manage.py collectstatic --noinput --clear &&
              gunicorn ProjectFlow.asgi:application
              -k uvicorn.workers.UvicornWorker
              --bind 0.0.0.0:8000
