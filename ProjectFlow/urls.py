@@ -78,7 +78,7 @@ from project.views_budget import ProjectBudgetCreateView, ProjectBudgetDetailVie
 app_name = "project"
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('devflo/admin/back', admin.site.urls),
     path('accounts/', include('allauth.urls')),
     # path("", HomeView.as_view(), name="home"),
     path("", DashboardView.as_view(), name="dashboard"),
