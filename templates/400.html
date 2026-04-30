@@ -1,0 +1,33 @@
+{% extends "errors/_base.html" %}
+
+{% block error_title %}Requête invalide · 400 — Dev'Flow{% endblock %}
+
+{% block error_body %}
+<span class="err-eyebrow">Erreur 400</span>
+
+<svg class="err-illu" viewBox="0 0 420 240" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <circle cx="210" cy="120" r="100" fill="var(--accent-bg)"/>
+    <g transform="translate(160,68)">
+        <rect width="100" height="100" rx="50" fill="var(--bg2)"
+              stroke="var(--accent)" stroke-width="3"/>
+        <path d="M50 28 v34" stroke="var(--accent)" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="50" cy="76" r="4.5" fill="var(--accent)"/>
+    </g>
+</svg>
+
+<h1 class="err-code">400</h1>
+<h2 class="err-title">Requête invalide</h2>
+<p class="err-subtitle">
+    Votre requête n'a pas pu être interprétée par le serveur. Vérifiez les paramètres
+    et réessayez.
+</p>
+
+<div class="err-actions">
+    <a href="/" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/>
+        </svg>
+        Retour à l'accueil
+    </a>
+</div>
+{% endblock %}

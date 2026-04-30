@@ -1,0 +1,81 @@
+{% extends "errors/_base.html" %}
+
+{% block error_title %}Erreur serveur · 500 — Dev'Flow{% endblock %}
+
+{% block error_body %}
+<span class="err-eyebrow">Erreur 500</span>
+
+<svg class="err-illu" viewBox="0 0 460 260" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+        <linearGradient id="g500" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stop-color="var(--accent)"/>
+            <stop offset="100%" stop-color="#dc2626"/>
+        </linearGradient>
+    </defs>
+
+    <!-- Halo -->
+    <ellipse cx="230" cy="190" rx="180" ry="22" fill="var(--accent-bg)"/>
+
+    <!-- Serveur -->
+    <g transform="translate(150,40)">
+        <rect x="0" y="0" width="160" height="160" rx="18"
+              fill="var(--bg2)" stroke="var(--border)" stroke-width="1.5"/>
+        <rect x="0" y="0" width="160" height="6" rx="3" fill="url(#g500)"/>
+
+        <!-- racks -->
+        <rect x="20" y="26" width="120" height="32" rx="6" fill="var(--bg3)"/>
+        <circle cx="32" cy="42" r="4" fill="var(--accent)"/>
+        <rect x="48" y="38" width="60" height="8" rx="2" fill="var(--border)"/>
+
+        <rect x="20" y="68" width="120" height="32" rx="6" fill="var(--bg3)"/>
+        <circle cx="32" cy="84" r="4" fill="var(--amber)"/>
+        <rect x="48" y="80" width="80" height="8" rx="2" fill="var(--border)"/>
+
+        <rect x="20" y="110" width="120" height="32" rx="6" fill="var(--bg3)"/>
+        <circle cx="32" cy="126" r="4" fill="var(--red)"/>
+        <rect x="48" y="122" width="40" height="8" rx="2" fill="var(--border)"/>
+    </g>
+
+    <!-- Engrenage de réparation -->
+    <g transform="translate(330,160)">
+        <path d="M0 -22 L4 -10 L14 -14 L10 -4 L22 0 L10 4 L14 14 L4 10 L0 22 L-4 10 L-14 14 L-10 4 L-22 0 L-10 -4 L-14 -14 L-4 -10 Z"
+              fill="url(#g500)"/>
+        <circle cx="0" cy="0" r="6" fill="var(--bg2)"/>
+    </g>
+
+    <!-- Étincelles -->
+    <g fill="var(--amber)">
+        <circle cx="120" cy="60" r="3"/>
+        <circle cx="360" cy="80" r="2.5"/>
+        <circle cx="100" cy="180" r="2"/>
+    </g>
+</svg>
+
+<h1 class="err-code">500</h1>
+<h2 class="err-title">Quelque chose s'est cassé de notre côté</h2>
+<p class="err-subtitle">
+    Notre serveur a rencontré une erreur en essayant de traiter votre demande.
+    L'équipe technique a été notifiée — réessayez dans quelques instants.
+</p>
+
+<div class="err-actions">
+    <a href="javascript:location.reload()" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+        Réessayer
+    </a>
+    <a href="/" class="btn-soft">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/>
+        </svg>
+        Retour à l'accueil
+    </a>
+</div>
+
+<p class="err-meta">
+    Si l'erreur persiste, écrivez-nous à
+    <a href="mailto:support@datarium-ci.net">support@datarium-ci.net</a> en mentionnant l'heure de l'incident.
+</p>
+{% endblock %}

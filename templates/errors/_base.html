@@ -1,0 +1,200 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block error_title %}Erreur — Dev'Flow{% endblock %}</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;1,9..144,300&display=swap" rel="stylesheet">
+    <script>
+        (() => {
+            try {
+                const saved = localStorage.getItem("devflow_theme");
+                const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+                document.documentElement.setAttribute("data-theme", saved || (dark ? "dark" : "light"));
+            } catch (e) {
+                document.documentElement.setAttribute("data-theme", "light");
+            }
+        })();
+    </script>
+
+    <style>
+        :root {
+            --bg: #f6f3ef;
+            --bg2: #ffffff;
+            --bg3: #f2ede7;
+            --border: rgba(0, 0, 0, .07);
+            --text1: #1d1a17;
+            --text2: #6d655d;
+            --text3: #a79f97;
+            --accent: #ff5a1f;
+            --accent2: #ffb085;
+            --accent-bg: rgba(255, 90, 31, .08);
+            --green: #16a34a;
+            --green-bg: rgba(22, 163, 74, .12);
+            --red: #ef4444;
+            --red-bg: rgba(239, 68, 68, .12);
+            --amber: #f59e0b;
+            --cyan: #0ea5c9;
+            --shadow: 0 12px 32px rgba(0, 0, 0, .06);
+            --shadow-lg: 0 24px 64px rgba(0, 0, 0, .12);
+        }
+        [data-theme="dark"] {
+            --bg: #18130f;
+            --bg2: #1f1a15;
+            --bg3: #25201b;
+            --border: rgba(255, 255, 255, .06);
+            --text1: #f7f4ee;
+            --text2: #b8aea2;
+            --text3: #7a7166;
+            --shadow: 0 18px 36px rgba(0, 0, 0, .35);
+            --shadow-lg: 0 32px 80px rgba(0, 0, 0, .55);
+        }
+
+        * { box-sizing: border-box; }
+        html, body {
+            height: 100%; margin: 0;
+            font-family: "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text1);
+            background: var(--bg);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .err-shell {
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 32px 18px;
+            background:
+                radial-gradient(1200px 600px at 50% -10%, var(--accent-bg), transparent 60%),
+                var(--bg);
+        }
+
+        .err-card {
+            width: 100%;
+            max-width: 720px;
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 32px;
+            box-shadow: var(--shadow-lg);
+            padding: 44px 36px 36px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .err-card::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent), var(--accent2), var(--cyan));
+        }
+
+        .err-eyebrow {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--accent);
+            background: var(--accent-bg);
+            padding: 6px 14px;
+            border-radius: 999px;
+            margin-bottom: 22px;
+        }
+
+        .err-illu {
+            width: 100%;
+            max-width: 340px;
+            height: auto;
+            margin: 6px auto 12px;
+            display: block;
+        }
+
+        .err-code {
+            font-family: "Fraunces", Georgia, serif;
+            font-size: 88px;
+            line-height: 1;
+            font-weight: 500;
+            letter-spacing: -3px;
+            margin: 0 0 4px;
+            color: var(--text1);
+        }
+
+        .err-title {
+            font-family: "Fraunces", Georgia, serif;
+            font-size: 26px;
+            line-height: 1.25;
+            font-weight: 500;
+            margin: 8px 0 6px;
+        }
+
+        .err-subtitle {
+            color: var(--text2);
+            font-size: 15px;
+            line-height: 1.6;
+            margin: 0 auto 24px;
+            max-width: 480px;
+        }
+
+        .err-actions {
+            display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .btn-primary, .btn-soft {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 13px 22px;
+            border-radius: 16px;
+            font-weight: 600;
+            font-size: 14px;
+            text-decoration: none;
+            transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 10px 24px rgba(255, 90, 31, .24);
+        }
+        .btn-primary:hover { transform: translateY(-2px); }
+
+        .btn-soft {
+            background: var(--bg3);
+            color: var(--text2);
+            border: 1px solid var(--border);
+        }
+        .btn-soft:hover { color: var(--text1); }
+
+        .err-meta {
+            margin-top: 28px;
+            font-size: 12px;
+            color: var(--text3);
+        }
+        .err-meta a { color: var(--accent); text-decoration: none; }
+
+        .err-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 11px; padding: 4px 10px; border-radius: 999px;
+            background: var(--bg3); color: var(--text3);
+            font-family: Menlo, Consolas, monospace;
+        }
+
+        @media (max-width: 540px) {
+            .err-code { font-size: 64px; letter-spacing: -2px; }
+            .err-title { font-size: 22px; }
+            .err-card { padding: 32px 22px 24px; border-radius: 24px; }
+        }
+    </style>
+</head>
+<body>
+<div class="err-shell">
+    <div class="err-card">
+        {% block error_body %}{% endblock %}
+    </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,79 @@
+{% extends "errors/_base.html" %}
+
+{% block error_title %}Page introuvable · 404 — Dev'Flow{% endblock %}
+
+{% block error_body %}
+<span class="err-eyebrow">Erreur 404</span>
+
+<svg class="err-illu" viewBox="0 0 480 280" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+        <linearGradient id="g404" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stop-color="var(--accent)"/>
+            <stop offset="100%" stop-color="var(--accent2)"/>
+        </linearGradient>
+        <linearGradient id="g404b" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stop-color="var(--cyan)"/>
+            <stop offset="100%" stop-color="var(--accent)"/>
+        </linearGradient>
+    </defs>
+
+    <!-- Halos -->
+    <circle cx="100" cy="220" r="60" fill="var(--accent-bg)"/>
+    <circle cx="380" cy="60" r="42" fill="var(--accent-bg)"/>
+
+    <!-- Carte papier flottante -->
+    <g transform="translate(80,40) rotate(-6)">
+        <rect x="0" y="0" width="200" height="160" rx="18"
+              fill="var(--bg2)" stroke="var(--border)" stroke-width="1.5"/>
+        <rect x="0" y="0" width="200" height="6" rx="3" fill="url(#g404)"/>
+        <rect x="20" y="32" width="120" height="8" rx="4" fill="var(--bg3)"/>
+        <rect x="20" y="50" width="160" height="6" rx="3" fill="var(--bg3)"/>
+        <rect x="20" y="64" width="100" height="6" rx="3" fill="var(--bg3)"/>
+        <circle cx="166" cy="120" r="22" fill="var(--accent-bg)"/>
+        <path d="M156 120 l8 8 14 -16" stroke="var(--accent)" stroke-width="3"
+              fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- Loupe -->
+    <g transform="translate(290,90)">
+        <circle cx="60" cy="60" r="56" fill="var(--bg2)"
+                stroke="url(#g404b)" stroke-width="4"/>
+        <circle cx="60" cy="60" r="40" fill="var(--accent-bg)"/>
+        <text x="60" y="74" text-anchor="middle" font-family="Fraunces, Georgia, serif"
+              font-size="38" font-weight="700" fill="var(--accent)">?</text>
+        <line x1="100" y1="100" x2="140" y2="140" stroke="url(#g404b)"
+              stroke-width="10" stroke-linecap="round"/>
+    </g>
+</svg>
+
+<h1 class="err-code">404</h1>
+<h2 class="err-title">Cette page a pris la tangente</h2>
+<p class="err-subtitle">
+    L'URL demandée n'existe pas ou a été déplacée. Vérifiez le lien, ou repartez du tableau de bord —
+    on vous remet sur le bon chemin.
+</p>
+
+{% if request %}
+    <div class="err-pill" title="URL demandée">{{ request.path|truncatechars:64 }}</div>
+{% endif %}
+
+<div class="err-actions">
+    <a href="/" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/>
+        </svg>
+        Retour au tableau de bord
+    </a>
+    <a href="javascript:history.back()" class="btn-soft">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+        </svg>
+        Page précédente
+    </a>
+</div>
+
+<p class="err-meta">
+    Si vous pensez que c'est une erreur de notre côté, contactez-nous à
+    <a href="mailto:support@datarium-ci.net">support@datarium-ci.net</a>.
+</p>
+{% endblock %}

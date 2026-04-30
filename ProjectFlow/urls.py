@@ -652,3 +652,35 @@ urlpatterns += [
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Pages d'erreur premium (404, 403, 500, 400) — utilisées automatiquement
+# par Django en DEBUG=False. En DEBUG=True, on expose en plus
+# `/preview/error/<code>/` pour pouvoir les vérifier en local.
+# ─────────────────────────────────────────────────────────────────────────
+handler400 = "django.views.defaults.bad_request"
+handler403 = "django.views.defaults.permission_denied"
+handler404 = "django.views.defaults.page_not_found"
+handler500 = "django.views.defaults.server_error"
+
+if settings.DEBUG:
+    from django.shortcuts import render as _render
+    from django.http import Http404 as _Http404
+    from django.core.exceptions import PermissionDenied as _PermDenied
+
+    def _preview_error(request, code):
+        code = str(code)
+        if code == "404":
+            return _render(request, "404.html", status=404)
+        if code == "403":
+            return _render(request, "403.html", status=403)
+        if code == "500":
+            return _render(request, "500.html", status=500)
+        if code == "400":
+            return _render(request, "400.html", status=400)
+        raise _Http404("Code d'erreur inconnu (utilisez 400, 403, 404 ou 500).")
+
+    urlpatterns += [
+        path("preview/error/<str:code>/", _preview_error, name="preview_error"),
+    ]
