@@ -1,7 +1,9 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.contrib.staticfiles.views import serve
 from django.urls import path, include
+from django.urls.conf import re_path
 
 import project
 from project import routing
@@ -656,16 +658,12 @@ urlpatterns += [
     path("billing/projects/<int:project_pk>/generate/",
          InvoiceGenerateFromProjectView.as_view(), name="invoice_generate_from_project"),
 ]
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 # ── Servir les fichiers MEDIA (uploads : logos, avatars, factures PDF…) ──
 # WhiteNoise sert déjà les statiques en prod et en dev (efficace, avec cache
 # busting). Pour les MEDIA, en l'absence d'un nginx ou d'un bucket S3, on
 # expose la route MEDIA via `static()` quel que soit DEBUG.
 # Si plus tard vous passez à S3/Cloudfront, retirez ces lignes.
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -700,3 +698,11 @@ if settings.DEBUG:
     urlpatterns += [
         path("preview/error/<str:code>/", _preview_error, name="preview_error"),
     ]
+
+
+urlpatterns += [
+    re_path(
+        r"^media/(?P<path>.*)$",serve,
+        {"document_root": settings.MEDIA_ROOT},
+    ),
+]
