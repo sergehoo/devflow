@@ -546,7 +546,8 @@ urlpatterns += [
     path("ai-proposals/", ProjectAIProposalListView.as_view(), name="ai_proposal_list"),
     path("ai-proposals/<int:pk>/", ProjectAIProposalDetailView.as_view(), name="ai_proposal_detail"),
     path("ai-proposals/<int:pk>/regenerate/", ProjectAIProposalRegenerateView.as_view(), name="ai_proposal_regenerate"),
-    path("ai-proposals/<int:pk>/validate-all/", ProjectAIProposalValidateAllView.as_view(), name="ai_proposal_validate_all"),
+    path("ai-proposals/<int:pk>/validate-all/", ProjectAIProposalValidateAllView.as_view(),
+         name="ai_proposal_validate_all"),
     path("ai-proposals/<int:pk>/reject/", ProjectAIProposalRejectView.as_view(), name="ai_proposal_reject"),
     path("ai-proposals/<int:pk>/apply/", ProjectAIProposalApplyView.as_view(), name="ai_proposal_apply"),
     path(
@@ -645,7 +646,8 @@ urlpatterns += [
     path("billing/invoices/<int:pk>/issue/", InvoiceIssueView.as_view(), name="invoice_issue"),
     path("billing/invoices/<int:pk>/mark-sent/", InvoiceMarkSentView.as_view(), name="invoice_mark_sent"),
     path("billing/invoices/<int:pk>/cancel/", InvoiceCancelView.as_view(), name="invoice_cancel"),
-    path("billing/invoices/<int:pk>/payments/create/", InvoicePaymentCreateView.as_view(), name="invoice_payment_create"),
+    path("billing/invoices/<int:pk>/payments/create/", InvoicePaymentCreateView.as_view(),
+         name="invoice_payment_create"),
 
     path("billing/lines/create/", InvoiceLineCreateView.as_view(), name="invoice_line_create"),
     path("billing/lines/<int:pk>/update/", InvoiceLineUpdateView.as_view(), name="invoice_line_update"),
@@ -654,6 +656,9 @@ urlpatterns += [
     path("billing/projects/<int:project_pk>/generate/",
          InvoiceGenerateFromProjectView.as_view(), name="invoice_generate_from_project"),
 ]
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 # ── Servir les fichiers MEDIA (uploads : logos, avatars, factures PDF…) ──
 # WhiteNoise sert déjà les statiques en prod et en dev (efficace, avec cache
@@ -661,11 +666,6 @@ urlpatterns += [
 # expose la route MEDIA via `static()` quel que soit DEBUG.
 # Si plus tard vous passez à S3/Cloudfront, retirez ces lignes.
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
-if settings.DEBUG:
-    # En dev seul, on active aussi le serve direct des STATICFILES_DIRS via
-    # Django (utile si WhiteNoise n'a pas encore tourné collectstatic).
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -683,6 +683,7 @@ if settings.DEBUG:
     from django.http import Http404 as _Http404
     from django.core.exceptions import PermissionDenied as _PermDenied
 
+
     def _preview_error(request, code):
         code = str(code)
         if code == "404":
@@ -694,6 +695,7 @@ if settings.DEBUG:
         if code == "400":
             return _render(request, "400.html", status=400)
         raise _Http404("Code d'erreur inconnu (utilisez 400, 403, 404 ou 500).")
+
 
     urlpatterns += [
         path("preview/error/<str:code>/", _preview_error, name="preview_error"),

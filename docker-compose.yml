@@ -21,6 +21,7 @@ services:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
       - logs_volume:/app/logs
+
     environment:
       # Django
       - DEBUG=${DEBUG:-False}
