@@ -88,67 +88,86 @@
                 </a>
                 {% endif %}
 
-                <!-- Génération IA : déclenchement direct + accès historique -->
+                <!--
+                  Génération IA — INSTANCE UNIQUE Alpine partagée entre le bouton
+                  d'action et le bandeau de progression. Le submit est intercepté
+                  en AJAX pour rester sur la fiche projet (sinon redirect → bandeau
+                  jamais visible).
+                -->
                 <div x-data="aiProposalProgress({
                         statusUrl: '{% url 'project_ai_proposal_status' project_obj.pk %}',
                         triggerUrl: '{% url 'project_ai_proposal_trigger' project_obj.pk %}',
+                        proposalsUrl: '{% url 'project_ai_proposals' project_obj.pk %}',
                         csrfToken: '{{ csrf_token }}'
                      })"
-                     x-init="poll()"
-                     class="flex flex-wrap items-center gap-2">
-                    <form method="post" :action="triggerUrl" class="inline" @submit="onSubmit">
-                        {% csrf_token %}
-                        <button type="submit"
-                                :disabled="running"
-                                class="inline-flex items-center gap-2 rounded-2xl bg-[linear-gradient(135deg,var(--accent),var(--accent2))] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(255,90,31,0.28)] transition hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-wait"
-                                title="Générer roadmap, jalons, sprints, backlog et tâches via l'IA">
-                            <i class="fa-solid fa-wand-magic-sparkles" x-show="!running"></i>
-                            <i class="fa-solid fa-spinner fa-spin" x-show="running" x-cloak></i>
-                            <span x-show="!running">Générer suggestions IA</span>
-                            <span x-show="running" x-cloak>IA en cours…</span>
-                        </button>
-                    </form>
+                     x-init="boot()"
+                     class="flex flex-wrap items-center gap-2 basis-full sm:basis-auto">
 
-                    <a href="{% url 'project_ai_proposals' project_obj.pk %}"
+                    <button type="button"
+                            @click="trigger()"
+                            :disabled="running"
+                            class="inline-flex items-center gap-2 rounded-2xl bg-[linear-gradient(135deg,var(--accent),var(--accent2))] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(255,90,31,0.28)] transition hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-wait"
+                            title="Générer roadmap, jalons, sprints, backlog et tâches via l'IA">
+                        <i class="fa-solid fa-wand-magic-sparkles" x-show="!running"></i>
+                        <i class="fa-solid fa-spinner fa-spin" x-show="running" x-cloak></i>
+                        <span x-show="!running">Générer suggestions IA</span>
+                        <span x-show="running" x-cloak>IA en cours…</span>
+                    </button>
+
+                    <a :href="proposalsUrl"
                        class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]"
                        title="Voir l'historique des propositions IA">
                         <i class="fa-solid fa-clock-rotate-left"></i>
                         Propositions IA
                     </a>
-                </div>
 
-                <!-- Bandeau de progression IA (caché si rien en cours) -->
-                <div x-data="aiProposalProgress({
-                         statusUrl: '{% url 'project_ai_proposal_status' project_obj.pk %}',
-                         triggerUrl: '{% url 'project_ai_proposal_trigger' project_obj.pk %}',
-                         csrfToken: '{{ csrf_token }}'
-                     })"
-                     x-init="poll()"
-                     x-show="running"
-                     x-cloak
-                     class="basis-full mt-3">
-                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-3 shadow-soft">
-                        <div class="flex items-center gap-3">
-                            <div class="relative h-9 w-9 flex-shrink-0">
-                                <svg class="absolute inset-0 animate-spin text-[var(--accent)]"
-                                     viewBox="0 0 36 36" fill="none">
-                                    <circle cx="18" cy="18" r="15" stroke="currentColor" stroke-width="2" stroke-dasharray="60 80" stroke-linecap="round"/>
-                                </svg>
-                                <i class="fa-solid fa-wand-magic-sparkles text-[var(--accent)] absolute inset-0 grid place-items-center text-sm"></i>
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center justify-between gap-3">
-                                    <div class="text-sm font-semibold text-[var(--text1)]">Génération PMO en cours</div>
-                                    <div class="text-xs text-[var(--text3)]">
-                                        <span x-text="progress + '%'"></span>
-                                        <span x-show="eta > 0" x-cloak>· reste ≈ <span x-text="eta + 's'"></span></span>
+                    <!-- Bandeau de progression — visible uniquement si une génération tourne -->
+                    <div x-show="running || lastFinished"
+                         x-cloak
+                         x-transition
+                         class="basis-full mt-3">
+                        <div class="rounded-2xl border px-4 py-3 shadow-soft"
+                             :class="lastFinished && !running ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-[var(--border)] bg-[var(--bg2)]'">
+                            <div class="flex items-center gap-3">
+                                <div class="relative h-9 w-9 flex-shrink-0">
+                                    <template x-if="running">
+                                        <svg class="absolute inset-0 animate-spin text-[var(--accent)]"
+                                             viewBox="0 0 36 36" fill="none">
+                                            <circle cx="18" cy="18" r="15" stroke="currentColor" stroke-width="2"
+                                                    stroke-dasharray="60 80" stroke-linecap="round"/>
+                                        </svg>
+                                    </template>
+                                    <i class="absolute inset-0 grid place-items-center text-sm"
+                                       :class="running ? 'fa-solid fa-wand-magic-sparkles text-[var(--accent)]'
+                                                       : 'fa-solid fa-circle-check text-emerald-500 text-base'"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between gap-3 flex-wrap">
+                                        <div class="text-sm font-semibold text-[var(--text1)]"
+                                             x-text="running ? 'Génération PMO en cours' : 'Génération terminée'"></div>
+                                        <div class="text-xs text-[var(--text3)]">
+                                            <span x-text="progress + '%'"></span>
+                                            <span x-show="running && eta > 0" x-cloak>
+                                                · reste ≈ <span x-text="eta + 's'"></span>
+                                            </span>
+                                            <span x-show="!running && lastFinished" x-cloak>
+                                                · <a :href="proposalsUrl" class="text-[var(--accent)] underline">voir la proposition</a>
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="mt-1.5 text-xs text-[var(--text2)]" x-text="stepLabel">…</div>
+                                    <div class="mt-2 h-1.5 rounded-full bg-[var(--bg3)] overflow-hidden">
+                                        <div class="h-full rounded-full transition-all duration-500"
+                                             :class="running ? 'bg-[linear-gradient(90deg,var(--accent),var(--accent2))]'
+                                                             : 'bg-emerald-500'"
+                                             :style="'width:' + progress + '%'"></div>
                                     </div>
                                 </div>
-                                <div class="mt-1.5 text-xs text-[var(--text2)]" x-text="stepLabel">…</div>
-                                <div class="mt-2 h-1.5 rounded-full bg-[var(--bg3)] overflow-hidden">
-                                    <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))] transition-all duration-500"
-                                         :style="'width:' + progress + '%'"></div>
-                                </div>
+                                <button type="button" x-show="!running && lastFinished" x-cloak
+                                        @click="dismissBanner()"
+                                        class="text-[var(--text3)] hover:text-[var(--text1)]">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -160,46 +179,95 @@
                         return {
                             statusUrl: opts.statusUrl,
                             triggerUrl: opts.triggerUrl,
+                            proposalsUrl: opts.proposalsUrl,
                             csrfToken: opts.csrfToken,
                             running: false,
                             progress: 0,
                             stepLabel: "",
                             eta: 0,
+                            lastFinished: false,
                             _timer: null,
+                            _wasRunning: false,
 
-                            onSubmit() {
-                                // Bascule en mode running juste après le submit natif
-                                setTimeout(() => { this.running = true; this.progress = 5; this.stepLabel = "Lancement…"; this.poll(); }, 0);
+                            // Boot : un seul polling, démarre dès l'arrivée sur la
+                            // page (utile si une génération avait été lancée
+                            // depuis la création projet ou par un autre user).
+                            async boot() {
+                                await this.refresh();
+                                this.schedule();
                             },
 
-                            async fetchStatus() {
+                            // Déclenche la génération en AJAX → on reste sur la
+                            // page, le polling fait apparaître le bandeau.
+                            async trigger() {
+                                if (this.running) return;
+                                this.running = true;
+                                this.lastFinished = false;
+                                this.progress = 4;
+                                this.stepLabel = "Lancement…";
+                                this.eta = 0;
                                 try {
-                                    const r = await fetch(this.statusUrl, { headers: { "Accept": "application/json" } });
-                                    if (!r.ok) return null;
-                                    return await r.json();
-                                } catch (e) { return null; }
-                            },
-
-                            async poll() {
-                                const data = await this.fetchStatus();
-                                if (!data) { this._schedule(8000); return; }
-                                this.progress = data.progress || 0;
-                                this.stepLabel = data.step_label || "";
-                                this.eta = data.eta_seconds || 0;
-                                const status = data.status;
-                                this.running = !!status && !data.is_terminal && status !== "REJECTED";
-                                if (this.running) {
-                                    this._schedule(3000);
-                                } else if (status === "READY" || status === "VALIDATED" || status === "APPLIED") {
-                                    // Terminé : on rafraichit la page pour afficher la nouvelle proposition
-                                    if (this._wasRunning) setTimeout(() => location.reload(), 1200);
-                                }
-                                this._wasRunning = this.running || this._wasRunning;
-                            },
-
-                            _schedule(ms) {
+                                    const fd = new FormData();
+                                    fd.append("csrfmiddlewaretoken", this.csrfToken);
+                                    const r = await fetch(this.triggerUrl, {
+                                        method: "POST",
+                                        body: fd,
+                                        headers: { "X-Requested-With": "XMLHttpRequest" },
+                                        // important : on ne suit pas la redirection
+                                        // pour ne pas quitter la page projet
+                                        redirect: "manual",
+                                    });
+                                    // Un redirect 30x est normal côté serveur ;
+                                    // on l'ignore et on poll le statut.
+                                } catch (e) { /* ignore réseau */ }
                                 clearTimeout(this._timer);
-                                this._timer = setTimeout(() => this.poll(), ms);
+                                this._timer = setTimeout(() => this.refresh().then(() => this.schedule()), 800);
+                            },
+
+                            async refresh() {
+                                try {
+                                    const r = await fetch(this.statusUrl, {
+                                        headers: { "Accept": "application/json" }
+                                    });
+                                    if (!r.ok) return;
+                                    const data = await r.json();
+                                    this.progress = data.progress || 0;
+                                    this.stepLabel = data.step_label || "";
+                                    this.eta = data.eta_seconds || 0;
+                                    const status = data.status;
+                                    const isTerminal = !!data.is_terminal;
+                                    const wasRunning = this.running;
+                                    this.running = !!status && !isTerminal
+                                                   && status !== "REJECTED" && status !== "FAILED";
+                                    if (wasRunning && !this.running &&
+                                        (status === "READY" || status === "VALIDATED" || status === "APPLIED")) {
+                                        // Génération terminée : on garde le bandeau vert quelques secondes.
+                                        this.lastFinished = true;
+                                        this.progress = 100;
+                                        this.stepLabel = "Proposition prête à validation";
+                                    }
+                                    if (status === "FAILED") {
+                                        this.lastFinished = true;
+                                        this.progress = 0;
+                                        this.stepLabel = "Échec — vous pouvez relancer";
+                                    }
+                                } catch (e) { /* ignore */ }
+                            },
+
+                            schedule() {
+                                clearTimeout(this._timer);
+                                if (this.running) {
+                                    this._timer = setTimeout(() =>
+                                        this.refresh().then(() => this.schedule()), 3000);
+                                } else if (this.lastFinished) {
+                                    // Auto-dismiss du bandeau succès au bout de 12s
+                                    this._timer = setTimeout(() => { this.lastFinished = false; }, 12000);
+                                }
+                            },
+
+                            dismissBanner() {
+                                this.lastFinished = false;
+                                clearTimeout(this._timer);
                             }
                         };
                     };

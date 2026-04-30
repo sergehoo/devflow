@@ -375,10 +375,72 @@ class ProjectAIProposalsForProjectView(LoginRequiredMixin, ListView):
 
 
 class ProjectAIProposalTriggerView(LoginRequiredMixin, View):
-    """Déclenchement manuel d'une proposition IA pour un projet existant."""
+    """
+    Déclenchement manuel d'une proposition IA.
+
+    - Requête AJAX (X-Requested-With: XMLHttpRequest) : on crée immédiatement
+      une proposition PENDING, on programme la génération en arrière-plan
+      (Celery on_commit, fallback thread), et on renvoie un JSON pour que
+      le widget de progression du hero affiche le bandeau dès le 1er poll.
+    - Requête classique : exécution synchrone + redirect (comportement legacy).
+    """
 
     def post(self, request, project_pk):
+        from django.http import JsonResponse
         project = get_object_or_404(dm.Project, pk=project_pk)
+        is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+        if is_ajax:
+            proposal = dm.ProjectAIProposal.objects.create(
+                project=project,
+                workspace=project.workspace,
+                status=dm.ProjectAIProposal.Status.PENDING,
+                triggered_by=request.user,
+            )
+
+            from django.db import transaction as _tx
+
+            def _run():
+                try:
+                    from project.tasks import generate_project_ai_proposal_task
+                    generate_project_ai_proposal_task.delay(
+                        project_id=project.pk,
+                        triggered_by_id=request.user.pk,
+                    )
+                except Exception:
+                    # Celery indispo → fallback : on lance la génération
+                    # dans un thread daemon pour ne pas bloquer la requête.
+                    try:
+                        import threading
+
+                        def _fallback():
+                            try:
+                                ProjectAIStructureService.generate_for_project(
+                                    project=project,
+                                    triggered_by=request.user,
+                                    use_ai=True,
+                                )
+                            except Exception as exc:
+                                dm.ProjectAIProposal.objects.filter(pk=proposal.pk).update(
+                                    status=dm.ProjectAIProposal.Status.FAILED,
+                                    error_message=f"Fallback thread échec : {exc}",
+                                )
+
+                        threading.Thread(target=_fallback, daemon=True).start()
+                    except Exception:
+                        dm.ProjectAIProposal.objects.filter(pk=proposal.pk).update(
+                            status=dm.ProjectAIProposal.Status.FAILED,
+                            error_message="Aucun backend de génération disponible.",
+                        )
+
+            _tx.on_commit(_run)
+
+            return JsonResponse({
+                "success": True,
+                "proposal_id": proposal.pk,
+                "status": proposal.status,
+            })
+
         result = ProjectAIStructureService.generate_for_project(
             project=project,
             triggered_by=request.user,
