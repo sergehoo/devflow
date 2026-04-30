@@ -31,7 +31,8 @@ COPY requirements.txt /app/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /app/requirements.txt
-
+RUN mkdir -p /app/staticfiles /app/media /app/logs \
+    && chmod -R 755 /app/staticfiles /app/media /app/logs
 COPY . /app/
 
 RUN mkdir -p /app/staticfiles /app/media /app/logs
