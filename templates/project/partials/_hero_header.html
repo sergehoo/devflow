@@ -88,6 +88,124 @@
                 </a>
                 {% endif %}
 
+                <!-- Génération IA : déclenchement direct + accès historique -->
+                <div x-data="aiProposalProgress({
+                        statusUrl: '{% url 'project_ai_proposal_status' project_obj.pk %}',
+                        triggerUrl: '{% url 'project_ai_proposal_trigger' project_obj.pk %}',
+                        csrfToken: '{{ csrf_token }}'
+                     })"
+                     x-init="poll()"
+                     class="flex flex-wrap items-center gap-2">
+                    <form method="post" :action="triggerUrl" class="inline" @submit="onSubmit">
+                        {% csrf_token %}
+                        <button type="submit"
+                                :disabled="running"
+                                class="inline-flex items-center gap-2 rounded-2xl bg-[linear-gradient(135deg,var(--accent),var(--accent2))] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(255,90,31,0.28)] transition hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-wait"
+                                title="Générer roadmap, jalons, sprints, backlog et tâches via l'IA">
+                            <i class="fa-solid fa-wand-magic-sparkles" x-show="!running"></i>
+                            <i class="fa-solid fa-spinner fa-spin" x-show="running" x-cloak></i>
+                            <span x-show="!running">Générer suggestions IA</span>
+                            <span x-show="running" x-cloak>IA en cours…</span>
+                        </button>
+                    </form>
+
+                    <a href="{% url 'project_ai_proposals' project_obj.pk %}"
+                       class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]"
+                       title="Voir l'historique des propositions IA">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                        Propositions IA
+                    </a>
+                </div>
+
+                <!-- Bandeau de progression IA (caché si rien en cours) -->
+                <div x-data="aiProposalProgress({
+                         statusUrl: '{% url 'project_ai_proposal_status' project_obj.pk %}',
+                         triggerUrl: '{% url 'project_ai_proposal_trigger' project_obj.pk %}',
+                         csrfToken: '{{ csrf_token }}'
+                     })"
+                     x-init="poll()"
+                     x-show="running"
+                     x-cloak
+                     class="basis-full mt-3">
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-3 shadow-soft">
+                        <div class="flex items-center gap-3">
+                            <div class="relative h-9 w-9 flex-shrink-0">
+                                <svg class="absolute inset-0 animate-spin text-[var(--accent)]"
+                                     viewBox="0 0 36 36" fill="none">
+                                    <circle cx="18" cy="18" r="15" stroke="currentColor" stroke-width="2" stroke-dasharray="60 80" stroke-linecap="round"/>
+                                </svg>
+                                <i class="fa-solid fa-wand-magic-sparkles text-[var(--accent)] absolute inset-0 grid place-items-center text-sm"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="text-sm font-semibold text-[var(--text1)]">Génération PMO en cours</div>
+                                    <div class="text-xs text-[var(--text3)]">
+                                        <span x-text="progress + '%'"></span>
+                                        <span x-show="eta > 0" x-cloak>· reste ≈ <span x-text="eta + 's'"></span></span>
+                                    </div>
+                                </div>
+                                <div class="mt-1.5 text-xs text-[var(--text2)]" x-text="stepLabel">…</div>
+                                <div class="mt-2 h-1.5 rounded-full bg-[var(--bg3)] overflow-hidden">
+                                    <div class="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent2))] transition-all duration-500"
+                                         :style="'width:' + progress + '%'"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                if (typeof window.aiProposalProgress === 'undefined') {
+                    window.aiProposalProgress = function(opts) {
+                        return {
+                            statusUrl: opts.statusUrl,
+                            triggerUrl: opts.triggerUrl,
+                            csrfToken: opts.csrfToken,
+                            running: false,
+                            progress: 0,
+                            stepLabel: "",
+                            eta: 0,
+                            _timer: null,
+
+                            onSubmit() {
+                                // Bascule en mode running juste après le submit natif
+                                setTimeout(() => { this.running = true; this.progress = 5; this.stepLabel = "Lancement…"; this.poll(); }, 0);
+                            },
+
+                            async fetchStatus() {
+                                try {
+                                    const r = await fetch(this.statusUrl, { headers: { "Accept": "application/json" } });
+                                    if (!r.ok) return null;
+                                    return await r.json();
+                                } catch (e) { return null; }
+                            },
+
+                            async poll() {
+                                const data = await this.fetchStatus();
+                                if (!data) { this._schedule(8000); return; }
+                                this.progress = data.progress || 0;
+                                this.stepLabel = data.step_label || "";
+                                this.eta = data.eta_seconds || 0;
+                                const status = data.status;
+                                this.running = !!status && !data.is_terminal && status !== "REJECTED";
+                                if (this.running) {
+                                    this._schedule(3000);
+                                } else if (status === "READY" || status === "VALIDATED" || status === "APPLIED") {
+                                    // Terminé : on rafraichit la page pour afficher la nouvelle proposition
+                                    if (this._wasRunning) setTimeout(() => location.reload(), 1200);
+                                }
+                                this._wasRunning = this.running || this._wasRunning;
+                            },
+
+                            _schedule(ms) {
+                                clearTimeout(this._timer);
+                                this._timer = setTimeout(() => this.poll(), ms);
+                            }
+                        };
+                    };
+                }
+                </script>
+
                 <div class="relative">
                     <button type="button"
                             @click="openActions = !openActions"
@@ -117,6 +235,17 @@
                         </a>
                         <a href="/project-imports/create/?project={{ project_obj.pk }}" class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
                             <span>Importer document IA</span>
+                        </a>
+                        <form method="post" action="{% url 'project_ai_proposal_trigger' project_obj.pk %}" class="block">
+                            {% csrf_token %}
+                            <button type="submit" class="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--accent)] transition hover:bg-[var(--accent-bg)]">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                <span>Générer suggestions IA</span>
+                            </button>
+                        </form>
+                        <a href="{% url 'project_ai_proposals' project_obj.pk %}" class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
+                            <i class="fa-solid fa-clock-rotate-left text-xs"></i>
+                            <span>Historique des propositions IA</span>
                         </a>
                         <a href="#" @click.prevent="tab='documents'; openActions=false" class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
                             <span>Voir les documents</span>

@@ -386,3 +386,86 @@ class ProjectAIProposalTriggerView(LoginRequiredMixin, View):
         )
         messages.success(request, "Proposition IA générée.")
         return redirect("ai_proposal_detail", pk=result.proposal.pk)
+
+
+# =========================================================================
+# Endpoint AJAX : statut de la dernière proposition IA d'un projet
+# Utilisé par le widget de progression dans la fiche projet.
+# =========================================================================
+class ProjectAIProposalStatusView(LoginRequiredMixin, View):
+    """GET /projects/<project_pk>/ai-proposals/status/  → JSON statut + ETA."""
+
+    # Étapes affichées à l'utilisateur (label + part du temps total)
+    _STEPS = [
+        (5, "Initialisation"),
+        (15, "Lecture du contexte projet et des équipes"),
+        (35, "Construction de la roadmap et des phases"),
+        (55, "Découpage en jalons et sprints"),
+        (75, "Génération du backlog et des tâches"),
+        (90, "Affectation par rôle / profil"),
+        (98, "Sauvegarde et indexation"),
+    ]
+
+    # Durée typique en secondes (estimation prudente)
+    _TYPICAL_DURATION_S = 90
+
+    def get(self, request, project_pk):
+        from django.http import JsonResponse
+        project = get_object_or_404(dm.Project, pk=project_pk)
+        proposal = (
+            dm.ProjectAIProposal.objects.filter(project=project)
+            .order_by("-created_at").first()
+        )
+        if not proposal:
+            return JsonResponse({
+                "status": None,
+                "label": "Aucune proposition",
+                "progress": 0,
+                "eta_seconds": 0,
+                "step_label": "—",
+            })
+
+        status = proposal.status
+        elapsed = (timezone.now() - proposal.created_at).total_seconds()
+
+        # Calcule progress + step selon le statut
+        if status in (dm.ProjectAIProposal.Status.READY,
+                      dm.ProjectAIProposal.Status.VALIDATED,
+                      dm.ProjectAIProposal.Status.APPLIED,
+                      dm.ProjectAIProposal.Status.PARTIALLY_VALIDATED):
+            progress = 100
+            step = "Génération terminée"
+            eta = 0
+        elif status == dm.ProjectAIProposal.Status.FAILED:
+            progress = 0
+            step = "Échec — vous pouvez relancer"
+            eta = 0
+        elif status == dm.ProjectAIProposal.Status.REJECTED:
+            progress = 100
+            step = "Rejetée"
+            eta = 0
+        else:
+            # En cours — interpolation linéaire avec courbe ralentie en fin
+            ratio = min(1.0, elapsed / self._TYPICAL_DURATION_S)
+            # Easing : montée rapide puis lente sur les dernières 10%
+            progress = int((ratio ** 0.7) * 92)
+            progress = max(2, min(99, progress))
+            # Choisit le step courant
+            step = self._STEPS[0][1]
+            for thr, lbl in self._STEPS:
+                if progress >= thr:
+                    step = lbl
+            eta = max(0, int(self._TYPICAL_DURATION_S - elapsed))
+
+        return JsonResponse({
+            "proposal_id": proposal.pk,
+            "status": status,
+            "status_label": dict(dm.ProjectAIProposal.Status.choices).get(status, status),
+            "progress": progress,
+            "step_label": step,
+            "eta_seconds": eta,
+            "items_created": getattr(proposal, "items_created", 0),
+            "used_provider": proposal.used_provider or "",
+            "tokens_used": proposal.tokens_used or 0,
+            "is_terminal": progress in (0, 100),
+        })

@@ -270,37 +270,114 @@ class ProjectAIStructureService:
         if not provider.is_available():
             return {}, "heuristic"
 
+        # ── Pool de membres : ProjectMember + équipes contributrices ─────
         members_summary = []
-        for m in project.members.select_related("user"):
+        seen_user_ids = set()
+
+        # 1) ProjectMembers explicites
+        for m in project.members.select_related("user", "team"):
+            if not m.user_id or m.user_id in seen_user_ids:
+                continue
+            seen_user_ids.add(m.user_id)
             profile = getattr(m.user, "profile", None)
-            members_summary.append(
-                {
-                    "user_email": m.user.email if m.user else "",
-                    "user_label": str(m.user) if m.user else "",
-                    "role": m.role,
+            members_summary.append({
+                "user_email": m.user.email,
+                "user_label": (m.user.get_full_name() or m.user.username),
+                "role": m.role or "",
+                "seniority": getattr(profile, "seniority", "") if profile else "",
+                "allocation_percent": m.allocation_percent or 0,
+                "team": m.team.name if m.team_id else (project.team.name if project.team_id else ""),
+                "capacity_hours_per_week": float(getattr(profile, "capacity_hours_per_week", 40) or 40) if profile else 40,
+                "billable_rate_per_day": float(getattr(profile, "billable_rate_per_day", 0) or 0) if profile else 0,
+            })
+
+        # 2) Membres des équipes contributrices (Project.teams M2M)
+        try:
+            for tm in project.get_assignable_memberships():
+                if tm.user_id in seen_user_ids:
+                    continue
+                seen_user_ids.add(tm.user_id)
+                profile = getattr(tm.user, "profile", None)
+                members_summary.append({
+                    "user_email": tm.user.email,
+                    "user_label": (tm.user.get_full_name() or tm.user.username),
+                    "role": tm.role,
                     "seniority": getattr(profile, "seniority", "") if profile else "",
-                    "allocation_percent": m.allocation_percent,
-                }
-            )
+                    "allocation_percent": tm.current_load_percent or 0,
+                    "team": tm.team.name if tm.team_id else "",
+                    "capacity_hours_per_week": float(getattr(profile, "capacity_hours_per_week", 40) or 40) if profile else 40,
+                    "billable_rate_per_day": float(getattr(profile, "billable_rate_per_day", 0) or 0) if profile else 0,
+                })
+        except Exception:
+            pass
+
+        # ── Contexte enrichi : équipes, objectifs, KPIs, budget existant
+        teams_meta = []
+        try:
+            for t in project.teams.all():
+                teams_meta.append({
+                    "name": t.name,
+                    "type": t.team_type,
+                    "lead": (t.lead.get_full_name() or t.lead.username) if t.lead_id else "",
+                    "velocity_target": t.velocity_target,
+                    "color": t.color,
+                })
+        except Exception:
+            pass
 
         objectives = list(
             dm.Objective.objects.filter(workspace=project.workspace)
-            .values_list("title", flat=True)[:5]
+            .values("title", "level", "status")[:8]
         )
+
+        existing_milestones = list(
+            project.milestones.filter(is_archived=False).values("name", "due_date")[:10]
+        )
+        existing_releases = list(
+            project.releases.filter(is_archived=False).values("name", "released_at")[:10]
+        )
+
+        budget_obj = getattr(project, "budgetestimatif", None)
+        budget_meta = None
+        if budget_obj:
+            budget_meta = {
+                "currency": getattr(budget_obj, "currency", "XOF"),
+                "amount": str(getattr(budget_obj, "amount", "") or ""),
+                "markup_percent": str(getattr(budget_obj, "markup_percent", "") or ""),
+            }
+
+        # ── Workspace info pour ton PMO
+        workspace = project.workspace
 
         prompt_payload = {
             "project": {
                 "name": project.name,
-                "description": project.description,
-                "tech_stack": project.tech_stack,
+                "code": project.code,
+                "description": project.description or "",
+                "tech_stack": project.tech_stack or "",
                 "priority": project.priority,
                 "status": project.status,
+                "category": project.category.name if project.category_id else "",
                 "start_date": project.start_date.isoformat() if project.start_date else None,
                 "target_date": project.target_date.isoformat() if project.target_date else None,
                 "budget": str(project.budget) if project.budget else None,
+                "main_team": project.team.name if project.team_id else "",
+                "owner": (project.owner.get_full_name() or project.owner.username) if project.owner_id else "",
+                "product_manager": (project.product_manager.get_full_name() or project.product_manager.username) if project.product_manager_id else "",
             },
-            "team": members_summary,
+            "workspace": {
+                "name": workspace.name,
+                "currency": "XOF",
+                "timezone": workspace.timezone,
+                "quarter_label": workspace.quarter_label,
+            },
+            "contributing_teams": teams_meta,
+            "team_pool": members_summary,
+            "team_pool_size": len(members_summary),
             "objectives_workspace": objectives,
+            "existing_milestones": [{"name": m["name"], "due_date": m["due_date"].isoformat() if m["due_date"] else None} for m in existing_milestones],
+            "existing_releases": [{"name": r["name"], "released_at": r["released_at"].isoformat() if r["released_at"] else None} for r in existing_releases],
+            "budget_meta": budget_meta,
         }
 
         proposal.prompt_snapshot = json.dumps(prompt_payload, ensure_ascii=False)[:8000]
@@ -332,30 +409,78 @@ class ProjectAIStructureService:
         return data, provider.name
 
     _SYSTEM_PROMPT = (
-        "Tu es un PMO senior + Tech Lead. À partir des informations projet, "
-        "tu produis UNE structure exploitable dans DevFlow. Réponds STRICTEMENT en JSON valide, "
-        "sans aucun texte hors JSON, avec la forme suivante :\n"
+        "Tu es un Directeur PMO senior, certifié PMP + Scrum Master + SAFe Agilist, "
+        "doublé d'un Tech Lead avec 15 ans d'expérience en delivery logiciel. "
+        "Tu produis pour DevFlow une structure de projet PROFESSIONNELLE, exhaustive, "
+        "calibrée comme un kick-off PMO réel — pas un brouillon générique.\n\n"
+
+        "═══ EXIGENCES DE PROFONDEUR ═══\n"
+        "Tu DOIS produire AU MINIMUM :\n"
+        "  • 1 roadmap découpée en 3-6 phases stratégiques (Discovery, Design, "
+        "    Build, Stabilisation, Go-Live, Hyper-care).\n"
+        "  • 6 à 10 milestones avec des dates réalistes alignées sur start_date / target_date.\n"
+        "  • 4 à 12 sprints de 2 semaines couvrant toute la période.\n"
+        "  • 8 à 20 backlog items (epics / user stories) avec story_points, "
+        "    description claire et critères d'acceptation Given/When/Then.\n"
+        "  • 25 à 80 tâches granulaires (4-16h chacune) couvrant TOUTES les phases :\n"
+        "    cadrage, ateliers fonctionnels, spécifications, architecture, modèle de "
+        "    données, design UI/UX, prototypage, dev backend, dev frontend, "
+        "    intégrations tierces, sécurité (OWASP), tests unitaires, tests "
+        "    d'intégration, tests E2E, recette utilisateur, performance, "
+        "    accessibilité, documentation technique, doc utilisateur, formation, "
+        "    déploiement, monitoring, maintenance corrective initiale.\n"
+        "  • Au moins 6 dépendances entre tâches (BLOCKS, RELATES_TO).\n"
+        "  • Affectations ciblées : utilise EXCLUSIVEMENT les emails du `team_pool` "
+        "    fourni en entrée. Choisis le membre dont le `role` ET la `seniority` "
+        "    correspondent à la nature de la tâche : tâches lead/architecture → "
+        "    SENIOR/LEAD/EXPERT, tâches QA → role=QA, etc. Équilibre la charge "
+        "    (round-robin pondéré par allocation_percent).\n"
+        "  • Au moins 5 risques projet typés avec sévérité (technique, planning, "
+        "    sécurité, dépendance externe, ressources).\n"
+        "  • 4 à 8 KPI projet mesurables (velocity, burn-down, lead time, "
+        "    defect rate, customer satisfaction…).\n"
+        "  • 2 à 4 OKR alignés sur les objectifs du workspace (si fournis).\n\n"
+
+        "═══ FORMAT DE SORTIE — JSON STRICT ═══\n"
+        "Réponds UNIQUEMENT en JSON valide, sans texte hors JSON, avec :\n"
         "{\n"
-        '  "summary": "string (synthèse 2-3 phrases)",\n'
-        '  "risks": "string (risques principaux)",\n'
-        '  "recommendations": ["string", ...],\n'
-        '  "roadmap": [{"local_ref":"R1","title":"...","description":"...","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD"}],\n'
-        '  "milestones": [{"local_ref":"M1","title":"...","description":"...","due_date":"YYYY-MM-DD"}],\n'
-        '  "sprints": [{"local_ref":"S1","title":"Sprint 1","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","velocity_target":20}],\n'
-        '  "backlog": [{"local_ref":"B1","title":"...","description":"...","story_points":5}],\n'
+        '  "summary": "synthèse exécutive 4-6 phrases (objectif business, parties prenantes, livrables clés, risques majeurs, jalons critiques)",\n'
+        '  "risks": "string descriptif",\n'
+        '  "recommendations": ["actions PMO concrètes (gouvernance, comitologie, RAID log, communication, etc.)"],\n'
+        '  "roadmap": [{"local_ref":"R1","title":"Phase Discovery","description":"...","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD"}],\n'
+        '  "milestones": [{"local_ref":"M1","title":"Cadrage validé","description":"livrables : note de cadrage, RACI, registre des risques v0","due_date":"YYYY-MM-DD"}],\n'
+        '  "releases": [{"local_ref":"REL1","title":"v1.0 MVP","description":"...","released_at":"YYYY-MM-DD"}],\n'
+        '  "sprints": [{"local_ref":"S1","title":"Sprint 1 — Cadrage","goal":"objectif sprint","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","velocity_target":20}],\n'
+        '  "backlog": [{"local_ref":"B1","title":"Authentification SSO","description":"...","story_points":8,"acceptance_criteria":["Given un utilisateur ... When ... Then ..."],"item_type":"STORY"}],\n'
         '  "tasks": [{\n'
-        '     "local_ref":"T1","title":"...","description":"...","priority":"LOW|MEDIUM|HIGH|CRITICAL",\n'
-        '     "complexity":"LOW|MEDIUM|HIGH","estimate_hours":8,"recommended_profile":"DEVELOPER|TECH_LEAD|...",\n'
-        '     "recommended_assignee_email":"jane@x.com","sprint_ref":"S1","milestone_ref":"M1",\n'
-        '     "depends_on_refs":["T0"], "acceptance_criteria":["..."]\n'
+        '     "local_ref":"T1","title":"...","description":"contexte + livrable + done-when",\n'
+        '     "priority":"LOW|MEDIUM|HIGH|CRITICAL",\n'
+        '     "complexity":"LOW|MEDIUM|HIGH",\n'
+        '     "estimate_hours":8,\n'
+        '     "recommended_profile":"PM|TECH_LEAD|DEVELOPER|QA|DEVOPS|DESIGNER|ANALYST",\n'
+        '     "recommended_assignee_email":"prenom@workspace.com",\n'
+        '     "sprint_ref":"S1","milestone_ref":"M1","backlog_ref":"B1",\n'
+        '     "depends_on_refs":["T0"],\n'
+        '     "acceptance_criteria":["critère 1","critère 2"],\n'
+        '     "tags":["backend","sécurité"]\n'
         "  }],\n"
-        '  "dependencies": [{"from_ref":"T2","to_ref":"T1","type":"BLOCKS"}],\n'
-        '  "assignments": [{"task_ref":"T1","user_email":"jane@x.com","reason":"..."}]\n'
-        "}\n"
-        "Couvre IMPÉRATIVEMENT toutes les phases : cadrage, conception fonctionnelle, "
-        "architecture technique, design UI/UX, développement backend, développement frontend, "
-        "intégrations, tests, sécurité, déploiement, documentation, recette utilisateur, "
-        "maintenance initiale. Utilise les emails fournis pour les recommended_assignee_email."
+        '  "dependencies": [{"from_ref":"T2","to_ref":"T1","type":"BLOCKS|RELATES_TO|DUPLICATES"}],\n'
+        '  "assignments": [{"task_ref":"T1","user_email":"jane@x.com","reason":"justification courte (rôle + séniorité + charge)"}],\n'
+        '  "risks": [{"title":"...","severity":"LOW|MEDIUM|HIGH|CRITICAL","probability":"LOW|MEDIUM|HIGH","mitigation":"...","owner_role":"PM|TECH_LEAD|..."}],\n'
+        '  "kpis": [{"name":"Velocity","unit":"points/sprint","target":20,"frequency":"sprint"}],\n'
+        '  "okrs": [{"objective":"Lancer le MVP en Q3","key_results":["KR1 : ...","KR2 : ..."]}],\n'
+        '  "communication_plan": [{"audience":"COPIL","frequency":"bi-mensuelle","format":"comité de pilotage 1h"}]\n'
+        "}\n\n"
+
+        "═══ CONTRAINTES STRICTES ═══\n"
+        "• Toutes les dates respectent project.start_date ≤ X ≤ project.target_date.\n"
+        "• Toutes les tâches sont rattachées à un sprint ET un milestone (pas d'orphelin).\n"
+        "• Une tâche estime_hours > 16h doit être un membre SENIOR/LEAD/EXPERT.\n"
+        "• Chaque user_email DOIT exister dans `team_pool` — n'invente pas d'email.\n"
+        "• Les acceptance_criteria utilisent le format Given/When/Then.\n"
+        "• Le total des estimate_hours doit refléter la complexité du projet et "
+        "  rester cohérent avec le budget si fourni (taux moyen ~ 1500 XOF/h).\n"
+        "• Pas de doublon de local_ref. Pas d'auto-référence dans les dépendances.\n"
     )
 
     # ---------------------------------------------------------------------

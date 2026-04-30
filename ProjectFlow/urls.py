@@ -508,6 +508,7 @@ from project.views_ai_proposal import (  # noqa: E402
     ProjectAIProposalRegenerateView,
     ProjectAIProposalRejectView,
     ProjectAIProposalTriggerView,
+    ProjectAIProposalStatusView,
     ProjectAIProposalValidateAllView,
     ProjectAIProposalsForProjectView,
 )
@@ -572,6 +573,11 @@ urlpatterns += [
         "projects/<int:project_pk>/ai-proposals/trigger/",
         ProjectAIProposalTriggerView.as_view(),
         name="project_ai_proposal_trigger",
+    ),
+    path(
+        "projects/<int:project_pk>/ai-proposals/status/",
+        ProjectAIProposalStatusView.as_view(),
+        name="project_ai_proposal_status",
     ),
 
     # =====================================================================
