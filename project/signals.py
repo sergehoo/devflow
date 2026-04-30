@@ -189,50 +189,81 @@ def create_or_update_timesheet_snapshot(sender, instance, created, **kwargs):
 @receiver(post_save, sender=dm.Project)
 def trigger_ai_proposal_on_project_creation(sender, instance, created, **kwargs):
     """
-    À la création d'un nouveau projet, on déclenche en arrière-plan
-    une tâche Celery qui va générer une proposition IA complète
-    (roadmap, milestones, sprints, backlog, tâches, dépendances,
-    affectations).
+    À la création d'un nouveau projet, on prépare la génération IA en
+    *arrière-plan*. La requête HTTP ne doit JAMAIS attendre l'IA :
+      1. On crée immédiatement une ProjectAIProposal en statut PENDING
+         (traçabilité + UI a un truc à afficher).
+      2. On planifie l'enqueue Celery via `transaction.on_commit` pour
+         que la tâche ne soit envoyée qu'APRÈS la fin de la transaction
+         de création du projet.
+      3. Si Celery n'est pas joignable, on bascule la proposition en
+         FAILED et on rend la main — l'utilisateur peut relancer
+         manuellement depuis la fiche projet.
 
-    Si Celery n'est pas disponible (settings.CELERY_TASK_ALWAYS_EAGER=False
-    + pas de worker), le signal échoue silencieusement et l'utilisateur
-    pourra déclencher manuellement la génération via le bouton dédié.
+    Le mode synchrone (`AI_TRIGGER_SYNC=True`) reste disponible mais
+    n'est jamais déclenché depuis une requête HTTP : il sert aux tests
+    unitaires ou aux commandes management.
     """
     if not created:
         return
-
-    # Possibilité de désactiver complètement via settings ou env var
     if not getattr(settings, "AI_AUTO_TRIGGER_ON_PROJECT_CREATE", True):
         return
+    # Drapeau interne pour shortcircuiter (ex: import IA récursif)
+    if getattr(instance, "_skip_ai_trigger", False):
+        return
 
+    triggered_by_id = instance.owner_id
+
+    # 1) Proposition en attente (immédiate, ne ralentit rien)
+    proposal = None
     try:
-        from project.tasks import generate_project_ai_proposal_task
+        proposal = dm.ProjectAIProposal.objects.create(
+            project=instance,
+            workspace=instance.workspace,
+            status=getattr(
+                dm.ProjectAIProposal.Status, "PENDING",
+                dm.ProjectAIProposal.Status.DRAFT,
+            ),
+            triggered_by=instance.owner,
+            error_message="",
+        )
+    except Exception:
+        proposal = None
 
-        # Owner == triggered_by par défaut
-        triggered_by_id = instance.owner_id
-
-        if getattr(settings, "AI_TRIGGER_SYNC", False):
-            # Mode synchrone (utile pour les tests / dev sans broker)
-            generate_project_ai_proposal_task(
-                project_id=instance.pk,
-                triggered_by_id=triggered_by_id,
-            )
-        else:
+    def _enqueue():
+        try:
+            from project.tasks import generate_project_ai_proposal_task
+            # On force toujours le mode async ici.
             generate_project_ai_proposal_task.delay(
                 project_id=instance.pk,
                 triggered_by_id=triggered_by_id,
             )
+        except Exception as exc:
+            # Celery / broker indispo → on marque la proposition FAILED.
+            if proposal is not None:
+                try:
+                    dm.ProjectAIProposal.objects.filter(pk=proposal.pk).update(
+                        status=dm.ProjectAIProposal.Status.FAILED,
+                        error_message=(
+                            "Génération IA impossible : worker Celery indisponible. "
+                            f"Détail : {exc}"
+                        ),
+                    )
+                except Exception:
+                    pass
+
+    try:
+        from django.db import transaction as _tx
+        _tx.on_commit(_enqueue)
     except Exception:
-        # Ne JAMAIS planter la création de projet à cause de l'IA.
-        # On crée juste une proposition en état FAILED pour traçabilité.
-        try:
-            dm.ProjectAIProposal.objects.create(
-                project=instance,
-                workspace=instance.workspace,
-                status=dm.ProjectAIProposal.Status.FAILED,
-                triggered_by=instance.owner,
-                error_message="Impossible de déclencher la tâche Celery (broker indisponible ?).",
-            )
+        # On ne tente PAS le mode synchrone depuis ici (ce serait
+        # exactement le bug à corriger : bloquer la requête HTTP).
+        if proposal is not None:
+            try:
+                dm.ProjectAIProposal.objects.filter(pk=proposal.pk).update(
+                    status=dm.ProjectAIProposal.Status.FAILED,
+                    error_message="Impossible de planifier la génération IA.",
+                )
         except Exception:
             pass
 
