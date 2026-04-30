@@ -5,22 +5,35 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: devflowweb
+    # Au démarrage : migrate (idempotent) + collectstatic (force pour générer
+    # le manifest WhiteNoise) + lancement gunicorn ASGI/Uvicorn.
     command: >
-      gunicorn ProjectFlow.asgi:application
-      -k uvicorn.workers.UvicornWorker
-      --bind 0.0.0.0:8000
-      --workers 3
-      --timeout 120
-      --keep-alive 5
-      --max-requests 1000
-      --max-requests-jitter 150
-      --access-logfile -
-      --error-logfile -
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput --clear &&
+             gunicorn ProjectFlow.asgi:application
+             -k uvicorn.workers.UvicornWorker
+             --bind 0.0.0.0:8000
+             --workers 3
+             --timeout 120
+             --keep-alive 5
+             --max-requests 1000
+             --max-requests-jitter 150
+             --access-logfile -
+             --error-logfile -"
     volumes:
+      # NB : `.:/app` overrides le COPY du Dockerfile. Pratique pour itérer
+      # sans rebuild, mais en prod stricte il faut le commenter pour figer
+      # le code dans l'image.
       - .:/app
       - static_volume:/app/staticfiles
       - media_volume:/app/media
       - logs_volume:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/ || curl -fsS http://localhost:8000/ -o /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     environment:
       # Django
       - DEBUG=${DEBUG:-False}
@@ -80,8 +93,10 @@ services:
     env_file:
       - .env
     depends_on:
-      - devflowdb
-      - redis
+      devflowdb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - proxy
       - default
@@ -161,8 +176,10 @@ services:
     env_file:
       - .env
     depends_on:
-      - devflowdb
-      - redis
+      devflowdb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - default
     restart: unless-stopped
@@ -204,8 +221,10 @@ services:
     env_file:
       - .env
     depends_on:
-      - devflowdb
-      - redis
+      devflowdb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - default
     restart: unless-stopped
@@ -262,6 +281,12 @@ services:
       - "5438:5432"
     networks:
       - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${DB_USER} -d $${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   redis:
@@ -272,6 +297,11 @@ services:
       - redis_data:/data
     networks:
       - default
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   devflowadminer:
