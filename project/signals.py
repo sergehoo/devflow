@@ -264,8 +264,8 @@ def trigger_ai_proposal_on_project_creation(sender, instance, created, **kwargs)
                     status=dm.ProjectAIProposal.Status.FAILED,
                     error_message="Impossible de planifier la génération IA.",
                 )
-        except Exception:
-            pass
+            except Exception:
+                pass
 
 
 # =========================================================================

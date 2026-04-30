@@ -3450,8 +3450,17 @@ class ProjectCreateView(DevflowCreateView):
             form.add_error(None, f"Erreur lors de l'enregistrement : {e}")
             return self.form_invalid(form)
 
-        messages.success(self.request, self.success_message)
-        return redirect(reverse_lazy(self.success_list_url_name))
+        messages.success(
+            self.request,
+            self.success_message
+            + " La proposition IA (roadmap, sprints, backlog, tâches) est en cours "
+              "de génération en arrière-plan."
+        )
+        # On redirige vers la fiche détail pour un retour visuel immédiat.
+        try:
+            return redirect("project_detail", pk=self.object.pk)
+        except Exception:
+            return redirect(reverse_lazy(self.success_list_url_name))
 
 
 
