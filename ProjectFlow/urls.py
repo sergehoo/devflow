@@ -699,10 +699,13 @@ if settings.DEBUG:
         path("preview/error/<str:code>/", _preview_error, name="preview_error"),
     ]
 
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 urlpatterns += [
     re_path(
-        r"^media/(?P<path>.*)$",serve,
+        r"^media/(?P<path>.*)$",
+        serve,
         {"document_root": settings.MEDIA_ROOT},
     ),
 ]
