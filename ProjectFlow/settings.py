@@ -42,6 +42,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise : sert les fichiers statiques en prod sans nginx.
+    # DOIT être placé juste après SecurityMiddleware (cf. doc whitenoise).
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -114,12 +117,28 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/4.2/howto/static-files/
+# ─────────────────────────────────────────────────────────────────────────
+# Static files (CSS, JavaScript, Images du projet)
+# ─────────────────────────────────────────────────────────────────────────
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"          # cible de `collectstatic`
+STATICFILES_DIRS = [BASE_DIR / "static"]        # source en dev
 
-STATIC_URL = 'static/'
+# WhiteNoise : sert les fichiers statiques en production sans nginx, avec
+# compression + cache busting (manifest). Inactif en DEBUG=True (Django gère).
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
+# ─────────────────────────────────────────────────────────────────────────
+# Media files (avatars users, logos workspace, covers projet, factures PDF…)
+# ─────────────────────────────────────────────────────────────────────────
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 
 # Default primary key field type
-# https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

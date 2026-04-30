@@ -655,9 +655,17 @@ urlpatterns += [
          InvoiceGenerateFromProjectView.as_view(), name="invoice_generate_from_project"),
 ]
 
+# ── Servir les fichiers MEDIA (uploads : logos, avatars, factures PDF…) ──
+# WhiteNoise sert déjà les statiques en prod et en dev (efficace, avec cache
+# busting). Pour les MEDIA, en l'absence d'un nginx ou d'un bucket S3, on
+# expose la route MEDIA via `static()` quel que soit DEBUG.
+# Si plus tard vous passez à S3/Cloudfront, retirez ces lignes.
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
 if settings.DEBUG:
+    # En dev seul, on active aussi le serve direct des STATICFILES_DIRS via
+    # Django (utile si WhiteNoise n'a pas encore tourné collectstatic).
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 
 # ─────────────────────────────────────────────────────────────────────────
