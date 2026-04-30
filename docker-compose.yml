@@ -299,7 +299,7 @@ services:
       - "traefik.http.routers.devflowadminer.middlewares=devflowadminer-auth"
 
       # Remplace le hash par ton vrai hash htpasswd
-      - "traefik.http.middlewares.devflowadminer-auth.basicauth.users=admin:$apr1$VFdJ.p2Y$eDQsjP08sKPezxrPpeErK1"
+      - "traefik.http.middlewares.devflowadminer-auth.basicauth.users=admin:$$apr1$$VFdJ.p2Y$$eDQsjP08sKPezxrPpeErK1"
 
   ollama:
     image: ollama/ollama:latest
