@@ -977,11 +977,9 @@
                 <div class="visual-content">
                     <div>
                         <div class="brand-badge">
-                        {% if request.user.is_authenticated and request.user.profile.workspace.logo %}
-    <img src="{{ request.user.profile.workspace.logo.url }}" alt="Logo" class="brand-logo-img">
-{% else %}
-    <img src="{% static 'img/logo_datarium-black.png' %}" alt="Logo" class="brand-logo-img">
-{% endif %}
+           
+{#    <img src="{% static 'img/logo_datarium-black.png' %}" alt="Logo" class="brand-logo-img">#}
+
 
 
                             <div>
