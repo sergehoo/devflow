@@ -1023,11 +1023,6 @@
             <div class="form-wrap">
                 <div class="company-logo-top">
                     <div class="company-logo-badge">
-                        {% if request.user.workspace and request.user.workspace.logo %}
-                            <img src="{{ request.user.workspace.logo.url }}" alt="Logo" class="brand-logo-img">
-                        {% else %}
-                            <img src="{% static 'img/logo_datarium-black.png' %}" alt="Logo" class="brand-logo-img">
-                        {% endif %}
                         <div class="company-logo-name">Dev'Flow</div>
                     </div>
                 </div>
@@ -1038,11 +1033,12 @@
 
                 <div class="auth-card">
                     <div class="auth-card-inner">
-                        {% if request.user.workspace and request.user.workspace.logo %}
-                            <img src="{{ request.user.workspace.logo.url }}" alt="Logo" class="auth-mini-logo">
-                        {% else %}
-                            <img src="{% static 'img/logo_datarium-black.png' %}" alt="Logo" class="auth-mini-logo">
-                        {% endif %}
+                      
+<div class="company-logo-top">
+                    <div class="company-logo-badge">
+                        <div class="company-logo-name">Dev'Flow</div>
+                    </div>
+                </div>                      
 
                         {% block auth_content %}{% endblock %}
 
