@@ -266,7 +266,7 @@
             box-shadow: var(--shadow-xl);
             border: 1px solid rgba(255, 255, 255, .22);
             background: linear-gradient(180deg, rgba(0, 0, 0, .08), rgba(0, 0, 0, .48)),
-            url("{% static 'img/branding/auth-cover.jpg' %}") center/cover no-repeat;
+            {#url("{% static 'img/branding/auth-cover.jpg' %}") center/cover no-repeat;#}
         }
 
         .visual-card::before {
@@ -282,7 +282,7 @@
             content: "";
             position: absolute;
             inset: 0;
-            background: url("{% static 'img/branding/projetc_advisor.jpg' %}") center/cover no-repeat;
+            {#background: url("{% static 'img/branding/projetc_advisor.jpg' %}") center/cover no-repeat;#}
             opacity: .80;
             mix-blend-mode: screen;
             pointer-events: none;
