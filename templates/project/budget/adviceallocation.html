@@ -1,0 +1,185 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Conseils IA d’allocation{% endblock %}
+{% block page_title %}Conseils IA d’allocation{% endblock %}
+{% block breadcrumb %}Workspace · Finance IA · Allocation{% endblock %}
+
+{% block content %}
+    <div class="space-y-6" x-data="allocationAdvice()" x-init="loadAdvice()">
+
+        <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <p class="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
+                        Workspace
+                    </p>
+                    <h1 class="mt-1 text-2xl font-extrabold text-[var(--text)]">
+                        {{ workspace.name }}
+                    </h1>
+                    <p class="mt-2 max-w-3xl text-sm text-[var(--muted)]">
+                        Analyse IA des ressources, budgets, charges et priorités pour optimiser l’allocation.
+                    </p>
+                </div>
+
+                <button type="button"
+                        @click="loadAdvice()"
+                        class="inline-flex items-center justify-center rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5">
+                    Actualiser l’analyse IA
+                </button>
+            </div>
+        </section>
+
+        <template x-if="loading">
+            <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 text-sm text-[var(--muted)] shadow-soft">
+                Génération des conseils IA en cours...
+            </div>
+        </template>
+
+        <template x-if="error">
+            <div class="rounded-[24px] border border-red-200 bg-red-50 p-6 text-sm font-semibold text-red-700">
+                <span x-text="error"></span>
+            </div>
+        </template>
+
+        <template x-if="!loading && !error && advice">
+            <div class="grid gap-6 lg:grid-cols-3">
+
+                <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <p class="text-sm font-semibold text-[var(--muted)]">Score global</p>
+                    <div class="mt-3 text-4xl font-black text-[var(--text)]">
+                        <span x-text="advice.score ?? '-'"></span>
+                    </div>
+                    <p class="mt-2 text-sm text-[var(--muted)]">
+                        Niveau d’optimisation de l’allocation actuelle.
+                    </p>
+                </div>
+
+                <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <p class="text-sm font-semibold text-[var(--muted)]">Niveau de risque</p>
+                    <div class="mt-3 text-3xl font-black text-[var(--text)]">
+                        <span x-text="advice.risk_level ?? '-'"></span>
+                    </div>
+                    <p class="mt-2 text-sm text-[var(--muted)]">
+                        Risque estimé sur la charge, le budget et les délais.
+                    </p>
+                </div>
+
+                <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <p class="text-sm font-semibold text-[var(--muted)]">Confiance IA</p>
+                    <div class="mt-3 text-3xl font-black text-[var(--text)]">
+                        <span x-text="advice.confidence ?? '-'"></span>
+                    </div>
+                    <p class="mt-2 text-sm text-[var(--muted)]">
+                        Niveau de fiabilité de la recommandation.
+                    </p>
+                </div>
+
+                <div class="lg:col-span-2 rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <h2 class="text-lg font-extrabold text-[var(--text)]">
+                        Recommandations
+                    </h2>
+
+                    <template x-if="recommendations.length === 0">
+                        <p class="mt-4 text-sm text-[var(--muted)]">
+                            Aucune recommandation disponible.
+                        </p>
+                    </template>
+
+                    <div class="mt-5 space-y-4">
+                        <template x-for="(item, index) in recommendations" :key="index">
+                            <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-4">
+                                <div class="flex items-start gap-3">
+                                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-bg)] text-sm font-black text-[var(--accent)]">
+                                        <span x-text="index + 1"></span>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-bold text-[var(--text)]"
+                                            x-text="item.title ?? item.label ?? 'Recommandation'"></h3>
+                                        <p class="mt-1 text-sm text-[var(--muted)]"
+                                           x-text="item.description ?? item.message ?? item"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <h2 class="text-lg font-extrabold text-[var(--text)]">
+                        Actions prioritaires
+                    </h2>
+
+                    <template x-if="actions.length === 0">
+                        <p class="mt-4 text-sm text-[var(--muted)]">
+                            Aucune action prioritaire détectée.
+                        </p>
+                    </template>
+
+                    <div class="mt-5 space-y-3">
+                        <template x-for="(action, index) in actions" :key="index">
+                            <div class="rounded-2xl bg-[var(--bg)] p-4 text-sm text-[var(--text)]">
+                                <span class="font-bold" x-text="index + 1"></span>.
+                                <span x-text="action.title ?? action.label ?? action"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-3 rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+                    <h2 class="text-lg font-extrabold text-[var(--text)]">
+                        Analyse détaillée
+                    </h2>
+
+                    <pre class="mt-5 max-h-[520px] overflow-auto rounded-2xl bg-slate-950 p-5 text-xs text-slate-100"
+                         x-text="JSON.stringify(advice, null, 2)"></pre>
+                </div>
+
+            </div>
+        </template>
+    </div>
+
+    <script>
+        function allocationAdvice() {
+            return {
+                loading: false,
+                error: null,
+                advice: null,
+                recommendations: [],
+                actions: [],
+
+                async loadAdvice() {
+                    this.loading = true;
+                    this.error = null;
+                    this.advice = null;
+                    this.recommendations = [];
+                    this.actions = [];
+
+                    try {
+                        const response = await fetch("{% url 'workspace_financial_ai_allocation' workspace.pk %}", {
+                            method: "GET",
+                            headers: {
+                                "X-Requested-With": "XMLHttpRequest",
+                                "Accept": "application/json"
+                            }
+                        });
+
+                        const data = await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(data.error || "Erreur lors du chargement des conseils IA.");
+                        }
+
+                        this.advice = data;
+                        this.recommendations = data.recommendations || data.advices || data.suggestions || [];
+                        this.actions = data.actions || data.priority_actions || data.next_actions || [];
+
+                    } catch (err) {
+                        this.error = err.message || "Erreur inconnue.";
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            }
+        }
+    </script>
+{% endblock %}

@@ -1,0 +1,18 @@
+{# Partial KPI cards — DevFlow.
+   Données attendues : `stats` (liste de dicts {label, value, hint, icon, color})
+#}
+{% for s in stats %}
+<div class="card" style="padding:14px 16px;">
+    <div style="font-size:11.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;">{{ s.label }}</div>
+    <div style="font-size:22px;font-weight:600;color:{{ s.color|default:'var(--text1)' }};margin-top:4px;">
+        {{ s.value }}
+    </div>
+    {% if s.hint %}
+        <div style="font-size:11.5px;color:var(--text3);margin-top:6px;">{{ s.hint }}</div>
+    {% endif %}
+</div>
+{% empty %}
+<div class="card" style="padding:14px;color:var(--text3);">
+    Aucun KPI disponible.
+</div>
+{% endfor %}

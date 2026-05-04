@@ -467,7 +467,7 @@ from project.views_financial_ai import (  # noqa: E402
     ProjectBudgetForecastView,
     ProjectRiskAnalysisView,
     WorkspaceAllocationAdviceView,
-    WorkspaceFinancialPortfolioView,
+    WorkspaceFinancialPortfolioView, WorkspaceAllocationAdviceTemplate,
 )
 from project.views_budget import RefreshProjectFinancialsView  # noqa: E402
 from project.views import (  # noqa: E402  -- Facturation
@@ -530,6 +530,12 @@ urlpatterns += [
         "workspaces/<int:workspace_id>/financial-ai/allocation/",
         WorkspaceAllocationAdviceView.as_view(),
         name="workspace_financial_ai_allocation",
+    ),
+
+    path(
+        "workspaces/<int:workspace_id>/financial-ai/allocation/view/",
+        WorkspaceAllocationAdviceTemplate.as_view(),
+        name="workspace_financial_ai_allocation_template",
     ),
     path(
         "workspaces/<int:workspace_id>/financial-ai/portfolio/",

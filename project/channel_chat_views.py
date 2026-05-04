@@ -20,7 +20,7 @@ def channel_chat_page(request, pk):
 
     return render(
         request,
-        "project/channels/detail.html",
+        "project/chat/channel_detail.html",
         {
             "chat_channel": channel,
             "messages": messages,

@@ -19,23 +19,48 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
-# SECURITY WARNING: keep the secret key used in production secret!
 
-SECRET_KEY = 'django-insecure-9uzaef-rpxlqoxg!juy_7x3z*a9!y7%mhtajqaamyp9x(#0qr8'
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# ─────────────────────────────────────────────────────────────────────────
+# Sécurité : les valeurs sensibles sont lues depuis .env (python-decouple).
+# Un fallback "django-insecure-…" est conservé UNIQUEMENT pour le bootstrap
+# en local. En production l'env DJANGO_ENV=prod + une vraie SECRET_KEY
+# obligent à renseigner ces variables.
+# ─────────────────────────────────────────────────────────────────────────
+SECRET_KEY = config(
+    "SECRET_KEY",
+    default="django-insecure-CHANGE-ME-9uzaef-rpxlqoxg!juy_7x3z*a9!y7%mhtajqaamyp9x(#0qr8",
+)
+DEBUG = config("DEBUG", default=True, cast=bool)
 
-ALLOWED_HOSTS = [
-    'www.flow.datarium-dev.com',
-    'flow.datarium-dev.com',
-    'localhost',
-    '127.0.0.1'
-]
-CSRF_TRUSTED_ORIGINS=[
-    'https://flow.datarium-dev.com',
-    'http://flow.datarium-dev.com',
-]
+
+def _csv(value: str) -> list[str]:
+    """Convertit "a,b , c" en ["a", "b", "c"] en supprimant les blancs."""
+    return [item.strip() for item in (value or "").split(",") if item.strip()]
+
+
+ALLOWED_HOSTS = _csv(config(
+    "ALLOWED_HOSTS",
+    default="localhost,127.0.0.1,flow.datarium-dev.com,www.flow.datarium-dev.com",
+))
+
+CSRF_TRUSTED_ORIGINS = _csv(config(
+    "CSRF_TRUSTED_ORIGINS",
+    default="https://flow.datarium-dev.com,http://flow.datarium-dev.com",
+))
+
+# En production on durcit automatiquement, sauf si désactivé explicitement.
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = "SAMEORIGIN"
+if not DEBUG:
+    SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=True, cast=bool)
+    CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=True, cast=bool)
+    SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=False, cast=bool)
+    SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=0, cast=int)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = config("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False, cast=bool)
+    SECURE_HSTS_PRELOAD = config("SECURE_HSTS_PRELOAD", default=False, cast=bool)
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # Application definition
 
 
@@ -234,11 +259,20 @@ SPECTACULAR_SETTINGS = {
 }
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Channels (WebSocket) — host Redis lu depuis l'env, fallback "redis"
+# (nom du service docker-compose) sinon "127.0.0.1" en local.
+# ─────────────────────────────────────────────────────────────────────────
+_in_docker = os.path.exists("/.dockerenv")
+_default_redis_host = "redis" if _in_docker else "127.0.0.1"
+CHANNELS_REDIS_HOST = os.getenv("CHANNELS_REDIS_HOST") or os.getenv("REDIS_HOST", _default_redis_host)
+CHANNELS_REDIS_PORT = int(os.getenv("CHANNELS_REDIS_PORT") or os.getenv("REDIS_PORT", 6379))
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis", 6379)],
+            "hosts": [(CHANNELS_REDIS_HOST, CHANNELS_REDIS_PORT)],
         },
     },
 }

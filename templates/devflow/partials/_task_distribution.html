@@ -1,0 +1,30 @@
+{# Partial graphique distribution des tâches — DevFlow.
+   Données attendues : `task_distribution` = { labels, values, colors }
+#}
+<div class="card" style="padding:14px;">
+    <div class="card-head" style="margin-bottom:8px;">
+        <div>
+            <div class="card-title">Distribution des tâches</div>
+            <div class="card-sub">Répartition par statut</div>
+        </div>
+    </div>
+    <canvas id="dfTaskDistributionChart" height="200"></canvas>
+</div>
+<script>
+(function () {
+    const el = document.getElementById("dfTaskDistributionChart");
+    if (!el || !window.Chart) return;
+    const labels = {{ task_distribution.labels|default:"[]"|safe }};
+    const values = {{ task_distribution.values|default:"[]"|safe }};
+    const colors = {{ task_distribution.colors|default:"['#FF5A1F','#7C5CFF','#15B79E','#F59E0B','#94A3B8']"|safe }};
+    if (!labels.length) {
+        el.outerHTML = '<div class="text-muted" style="padding:18px;">Aucune donnée de distribution.</div>';
+        return;
+    }
+    new Chart(el.getContext("2d"), {
+        type: "doughnut",
+        data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }] },
+        options: { plugins: { legend: { position: "bottom" } } },
+    });
+})();
+</script>

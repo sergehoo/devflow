@@ -238,6 +238,30 @@
       </div>
     </details>
 
+    <!-- Finance & TJM -->
+    <details class="nav-group"
+      {% if current_url == 'project_expense_list' or current_url == 'project_expense_detail' or current_url == 'project_expense_create' or current_url == 'project_expense_update' or current_url == 'project_budget_create' or current_url == 'project_budget_detail' or current_url == 'project_budget_update' or current_url == 'project_revenue_create' or current_url == 'workspace_financial_portfolio' or current_url == 'project_financial_ai_forecast' or current_url == 'project_financial_ai_risks' or current_url == 'workspace_financial_ai_allocation_template' %}
+      open
+      {% endif %}>
+      <summary class="nav-item nav-parent">
+        <div class="nav-parent-left">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="1" x2="12" y2="23"/>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+          <span>Finance & TJM</span>
+        </div>
+        <span class="nav-caret">⌄</span>
+      </summary>
+      <div class="nav-submenu">
+        <a class="nav-subitem {% if current_url == 'project_expense_list' or current_url == 'project_expense_detail' or current_url == 'project_expense_create' or current_url == 'project_expense_update' %}lenk-active{% endif %}" href="{% url 'project_expense_list' %}">Dépenses projet</a>
+        {% if request.user.profile.workspace_id %}
+            <a class="nav-subitem {% if current_url == 'workspace_financial_portfolio' %}lenk-active{% endif %}" href="{% url 'workspace_financial_portfolio' request.user.profile.workspace_id %}">Cockpit portfolio</a>
+            <a class="nav-subitem {% if current_url == 'workspace_financial_ai_allocation_template' %}lenk-active{% endif %}" href="{% url 'workspace_financial_ai_allocation_template' request.user.profile.workspace_id %}">IA · Allocation ressources</a>
+        {% endif %}
+      </div>
+    </details>
+
     <!-- Facturation -->
     <details class="nav-group"
       {% if current_url == 'invoice_list' or current_url == 'invoice_detail' or current_url == 'invoice_create' or current_url == 'invoice_update' or current_url == 'invoice_print' or current_url == 'invoice_client_list' or current_url == 'invoice_client_detail' or current_url == 'invoice_client_create' or current_url == 'invoice_client_update' or current_url == 'invoice_generate_from_project' %}

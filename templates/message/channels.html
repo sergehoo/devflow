@@ -1,4 +1,4 @@
-{% extends 'devflow/layout/base.html' %}
+{% extends 'layout/base.html' %}
 
 {% block title %}DevFlow — Messages{% endblock %}
 {% block page_title %}Messages{% endblock %}
@@ -15,7 +15,7 @@
         </div>
         <div style="padding:14px;display:flex;flex-direction:column;gap:8px;">
             {% for channel in items %}
-                <a class="nav-item" href="{% url 'devflow:channel_detail' channel.pk %}"># {{ channel.name }}</a>
+                <a class="nav-item" href="{% url 'channel_chat_page' channel.pk %}"># {{ channel.name }}</a>
             {% empty %}
                 <div class="text-muted">Aucun canal.</div>
             {% endfor %}

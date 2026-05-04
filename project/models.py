@@ -643,73 +643,81 @@ class BillingRate(TimeStampedModel, SoftDeleteModel):
         self.full_clean()
         super().save(*args, **kwargs)
 
+    # Constante alignée sur ProjectBudgetService.DEFAULT_WORKING_DAYS_PER_MONTH
+    # (jours ouvrés moyens par mois). Surchargeable via settings.WORKING_DAYS_PER_MONTH.
     @staticmethod
-    def get_user_daily_cost(user):
-        today = timezone.localdate()
+    def _working_days_per_month():
+        from django.conf import settings as _s
+        return Decimal(str(getattr(_s, "WORKING_DAYS_PER_MONTH", 22)))
+
+    @classmethod
+    def _daily_amount_for_user(cls, user, *, kind: str, on_date=None):
+        """
+        Méthode interne factorisée : renvoie le montant journalier (coût ou
+        vente) pour un utilisateur à une date donnée. Évite la duplication
+        entre get_user_daily_cost / get_user_sale_daily_rate.
+
+        :param kind: "cost" pour le coût interne, "sale" pour le tarif de vente.
+        :param on_date: date de référence (par défaut today). Permet aux
+            services de prévision de calculer un coût "comme à la date X".
+        """
+        if kind not in ("cost", "sale"):
+            raise ValueError("kind must be 'cost' or 'sale'")
+
+        today = on_date or timezone.localdate()
         profile = getattr(user, "profile", None)
 
+        filter_kwargs = {"user": user, "valid_from__lte": today}
+        if kind == "cost":
+            filter_kwargs["is_internal_cost"] = True
+        else:
+            filter_kwargs["is_billable_rate"] = True
+
         rate = (
-            BillingRate.objects.filter(
-                user=user,
-                is_internal_cost=True,
-                valid_from__lte=today,
-            )
+            BillingRate.objects.filter(**filter_kwargs)
             .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
             .order_by("-valid_from", "-id")
             .first()
         )
 
-        if rate:
-            if rate.unit == BillingRate.RateUnit.DAILY:
-                return rate.cost_rate_amount or Decimal("0")
+        amount_field = "cost_rate_amount" if kind == "cost" else "sale_rate_amount"
 
+        if rate:
+            base = getattr(rate, amount_field, None) or Decimal("0")
+            if rate.unit == BillingRate.RateUnit.DAILY:
+                return base
             if rate.unit == BillingRate.RateUnit.HOURLY:
                 hours_per_day = Decimal("8")
                 if profile and getattr(profile, "capacity_hours_per_day", None):
-                    hours_per_day = Decimal(str(profile.capacity_hours_per_day))
-                return (rate.cost_rate_amount or Decimal("0")) * hours_per_day
-
+                    try:
+                        hp = Decimal(str(profile.capacity_hours_per_day))
+                        if hp > 0:
+                            hours_per_day = hp
+                    except Exception:
+                        pass
+                return base * hours_per_day
             if rate.unit == BillingRate.RateUnit.MONTHLY:
-                return (rate.cost_rate_amount or Decimal("0")) / Decimal("22")
+                divisor = cls._working_days_per_month()
+                if divisor <= 0:
+                    return Decimal("0")
+                return (base / divisor).quantize(Decimal("0.01"))
 
-        if profile and getattr(profile, "cost_per_day", None) is not None:
-            return profile.cost_per_day or Decimal("0")
+        # Fallbacks via le profil utilisateur (legacy).
+        if profile is not None:
+            fallback_field = "cost_per_day" if kind == "cost" else "billable_rate_per_day"
+            value = getattr(profile, fallback_field, None)
+            if value is not None:
+                return value or Decimal("0")
 
         return Decimal("0")
 
-    @staticmethod
-    def get_user_sale_daily_rate(user):
-        today = timezone.localdate()
-        profile = getattr(user, "profile", None)
+    @classmethod
+    def get_user_daily_cost(cls, user, on_date=None):
+        return cls._daily_amount_for_user(user, kind="cost", on_date=on_date)
 
-        rate = (
-            BillingRate.objects.filter(
-                user=user,
-                is_billable_rate=True,
-                valid_from__lte=today,
-            )
-            .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
-            .order_by("-valid_from", "-id")
-            .first()
-        )
-
-        if rate:
-            if rate.unit == BillingRate.RateUnit.DAILY:
-                return rate.sale_rate_amount or Decimal("0")
-
-            if rate.unit == BillingRate.RateUnit.HOURLY:
-                hours_per_day = Decimal("8")
-                if profile and getattr(profile, "capacity_hours_per_day", None):
-                    hours_per_day = Decimal(str(profile.capacity_hours_per_day))
-                return (rate.sale_rate_amount or Decimal("0")) * hours_per_day
-
-            if rate.unit == BillingRate.RateUnit.MONTHLY:
-                return (rate.sale_rate_amount or Decimal("0")) / Decimal("22")
-
-        if profile and getattr(profile, "billable_rate_per_day", None) is not None:
-            return profile.billable_rate_per_day or Decimal("0")
-
-        return Decimal("0")
+    @classmethod
+    def get_user_sale_daily_rate(cls, user, on_date=None):
+        return cls._daily_amount_for_user(user, kind="sale", on_date=on_date)
 
     @property
     def target_label(self):

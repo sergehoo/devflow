@@ -646,14 +646,22 @@ class ProjectBudgetService:
         committed_cost = expenses["committed"] + expenses["accrued"]
         # Coûts décaissés / actuels
         actual_cost = expenses["paid"] + expenses["validated"]
-        # RAF (reste à faire) basé sur les tâches actives
-        raf_cost = estimates["raf_cost"] or timesheets["logged_cost"] * ZERO
+        # RAF (reste à faire) basé sur les tâches actives.
+        raf_cost = estimates["raf_cost"] or ZERO
 
         # Forecast = ce qui est déjà sorti + engagé non payé + reste à faire
         forecast_final_cost = actual_cost + committed_cost + raf_cost
 
         total_direct_cost = expenses["direct_cost"]
-        total_labor_cost = expenses["labor_cost"] + timesheets["logged_cost"]
+        # Anti double-comptage : si une dépense LABOR a déjà été créée à
+        # partir d'une feuille de temps validée, on évite de l'ajouter
+        # une 2ᵉ fois via le pointage. Heuristique : on prend le maximum
+        # entre la part LABOR des dépenses (booking comptable) et le coût
+        # calculé depuis les pointages (vue opérationnelle). En pratique,
+        # un seul des deux est renseigné selon le mode comptable choisi.
+        total_labor_cost = max(
+            expenses["labor_cost"], timesheets["logged_cost"]
+        )
         other_cost = expenses["other_cost"]
 
         # Marges réelles vs forecast

@@ -1,0 +1,44 @@
+{# Partial Kanban — DevFlow.
+   Inclut un board kanban très simple basé sur les colonnes Sprint.
+   Données attendues dans le contexte :
+     - kanban_columns : liste de dicts { name, color, cards: [{title, status, assignee, due_date}] }
+   Si kanban_columns est absent, le partial reste silencieux (état vide).
+#}
+{% if kanban_columns %}
+<div class="card" style="overflow:auto;padding:14px;">
+    <div class="card-head" style="margin-bottom:10px;">
+        <div>
+            <div class="card-title">Kanban</div>
+            <div class="card-sub">Vue par colonnes</div>
+        </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat({{ kanban_columns|length }},minmax(220px,1fr));gap:14px;">
+        {% for col in kanban_columns %}
+            <div class="card" style="background:var(--bg2);min-height:180px;">
+                <div class="card-head" style="padding:10px 12px;border-bottom:1px solid var(--border);">
+                    <span style="font-weight:600;color:var(--text1);">{{ col.name }}</span>
+                    <span class="badge" style="background:{{ col.color|default:'var(--accent-bg)' }};">{{ col.cards|length }}</span>
+                </div>
+                <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+                    {% for card in col.cards %}
+                        <div class="card" style="padding:10px;background:var(--bg1);">
+                            <div style="font-weight:500;color:var(--text1);font-size:13px;">{{ card.title }}</div>
+                            <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:var(--text3);">
+                                <span>{{ card.assignee|default:"—" }}</span>
+                                <span>{{ card.due_date|default:"" }}</span>
+                            </div>
+                        </div>
+                    {% empty %}
+                        <div class="text-muted" style="font-size:12px;">Aucune carte.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="card" style="padding:20px;text-align:center;color:var(--text3);">
+    <div style="font-size:14px;">Aucune donnée Kanban disponible.</div>
+    <div style="font-size:12px;margin-top:6px;">Sélectionnez un sprint actif pour visualiser le board.</div>
+</div>
+{% endif %}

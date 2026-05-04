@@ -1,0 +1,41 @@
+{# Partial graphique vélocité — DevFlow.
+   Données attendues : `velocity_data` = { labels: [...], values: [...] }
+   Rendu via Chart.js (déjà embarqué dans layout/base.html ou via CDN).
+#}
+<div class="card" style="padding:14px;">
+    <div class="card-head" style="margin-bottom:8px;">
+        <div>
+            <div class="card-title">Vélocité</div>
+            <div class="card-sub">Story points livrés par sprint</div>
+        </div>
+    </div>
+    <canvas id="dfVelocityChart" height="200"></canvas>
+</div>
+<script>
+(function () {
+    const el = document.getElementById("dfVelocityChart");
+    if (!el || !window.Chart) return;
+    const labels = {{ velocity_data.labels|default:"[]"|safe }};
+    const values = {{ velocity_data.values|default:"[]"|safe }};
+    if (!labels.length) {
+        el.outerHTML = '<div class="text-muted" style="padding:18px;">Aucune donnée de vélocité.</div>';
+        return;
+    }
+    new Chart(el.getContext("2d"), {
+        type: "bar",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: "Vélocité (SP)",
+                data: values,
+                backgroundColor: "rgba(255,90,31,.65)",
+                borderRadius: 6,
+            }],
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } },
+        },
+    });
+})();
+</script>

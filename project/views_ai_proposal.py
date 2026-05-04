@@ -43,14 +43,44 @@ logger = logging.getLogger(__name__)
 
 
 class AIProposalAccessMixin(LoginRequiredMixin):
-    """Vérifie l'accès au workspace."""
+    """
+    Vérifie l'accès au workspace : un utilisateur ne peut consulter ou
+    modifier une proposition IA que s'il est membre actif du workspace
+    qui la possède (ou superuser).
+    """
+
+    def _user_workspace_ids(self):
+        user = self.request.user
+        if user.is_superuser:
+            return None
+        return list(
+            dm.Workspace.objects
+            .filter(memberships__user=user, memberships__status=dm.TeamMembership.Status.ACTIVE)
+            .values_list("id", flat=True)
+            .distinct()
+        )
 
     def get_proposal(self, pk):
-        return get_object_or_404(
+        qs = (
             dm.ProjectAIProposal.objects
-            .select_related("project", "project__workspace", "triggered_by", "validated_by"),
-            pk=pk,
+            .select_related("project", "project__workspace", "triggered_by", "validated_by")
         )
+        ws_ids = self._user_workspace_ids()
+        if ws_ids is not None:
+            qs = qs.filter(workspace_id__in=ws_ids)
+        return get_object_or_404(qs, pk=pk)
+
+    def get_queryset(self):
+        # Utilisé par les DetailView/UpdateView génériques.
+        qs = (
+            dm.ProjectAIProposal.objects
+            .select_related("project", "workspace", "triggered_by", "validated_by")
+            .prefetch_related("items", "logs")
+        )
+        ws_ids = self._user_workspace_ids()
+        if ws_ids is not None:
+            qs = qs.filter(workspace_id__in=ws_ids)
+        return qs
 
 
 # =========================================================================
@@ -62,12 +92,31 @@ class ProjectAIProposalListView(LoginRequiredMixin, ListView):
     context_object_name = "proposals"
     paginate_by = 25
 
+    def _user_workspace_ids(self):
+        """Renvoie l'ensemble des IDs de workspaces accessibles à l'utilisateur."""
+        user = self.request.user
+        if user.is_superuser:
+            return None  # pas de filtrage
+        return list(
+            dm.Workspace.objects
+            .filter(memberships__user=user, memberships__status=dm.TeamMembership.Status.ACTIVE)
+            .values_list("id", flat=True)
+            .distinct()
+        )
+
     def get_queryset(self):
         qs = (
             dm.ProjectAIProposal.objects
             .select_related("project", "workspace", "triggered_by")
             .order_by("-created_at")
         )
+
+        # Sécurité : un utilisateur ne voit que les propositions des
+        # workspaces dont il est membre actif.
+        ws_ids = self._user_workspace_ids()
+        if ws_ids is not None:
+            qs = qs.filter(workspace_id__in=ws_ids)
+
         project_id = self.request.GET.get("project")
         status = self.request.GET.get("status")
         if project_id:
@@ -92,13 +141,8 @@ class ProjectAIProposalDetailView(AIProposalAccessMixin, DetailView):
     template_name = "project/ai_proposal/preview.html"
     context_object_name = "proposal"
     pk_url_kwarg = "pk"
-
-    def get_queryset(self):
-        return (
-            dm.ProjectAIProposal.objects
-            .select_related("project", "workspace", "triggered_by", "validated_by")
-            .prefetch_related("items", "logs")
-        )
+    # get_queryset() est fourni par AIProposalAccessMixin et applique le
+    # filtrage workspace. Ne PAS surcharger ici sans réappliquer le filtre.
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -233,9 +277,14 @@ class ProjectAIProposalItemEditView(AIProposalAccessMixin, UpdateView):
     pk_url_kwarg = "item_pk"
 
     def get_queryset(self):
-        return dm.ProjectAIProposalItem.objects.select_related(
+        # Sécurité : on filtre les items par workspace accessible.
+        qs = dm.ProjectAIProposalItem.objects.select_related(
             "proposal", "proposal__project", "recommended_assignee"
         )
+        ws_ids = self._user_workspace_ids()
+        if ws_ids is not None:
+            qs = qs.filter(proposal__workspace_id__in=ws_ids)
+        return qs
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -360,17 +409,34 @@ class ProjectAIProposalsForProjectView(LoginRequiredMixin, ListView):
     template_name = "project/ai_proposal/project_history.html"
     context_object_name = "proposals"
 
+    def _accessible_project(self):
+        """Vérifie que l'utilisateur a accès au projet via membership workspace."""
+        project = get_object_or_404(dm.Project, pk=self.kwargs["project_pk"])
+        user = self.request.user
+        if user.is_superuser:
+            return project
+        is_member = dm.TeamMembership.objects.filter(
+            workspace=project.workspace,
+            user=user,
+            status=dm.TeamMembership.Status.ACTIVE,
+        ).exists()
+        if not is_member:
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied("Accès refusé à ce projet.")
+        return project
+
     def get_queryset(self):
+        project = self._accessible_project()
         return (
             dm.ProjectAIProposal.objects
-            .filter(project_id=self.kwargs["project_pk"])
+            .filter(project=project)
             .select_related("triggered_by", "validated_by")
             .order_by("-created_at")
         )
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["project"] = get_object_or_404(dm.Project, pk=self.kwargs["project_pk"])
+        ctx["project"] = self._accessible_project()
         return ctx
 
 

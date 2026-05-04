@@ -1,0 +1,31 @@
+{# Partial bannière de sprint actif — DevFlow.
+   Données attendues : `active_sprint` (Sprint) facultatif.
+#}
+{% if active_sprint %}
+<div class="card" style="padding:18px 20px;margin-bottom:14px;background:linear-gradient(135deg,var(--accent-bg),var(--bg2));">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+        <div>
+            <div style="font-size:13px;color:var(--text3);">Sprint actif</div>
+            <div style="font-size:18px;font-weight:600;color:var(--text1);">{{ active_sprint.name }}</div>
+            <div style="font-size:12.5px;color:var(--text2);margin-top:4px;">
+                {{ active_sprint.start_date|date:"d M" }} → {{ active_sprint.end_date|date:"d M Y" }}
+                {% if active_sprint.goal %}· Objectif : {{ active_sprint.goal }}{% endif %}
+            </div>
+        </div>
+        <div style="display:flex;gap:18px;align-items:center;">
+            <div style="text-align:center;">
+                <div style="font-size:11px;color:var(--text3);">Progression</div>
+                <div style="font-size:18px;font-weight:600;color:var(--accent);">{{ active_sprint.progress_percent|default:0 }}%</div>
+            </div>
+            <div style="text-align:center;">
+                <div style="font-size:11px;color:var(--text3);">Story points</div>
+                <div style="font-size:18px;font-weight:600;color:var(--text1);">{{ active_sprint.story_points|default:"—" }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card" style="padding:14px 18px;margin-bottom:14px;color:var(--text3);">
+    Aucun sprint actif — créez-en un pour démarrer la cadence.
+</div>
+{% endif %}

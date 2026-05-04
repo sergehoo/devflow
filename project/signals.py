@@ -156,13 +156,20 @@ def create_or_update_timesheet_snapshot(sender, instance, created, **kwargs):
             pass
 
     hours = Decimal(str(instance.hours or 0))
+    # Diviseur mensuel aligné sur le service budget (override via
+    # settings.WORKING_DAYS_PER_MONTH). Évite la divergence avec
+    # ProjectBudgetService.DEFAULT_WORKING_DAYS_PER_MONTH.
+    monthly_divisor = Decimal(str(getattr(settings, "WORKING_DAYS_PER_MONTH", 22)))
+    if monthly_divisor <= 0:
+        monthly_divisor = Decimal("22")
+
     if rate:
         if rate.unit == dm.BillingRate.RateUnit.DAILY:
             daily_cost = rate.cost_rate_amount or Decimal("0")
         elif rate.unit == dm.BillingRate.RateUnit.HOURLY:
             daily_cost = (rate.cost_rate_amount or Decimal("0")) * hours_per_day
         else:  # MONTHLY
-            daily_cost = (rate.cost_rate_amount or Decimal("0")) / Decimal("22")
+            daily_cost = (rate.cost_rate_amount or Decimal("0")) / monthly_divisor
     else:
         daily_cost = (
             profile.cost_per_day if profile and profile.cost_per_day else Decimal("0")
