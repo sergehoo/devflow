@@ -1,5 +1,6 @@
 {% extends 'layout/base.html' %}
 {% load humanize %}
+{% load devflow_extras %}
 
 {% block title %}DevFlow — Projets{% endblock %}
 {% block page_title %}Projets{% endblock %}
@@ -248,18 +249,25 @@
 
                     <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-4">
                         <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Budget</div>
-                        <div class="mt-2 text-2xl font-semibold text-[var(--text1)]">{{ section.summary.budget }}</div>
+                        <div class="mt-2 text-2xl font-semibold text-[var(--text1)] amount-tooltip cursor-help"
+                             data-amount-full="{{ section.summary.budget|full_amount }}">
+                            {{ section.summary.budget|short_amount }}
+                        </div>
                     </div>
 
                     <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-4">
                         <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">Coûts facturés</div>
-                        <div class="mt-2 text-2xl font-semibold text-[var(--text1)]">{{ section.summary.billed }}</div>
+                        <div class="mt-2 text-2xl font-semibold text-[var(--text1)] amount-tooltip cursor-help"
+                             data-amount-full="{{ section.summary.billed|full_amount }}">
+                            {{ section.summary.billed|short_amount }}
+                        </div>
                     </div>
 
                     <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-4">
                         <div class="text-[11px] uppercase tracking-wide text-[var(--text3)]">P&amp;L</div>
-                        <div class="mt-2 text-2xl font-semibold {% if section.summary.pnl >= 0 %}text-emerald-600{% else %}text-rose-600{% endif %}">
-                            {{ section.summary.pnl }}
+                        <div class="mt-2 text-2xl font-semibold amount-tooltip cursor-help {% if section.summary.pnl >= 0 %}text-emerald-600{% else %}text-rose-600{% endif %}"
+                             data-amount-full="{{ section.summary.pnl|full_amount }}">
+                            {{ section.summary.pnl|short_amount }}
                         </div>
                     </div>
                 </div>
@@ -477,20 +485,30 @@
             <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
                 <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2">
                     <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Budget</div>
-                    <div class="mt-0.5 text-sm font-semibold text-[var(--text1)]">{{ history_summary.budget }}</div>
+                    <div class="mt-0.5 text-sm font-semibold text-[var(--text1)] amount-tooltip cursor-help"
+                         data-amount-full="{{ history_summary.budget|full_amount }}">
+                        {{ history_summary.budget|short_amount }}
+                    </div>
                 </div>
                 <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2">
                     <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Facturé</div>
-                    <div class="mt-0.5 text-sm font-semibold text-[var(--text1)]">{{ history_summary.billed }}</div>
+                    <div class="mt-0.5 text-sm font-semibold text-[var(--text1)] amount-tooltip cursor-help"
+                         data-amount-full="{{ history_summary.billed|full_amount }}">
+                        {{ history_summary.billed|short_amount }}
+                    </div>
                 </div>
                 <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2">
                     <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">Coûts</div>
-                    <div class="mt-0.5 text-sm font-semibold text-[var(--text1)]">{{ history_summary.cost }}</div>
+                    <div class="mt-0.5 text-sm font-semibold text-[var(--text1)] amount-tooltip cursor-help"
+                         data-amount-full="{{ history_summary.cost|full_amount }}">
+                        {{ history_summary.cost|short_amount }}
+                    </div>
                 </div>
                 <div class="rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2">
                     <div class="text-[10px] uppercase tracking-wide text-[var(--text3)]">P&amp;L</div>
-                    <div class="mt-0.5 text-sm font-semibold {% if history_summary.pnl >= 0 %}text-emerald-600{% else %}text-rose-600{% endif %}">
-                        {{ history_summary.pnl }}
+                    <div class="mt-0.5 text-sm font-semibold amount-tooltip cursor-help {% if history_summary.pnl >= 0 %}text-emerald-600{% else %}text-rose-600{% endif %}"
+                         data-amount-full="{{ history_summary.pnl|full_amount }}">
+                        {{ history_summary.pnl|short_amount }}
                     </div>
                 </div>
             </div>
@@ -573,9 +591,13 @@
                             </div>
                         </td>
                         <td class="px-3 py-3 text-right text-xs font-semibold text-[var(--text1)]">{{ metrics.task_count|default:0 }}</td>
-                        <td class="px-3 py-3 text-right text-xs font-semibold text-[var(--text1)]">{{ metrics.budget }}</td>
+                        <td class="px-3 py-3 text-right text-xs font-semibold text-[var(--text1)]">
+                            <span class="amount-tooltip cursor-help"
+                                  data-amount-full="{{ metrics.budget|full_amount }}">{{ metrics.budget|short_amount }}</span>
+                        </td>
                         <td class="px-3 py-3 text-right text-xs font-semibold {% if metrics.pnl >= 0 %}text-emerald-600{% else %}text-rose-600{% endif %}">
-                            {{ metrics.pnl }}
+                            <span class="amount-tooltip cursor-help"
+                                  data-amount-full="{{ metrics.pnl|full_amount }}">{{ metrics.pnl|short_amount }}</span>
                         </td>
                         <td class="px-5 py-3 text-right">
                             <div class="flex items-center justify-end gap-2">
@@ -639,4 +661,52 @@
     {% endif %}
 
 </div>
+
+<style>
+    /* Tooltip / popover pour afficher le montant exact au survol */
+    .amount-tooltip {
+        position: relative;
+        display: inline-block;
+    }
+    .amount-tooltip::after {
+        content: attr(data-amount-full);
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%) translateY(4px);
+        white-space: nowrap;
+        background: rgba(15, 23, 42, 0.95);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1;
+        padding: 6px 10px;
+        border-radius: 8px;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease, transform 120ms ease;
+        z-index: 50;
+    }
+    .amount-tooltip::before {
+        content: "";
+        position: absolute;
+        bottom: calc(100% + 1px);
+        left: 50%;
+        transform: translateX(-50%) translateY(4px);
+        border: 5px solid transparent;
+        border-top-color: rgba(15, 23, 42, 0.95);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease, transform 120ms ease;
+        z-index: 50;
+    }
+    .amount-tooltip:hover::after,
+    .amount-tooltip:focus-visible::after,
+    .amount-tooltip:hover::before,
+    .amount-tooltip:focus-visible::before {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+</style>
 {% endblock %}
