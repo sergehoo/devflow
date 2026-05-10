@@ -16,6 +16,23 @@ from django.utils import timezone
 from project import models as dm
 
 
+# Statuts de projet considérés comme "actifs" : seuls ces projets peuvent
+# déclencher des rappels / notifications de tâche en retard.
+ACTIVE_PROJECT_STATUSES = (
+    dm.Project.Status.PLANNED,
+    dm.Project.Status.IN_PROGRESS,
+)
+
+
+def _is_project_active(project) -> bool:
+    """Retourne True si le projet est actif (non archivé, statut PLANNED/IN_PROGRESS)."""
+    if project is None:
+        return False
+    if getattr(project, "is_archived", False):
+        return False
+    return getattr(project, "status", None) in ACTIVE_PROJECT_STATUSES
+
+
 def _resolve_pm(task):
     """Retourne l'utilisateur à notifier : product_manager > owner du projet."""
     if not task.project_id:
@@ -44,6 +61,10 @@ def notify_pm_task_overdue(task, *, request=None, force=False) -> bool:
     """
     pm = _resolve_pm(task)
     if not pm:
+        return False
+
+    # Garde-fou : on ne relance que pour les projets actifs.
+    if not _is_project_active(getattr(task, "project", None)):
         return False
 
     if not force and task.pm_overdue_notified_at:
@@ -137,6 +158,11 @@ def scan_overdue_tasks(*, workspace=None) -> dict:
     qs = dm.Task.objects.filter(
         is_archived=False,
         due_date__lt=today,
+        # Limite aux tâches dont le projet est actif (planifié / en cours)
+        # et non archivé. L'historique (terminé, annulé, en pause…) est ignoré.
+        project__isnull=False,
+        project__is_archived=False,
+        project__status__in=ACTIVE_PROJECT_STATUSES,
     ).exclude(status__in=[
         dm.Task.Status.DONE,
         dm.Task.Status.CANCELLED,

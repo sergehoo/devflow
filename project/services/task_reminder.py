@@ -54,6 +54,13 @@ class ReminderRunResult:
 
 class TaskReminderService:
 
+    # Statuts de projet considérés comme "actifs" — seules les tâches qui
+    # appartiennent à un projet actif peuvent déclencher un rappel.
+    ACTIVE_PROJECT_STATUSES = (
+        dm.Project.Status.PLANNED,
+        dm.Project.Status.IN_PROGRESS,
+    )
+
     # ---------------------------------------------------------------------
     # PUBLIC
     # ---------------------------------------------------------------------
@@ -117,8 +124,8 @@ class TaskReminderService:
     # ---------------------------------------------------------------------
     # Candidate tasks
     # ---------------------------------------------------------------------
-    @staticmethod
-    def _candidate_tasks(stale_days: int, due_soon_days: int):
+    @classmethod
+    def _candidate_tasks(cls, stale_days: int, due_soon_days: int):
         today = timezone.localdate()
         stale_cutoff = timezone.now() - timedelta(days=stale_days)
         due_soon_limit = today + timedelta(days=due_soon_days)
@@ -129,7 +136,15 @@ class TaskReminderService:
         qs = (
             dm.Task.objects.select_related("project", "project__product_manager", "project__owner",
                                            "assignee", "workspace")
-            .filter(is_archived=False, assignee__isnull=False)
+            .filter(
+                is_archived=False,
+                assignee__isnull=False,
+                # Restreint aux tâches appartenant à un projet actif et
+                # non archivé (planifié ou en cours).
+                project__isnull=False,
+                project__is_archived=False,
+                project__status__in=cls.ACTIVE_PROJECT_STATUSES,
+            )
             .exclude(status__in=terminal)
             .filter(
                 Q(due_date__isnull=False, due_date__lte=due_soon_limit)

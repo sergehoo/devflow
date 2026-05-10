@@ -13,7 +13,11 @@ Usage :
 from django.core.management.base import BaseCommand
 
 from project import models as dm
-from project.services.task_overdue import scan_overdue_tasks, notify_pm_task_overdue
+from project.services.task_overdue import (
+    scan_overdue_tasks,
+    notify_pm_task_overdue,
+    ACTIVE_PROJECT_STATUSES,
+)
 
 
 class Command(BaseCommand):
@@ -46,6 +50,10 @@ class Command(BaseCommand):
             qs = dm.Task.objects.filter(
                 is_archived=False,
                 due_date__lt=timezone.localdate(),
+                # Restreint aux projets actifs (planifié / en cours).
+                project__isnull=False,
+                project__is_archived=False,
+                project__status__in=ACTIVE_PROJECT_STATUSES,
             ).exclude(status__in=[
                 dm.Task.Status.DONE,
                 dm.Task.Status.CANCELLED,

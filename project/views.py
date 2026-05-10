@@ -1864,6 +1864,12 @@ class ProjectListView(DevflowListView):
 
         return queryset
 
+    # Statuts considérés comme "actifs" (affichés en cartes)
+    ACTIVE_STATUSES = (
+        dm.Project.Status.PLANNED,
+        dm.Project.Status.IN_PROGRESS,
+    )
+
     def get_context_data(self, **kwargs):
 
         ctx = super().get_context_data(**kwargs)
@@ -1872,7 +1878,37 @@ class ProjectListView(DevflowListView):
 
         filtered_queryset = self.get_queryset()
 
-        category_sections = self._build_category_sections(filtered_queryset)
+        # Sépare les projets actifs (cartes) et l'historique (table)
+        active_projects = [
+            p for p in filtered_queryset if p.status in self.ACTIVE_STATUSES
+        ]
+        history_projects = [
+            p for p in filtered_queryset if p.status not in self.ACTIVE_STATUSES
+        ]
+
+        category_sections = self._build_category_sections(active_projects)
+
+        # Métriques agrégées pour la table d'historique
+        history_summary = {
+            "count": len(history_projects),
+            "budget": Decimal("0"),
+            "billed": Decimal("0"),
+            "cost": Decimal("0"),
+            "pnl": Decimal("0"),
+            "task_count": 0,
+        }
+        history_rows = []
+        for project in history_projects:
+            metrics = self._project_metrics(project)
+            history_summary["budget"] += metrics["budget"]
+            history_summary["billed"] += metrics["billed"]
+            history_summary["cost"] += metrics["cost"]
+            history_summary["pnl"] += metrics["pnl"]
+            history_summary["task_count"] += metrics["task_count"]
+            history_rows.append({
+                "project": project,
+                "metrics": metrics,
+            })
 
         current_workspace = self.get_current_workspace()
 
@@ -1917,6 +1953,12 @@ class ProjectListView(DevflowListView):
             "current_search": self.request.GET.get("q", ""),
 
             "category_sections": category_sections,
+
+            "active_count": len(active_projects),
+
+            "history_rows": history_rows,
+
+            "history_summary": history_summary,
 
             "stats": {
 
