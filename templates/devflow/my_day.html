@@ -69,7 +69,7 @@
                                     · {{ task.priority }}
                                 </div>
                             </a>
-                            {% include "components/_quick_action_button.html" with endpoint=task.toggle_complete_url label="Terminer" icon="✓" variant="success" size="xs" success_message="Tâche terminée" on_success="$el.closest('li').remove();" %}
+                            {% include "components/_quick_action_button.html" with endpoint=task.toggle_complete_url label="Terminer" variant="success" size="xs" success_message="Tâche terminée" on_success="$el.closest('li').remove();" %}
                         </li>
                         {% endfor %}
                     </ul>
@@ -109,7 +109,7 @@
                                 · {{ task.project_name|default:"" }}
                             </div>
                         </a>
-                        {% include "components/_quick_action_button.html" with endpoint=task.snooze_url label="Snoozer 1j" icon="⏱" variant="ghost" size="xs" payload_json='{"until": new Date(Date.now()+86400000).toISOString()}' success_message="Reportée à demain" on_success="$el.closest('li').remove();" %}
+                        {% include "components/_quick_action_button.html" with endpoint=task.snooze_url label="Snoozer 1j" variant="ghost" size="xs" payload_json='{"until": new Date(Date.now()+86400000).toISOString()}' success_message="Reportée à demain" on_success="$el.closest('li').remove();" %}
                     </li>
                     {% endfor %}
                 </ul>
@@ -138,7 +138,7 @@
                                 {{ task.project_name|default:"" }}
                             </div>
                         </a>
-                        {% include "components/_quick_action_button.html" with endpoint=task.toggle_complete_url label="Marquer fait" icon="✓" variant="success" size="xs" success_message="Bravo — tâche terminée !" on_success="$el.closest('li').remove();" %}
+                        {% include "components/_quick_action_button.html" with endpoint=task.toggle_complete_url label="Marquer fait" variant="success" size="xs" success_message="Bravo — tâche terminée !" on_success="$el.closest('li').remove();" %}
                     </li>
                     {% endfor %}
                 </ul>
