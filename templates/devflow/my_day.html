@@ -75,7 +75,12 @@
                     </ul>
                 {% else %}
                     <div class="py-6 text-center text-sm text-devtext3">
-                        <div class="text-2xl mb-2">🎯</div>
+                        <svg class="w-8 h-8 mx-auto mb-2 text-devgreen" fill="none"
+                             viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                            <circle cx="12" cy="12" r="10"/>
+                            <circle cx="12" cy="12" r="6"/>
+                            <circle cx="12" cy="12" r="2"/>
+                        </svg>
                         Aucune tâche due aujourd'hui — profitez-en pour préparer demain !
                     </div>
                 {% endif %}
@@ -244,8 +249,12 @@
                         {% endfor %}
                     </ul>
                 {% else %}
-                    <div class="text-xs text-devtext3 py-2">
-                        Tout est lu — boîte vide ✨
+                    <div class="text-xs text-devtext3 py-2 flex items-center gap-1">
+                        Tout est lu — boîte vide
+                        <svg class="w-3.5 h-3.5 text-devgreen" fill="none"
+                             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                        </svg>
                     </div>
                 {% endif %}
             </div>

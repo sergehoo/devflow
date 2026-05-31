@@ -142,6 +142,8 @@
       <span>Discussions</span>
     </a>
 
+    {# Espace de travail : visible UNIQUEMENT pour SuperAdmin #}
+    {% if rbac_is_super_admin %}
     <!-- Espace de travail -->
     <details class="nav-group"
       {% if current_url == 'workspace_list' or current_url == 'workspace_settings_list' or current_url == 'workspace_invitation_list' or current_url == 'workspace_detail' or current_url == 'workspace_create' or current_url == 'workspace_update' %}
@@ -168,6 +170,7 @@
         </a>
       </div>
     </details>
+    {% endif %}{# fin SuperAdmin Espace de travail #}
 
     <!-- Pilotage projet -->
     <details class="nav-group"

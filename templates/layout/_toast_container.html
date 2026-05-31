@@ -26,16 +26,37 @@
                 'bg-devbg3 text-devtext1 border-devborder':       toast.type === 'info' || !toast.type,
             }"
         >
-            <span x-show="toast.type === 'success'" class="text-base leading-none">✓</span>
-            <span x-show="toast.type === 'error'"   class="text-base leading-none">✕</span>
-            <span x-show="toast.type === 'warning'" class="text-base leading-none">!</span>
-            <span x-show="!toast.type || toast.type === 'info'" class="text-base leading-none">ℹ</span>
+            {# Icônes SVG (lucide) au lieu d'emojis. #}
+            <svg x-show="toast.type === 'success'" class="w-4 h-4 shrink-0" fill="none"
+                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+            <svg x-show="toast.type === 'error'" class="w-4 h-4 shrink-0" fill="none"
+                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+            <svg x-show="toast.type === 'warning'" class="w-4 h-4 shrink-0" fill="none"
+                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            </svg>
+            <svg x-show="!toast.type || toast.type === 'info'" class="w-4 h-4 shrink-0"
+                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="16" x2="12" y2="12"/>
+                <line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
             <span x-text="toast.message" class="flex-1"></span>
             <button
                 type="button"
                 @click="dismiss(toast.id)"
-                class="text-current opacity-60 hover:opacity-100 transition"
-                aria-label="Fermer">×</button>
+                class="shrink-0 opacity-60 hover:opacity-100 transition"
+                aria-label="Fermer">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"
+                     stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
         </div>
     </template>
 </div>

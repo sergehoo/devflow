@@ -58,10 +58,20 @@
                                 ? 'bg-devbg3 border-l-2 border-l-devaccent' : ''"
                     >
                         <div class="flex items-center gap-2 min-w-0">
-                            {# Avatar : 🗣 DM, 👥 groupe #}
+                            {# Avatar SVG : user (DM) ou users (groupe) #}
                             <span class="shrink-0 w-8 h-8 rounded-full bg-devbg4
-                                         flex items-center justify-center text-base"
-                                  x-text="channel.is_dm ? '🗣' : '👥'"></span>
+                                         flex items-center justify-center text-devtext2">
+                                <svg x-show="channel.is_dm" class="w-4 h-4" fill="none"
+                                     viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
+                                <svg x-show="!channel.is_dm" class="w-4 h-4" fill="none"
+                                     viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                          d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 3a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                </svg>
+                            </span>
                             <div class="min-w-0 flex-1">
                                 <div class="flex items-center justify-between gap-2">
                                     <div class="text-sm font-medium text-devtext1 truncate"
@@ -83,7 +93,11 @@
             <template x-if="!selectedChannel">
                 <div class="flex-1 flex items-center justify-center text-center px-6">
                     <div>
-                        <div class="text-4xl mb-3">💬</div>
+                        <svg class="w-12 h-12 mx-auto mb-3 text-devtext3" fill="none"
+                             viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                        </svg>
                         <div class="text-sm text-devtext2">
                             Sélectionnez une discussion à gauche<br>ou démarrez-en une nouvelle.
                         </div>
@@ -99,8 +113,18 @@
                 <div class="flex-1 flex flex-col min-h-0">
                     {# Header conversation #}
                     <div class="px-4 py-3 border-b border-devborder flex items-center gap-3">
-                        <span class="w-9 h-9 rounded-full bg-devbg4 flex items-center justify-center"
-                              x-text="selectedChannel.is_dm ? '🗣' : '👥'"></span>
+                        <span class="w-9 h-9 rounded-full bg-devbg4 flex items-center justify-center text-devtext2">
+                            <svg x-show="selectedChannel.is_dm" class="w-4 h-4" fill="none"
+                                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                            <svg x-show="!selectedChannel.is_dm" class="w-4 h-4" fill="none"
+                                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                      d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 3a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                        </span>
                         <div class="min-w-0 flex-1">
                             <div class="text-sm font-semibold text-devtext1 truncate"
                                  x-text="selectedChannel.display_name"></div>
@@ -197,14 +221,24 @@
             {# Toggle mode DM/Groupe #}
             <div class="inline-flex rounded-lg bg-devbg3 p-1 mb-4">
                 <button type="button" @click="newMode = 'dm'"
-                        class="px-3 py-1.5 text-xs rounded-md transition"
+                        class="px-3 py-1.5 text-xs rounded-md transition inline-flex items-center gap-1.5"
                         :class="newMode === 'dm' ? 'bg-devaccent text-white' : 'text-devtext2'">
-                    🗣 Message direct
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"
+                         stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                    Message direct
                 </button>
                 <button type="button" @click="newMode = 'group'"
-                        class="px-3 py-1.5 text-xs rounded-md transition"
+                        class="px-3 py-1.5 text-xs rounded-md transition inline-flex items-center gap-1.5"
                         :class="newMode === 'group' ? 'bg-devaccent text-white' : 'text-devtext2'">
-                    👥 Groupe
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"
+                         stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 3a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Groupe
                 </button>
             </div>
 
@@ -251,8 +285,13 @@
                             <div class="text-[11px] text-devtext3 truncate"
                                  x-text="contact.email || '@' + contact.username"></div>
                         </div>
-                        <span x-show="isSelected(contact)"
-                              class="text-devaccent text-base shrink-0">✓</span>
+                        <span x-show="isSelected(contact)" class="text-devaccent shrink-0">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                                 stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                      d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </span>
                     </button>
                 </template>
             </div>
