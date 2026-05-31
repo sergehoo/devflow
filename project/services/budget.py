@@ -67,12 +67,21 @@ class ProjectBudgetService:
         return Decimal("1")
 
     @classmethod
-    def get_member_daily_cost(cls, user) -> Decimal:
-        return dm.BillingRate.get_user_daily_cost(user)
+    def get_member_daily_cost(cls, user, project=None) -> Decimal:
+        """
+        Phase 3 (PR15) : si `project` est fourni, privilégie un BillingRate
+        spécifique à ce projet (TJM négocié) avant de retomber sur le tarif
+        générique. Lookup priorité :
+          1. BillingRate(user=..., project=this_project) valide aujourd'hui
+          2. BillingRate(user=..., project=NULL) valide aujourd'hui
+          3. UserProfile.cost_per_day (legacy fallback)
+        """
+        return dm.BillingRate.get_user_daily_cost(user, project=project)
 
     @classmethod
-    def get_member_daily_sale_rate(cls, user) -> Decimal:
-        return dm.BillingRate.get_user_sale_daily_rate(user)
+    def get_member_daily_sale_rate(cls, user, project=None) -> Decimal:
+        """Phase 3 (PR15) : même logique de priorité que get_member_daily_cost."""
+        return dm.BillingRate.get_user_sale_daily_rate(user, project=project)
 
     @classmethod
     def working_days_between(cls, start: date | None, end: date | None) -> Decimal:
@@ -98,8 +107,9 @@ class ProjectBudgetService:
         hours_per_day = cls._get_hours_per_day(task.assignee) or cls.DEFAULT_HOURS_PER_DAY
         estimated_days = hours / hours_per_day
 
-        daily_cost = cls.get_member_daily_cost(task.assignee)
-        daily_sale = cls.get_member_daily_sale_rate(task.assignee)
+        # Phase 3 (PR15) : propage task.project pour activer le TJM spécifique projet.
+        daily_cost = cls.get_member_daily_cost(task.assignee, project=task.project)
+        daily_sale = cls.get_member_daily_sale_rate(task.assignee, project=task.project)
 
         return estimated_days * daily_cost, estimated_days * daily_sale
 
@@ -118,8 +128,9 @@ class ProjectBudgetService:
         hours_per_day = cls._get_hours_per_day(task.assignee) or cls.DEFAULT_HOURS_PER_DAY
         remaining_days = remaining_hours / hours_per_day
 
-        daily_cost = cls.get_member_daily_cost(task.assignee)
-        daily_sale = cls.get_member_daily_sale_rate(task.assignee)
+        # Phase 3 (PR15) : TJM projet-spécifique si disponible.
+        daily_cost = cls.get_member_daily_cost(task.assignee, project=task.project)
+        daily_sale = cls.get_member_daily_sale_rate(task.assignee, project=task.project)
 
         return remaining_days * daily_cost, remaining_days * daily_sale
 
@@ -443,12 +454,20 @@ class ProjectBudgetService:
     @classmethod
     @transaction.atomic
     def regenerate_estimate_lines_from_tasks(cls, project, user=None, replace_existing=False) -> int:
+        """
+        Génère une ligne estimative par tâche éligible.
+
+        PERF (Phase 0): on collecte les lignes en mémoire puis on les insère
+        via bulk_create() — 1 INSERT au lieu de N. La logique de calcul des
+        montants (cost_amount, sale_unit_amount, sale_amount) reproduit
+        exactement celle de ProjectEstimateLine.save() puisque bulk_create()
+        bypass save() par design.
+        """
         if replace_existing:
             project.estimate_lines.filter(
                 source_type=dm.ProjectEstimateLine.EstimationSource.TASK
             ).delete()
 
-        lines_count = 0
         tasks = project.tasks.filter(is_archived=False).select_related("assignee", "sprint")
 
         labor_category = (
@@ -461,6 +480,15 @@ class ProjectBudgetService:
                 name="Ressources humaines",
                 category_type=dm.CostCategory.CategoryType.HUMAN,
             )
+
+        # Pré-charge le markup par défaut du projet (lu N fois auparavant par
+        # ProjectEstimateLine.save() ; on le lit une seule fois ici).
+        budget = getattr(project, "budgetestimatif", None)
+        project_default_markup = cls._safe_decimal(
+            getattr(budget, "markup_percent", None) if budget else ZERO
+        )
+
+        lines: list[dm.ProjectEstimateLine] = []
 
         for task in tasks:
             if not task.estimate_hours or not task.assignee:
@@ -477,24 +505,39 @@ class ProjectBudgetService:
             if cost_amount > 0 and sale_amount > cost_amount:
                 markup_percent = ((sale_amount - cost_amount) / cost_amount) * HUNDRED
 
-            line = dm.ProjectEstimateLine(
-                project=project,
-                category=labor_category,
-                source_type=dm.ProjectEstimateLine.EstimationSource.TASK,
-                budget_stage=dm.ProjectEstimateLine.BudgetStage.ESTIMATED,
-                task=task,
-                sprint=task.sprint,
-                label=f"Tâche · {task.title}",
-                description=task.description or "",
-                quantity=hours,
-                cost_unit_amount=cost_unit,
-                markup_percent=markup_percent,
-                created_by=user,
+            # Réplique la logique de ProjectEstimateLine.save() pour conserver
+            # un comportement strictement identique en bulk_create.
+            effective_markup = (
+                markup_percent if markup_percent != ZERO else project_default_markup
             )
-            line.save()
-            lines_count += 1
+            sale_unit = cost_unit * (
+                Decimal("1") + (effective_markup / HUNDRED)
+            )
 
-        return lines_count
+            lines.append(
+                dm.ProjectEstimateLine(
+                    project=project,
+                    category=labor_category,
+                    source_type=dm.ProjectEstimateLine.EstimationSource.TASK,
+                    budget_stage=dm.ProjectEstimateLine.BudgetStage.ESTIMATED,
+                    task=task,
+                    sprint=task.sprint,
+                    label=f"Tâche · {task.title}",
+                    description=task.description or "",
+                    quantity=hours,
+                    cost_unit_amount=cost_unit,
+                    cost_amount=hours * cost_unit,
+                    sale_unit_amount=sale_unit,
+                    sale_amount=hours * sale_unit,
+                    markup_percent=markup_percent,
+                    created_by=user,
+                )
+            )
+
+        if lines:
+            dm.ProjectEstimateLine.objects.bulk_create(lines)
+
+        return len(lines)
 
     @classmethod
     @transaction.atomic
@@ -514,10 +557,18 @@ class ProjectBudgetService:
             .first()
         )
 
-        count = 0
+        # PERF (Phase 0): même optimisation que regenerate_estimate_lines_from_tasks
+        # — collecte + bulk_create au lieu de N appels create().
+        budget = getattr(project, "budgetestimatif", None)
+        project_default_markup = cls._safe_decimal(
+            getattr(budget, "markup_percent", None) if budget else ZERO
+        )
+
         active_tasks = project.tasks.filter(is_archived=False).exclude(
             status__in=[dm.Task.Status.DONE, dm.Task.Status.CANCELLED]
         )
+
+        lines: list[dm.ProjectEstimateLine] = []
 
         for task in active_tasks:
             if not task.assignee or not task.estimate_hours:
@@ -539,22 +590,34 @@ class ProjectBudgetService:
             if cost_amount > 0 and sale_amount > cost_amount:
                 markup = ((sale_amount - cost_amount) / cost_amount) * HUNDRED
 
-            dm.ProjectEstimateLine.objects.create(
-                project=project,
-                category=labor_category,
-                source_type=dm.ProjectEstimateLine.EstimationSource.TASK,
-                budget_stage=dm.ProjectEstimateLine.BudgetStage.RAF,
-                task=task,
-                sprint=task.sprint,
-                label=f"RAF · {task.title}",
-                description="Reste à faire calculé automatiquement",
-                quantity=remaining_hours,
-                cost_unit_amount=cost_unit,
-                markup_percent=markup,
-                created_by=user,
+            # Réplique ProjectEstimateLine.save() pour les amounts calculés.
+            effective_markup = markup if markup != ZERO else project_default_markup
+            sale_unit = cost_unit * (Decimal("1") + (effective_markup / HUNDRED))
+
+            lines.append(
+                dm.ProjectEstimateLine(
+                    project=project,
+                    category=labor_category,
+                    source_type=dm.ProjectEstimateLine.EstimationSource.TASK,
+                    budget_stage=dm.ProjectEstimateLine.BudgetStage.RAF,
+                    task=task,
+                    sprint=task.sprint,
+                    label=f"RAF · {task.title}",
+                    description="Reste à faire calculé automatiquement",
+                    quantity=remaining_hours,
+                    cost_unit_amount=cost_unit,
+                    cost_amount=remaining_hours * cost_unit,
+                    sale_unit_amount=sale_unit,
+                    sale_amount=remaining_hours * sale_unit,
+                    markup_percent=markup,
+                    created_by=user,
+                )
             )
-            count += 1
-        return count
+
+        if lines:
+            dm.ProjectEstimateLine.objects.bulk_create(lines)
+
+        return len(lines)
 
     # =========================================================================
     # BUDGET REBUILD

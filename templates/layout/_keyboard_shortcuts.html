@@ -1,0 +1,202 @@
+
+
+<div
+    x-data="devflowKeyboard"
+    x-init="bind()"
+    @keydown.window="onKey($event)"
+    @keydown.escape.window="helpOpen = false"
+>
+    {# ─── Modal d'aide (?) — x-cloak pour éviter le flash avant Alpine init ─── #}
+    <div
+        x-show="helpOpen"
+        x-cloak
+        x-transition.opacity
+        class="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+        @click.self="helpOpen = false"
+    >
+        <div
+            x-transition
+            class="card max-w-lg w-full mx-4 p-6 shadow-lgsoft"
+        >
+            <div class="flex items-center justify-between mb-4">
+                <div class="card-title">Raccourcis clavier</div>
+                <button type="button" @click="helpOpen = false"
+                        class="text-devtext3 hover:text-devtext1 text-xl leading-none"
+                        aria-label="Fermer">×</button>
+            </div>
+
+            <div class="space-y-4 text-sm">
+                <div>
+                    <div class="text-[11px] uppercase tracking-wide text-devtext3 mb-2">
+                        Navigation
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="flex items-center justify-between rounded-lg bg-devbg3 border border-devborder px-3 py-2">
+                            <span class="text-devtext2">Dashboard</span>
+                            <span class="flex items-center gap-1">
+                                <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">g</kbd>
+                                <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">d</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between rounded-lg bg-devbg3 border border-devborder px-3 py-2">
+                            <span class="text-devtext2">Ma journée</span>
+                            <span class="flex items-center gap-1">
+                                <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">g</kbd>
+                                <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">m</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between rounded-lg bg-devbg3 border border-devborder px-3 py-2">
+                            <span class="text-devtext2">Tâches</span>
+                            <span class="flex items-center gap-1">
+                                <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">g</kbd>
+                                <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">t</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between rounded-lg bg-devbg3 border border-devborder px-3 py-2">
+                            <span class="text-devtext2">Projets</span>
+                            <span class="flex items-center gap-1">
+                                <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">g</kbd>
+                                <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">p</kbd>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="text-[11px] uppercase tracking-wide text-devtext3 mb-2">
+                        Actions
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="flex items-center justify-between rounded-lg bg-devbg3 border border-devborder px-3 py-2">
+                            <span class="text-devtext2">Nouvelle tâche</span>
+                            <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">c</kbd>
+                        </div>
+                        <div class="flex items-center justify-between rounded-lg bg-devbg3 border border-devborder px-3 py-2">
+                            <span class="text-devtext2">Recherche</span>
+                            <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">/</kbd>
+                        </div>
+                        <div class="flex items-center justify-between rounded-lg bg-devbg3 border border-devborder px-3 py-2">
+                            <span class="text-devtext2">Cette aide</span>
+                            <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">?</kbd>
+                        </div>
+                        <div class="flex items-center justify-between rounded-lg bg-devbg3 border border-devborder px-3 py-2">
+                            <span class="text-devtext2">Fermer modal</span>
+                            <kbd class="rounded bg-devbg4 border border-devborder px-1.5 py-0.5 text-[11px] font-mono">Esc</kbd>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 text-[11px] text-devtext3 italic">
+                Les raccourcis sont ignorés quand vous tapez dans un champ.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    /* ─────────────────────────────────────────────────────────────────
+       Composant Alpine : devflowKeyboard
+       ──────────────────────────────────────────────────────────────── */
+    document.addEventListener("alpine:init", () => {
+        Alpine.data("devflowKeyboard", () => ({
+            helpOpen: false,
+            // Buffer pour les séquences à 2 touches (g + ?)
+            seqTimer: null,
+            waitingForGo: false,
+
+            bind() {
+                /* Les écouteurs sont déjà branchés via @keydown.window
+                   dans le markup ; cette méthode est un hook pour de
+                   futures initialisations (ex: highlight de la nav active). */
+            },
+
+            // Filtre : on ignore si l'utilisateur tape dans un champ.
+            _isTyping(event) {
+                const t = event.target;
+                if (!t) return false;
+                const tag = (t.tagName || "").toLowerCase();
+                if (tag === "input" || tag === "textarea" || tag === "select") return true;
+                if (t.isContentEditable) return true;
+                return false;
+            },
+
+            _resetGo() {
+                this.waitingForGo = false;
+                if (this.seqTimer) {
+                    clearTimeout(this.seqTimer);
+                    this.seqTimer = null;
+                }
+            },
+
+            _go(url) {
+                window.location.href = url;
+            },
+
+            onKey(event) {
+                if (this._isTyping(event)) return;
+
+                // Modifieurs : on n'intercepte pas Ctrl/Cmd/Alt pour ne pas
+                // gêner les raccourcis navigateur.
+                if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+                const key = event.key;
+
+                // Aide (?)
+                if (key === "?" && !this.waitingForGo) {
+                    event.preventDefault();
+                    this.helpOpen = !this.helpOpen;
+                    return;
+                }
+
+                // Focus recherche (/)
+                if (key === "/" && !this.waitingForGo) {
+                    event.preventDefault();
+                    const input = document.querySelector(
+                        '.topbar input[type="text"], .topbar input[type="search"]'
+                    );
+                    if (input) {
+                        // L'input du topbar est readonly et ouvre le palette : déclenche son onclick.
+                        if (input.readOnly && typeof openPalette === "function") {
+                            openPalette();
+                        } else {
+                            input.focus();
+                            input.select && input.select();
+                        }
+                    } else if (typeof openPalette === "function") {
+                        openPalette();
+                    }
+                    return;
+                }
+
+                // Création rapide (c)
+                if ((key === "c" || key === "C") && !this.waitingForGo) {
+                    event.preventDefault();
+                    this._go("{% url 'task_create' %}");
+                    return;
+                }
+
+                // Séquences "g <key>"
+                if ((key === "g" || key === "G") && !this.waitingForGo) {
+                    event.preventDefault();
+                    this.waitingForGo = true;
+                    // Annule si pas de seconde touche dans 1.2s
+                    this.seqTimer = setTimeout(() => this._resetGo(), 1200);
+                    return;
+                }
+
+                if (this.waitingForGo) {
+                    event.preventDefault();
+                    this._resetGo();
+                    switch ((key || "").toLowerCase()) {
+                        case "d": this._go("{% url 'dashboard' %}"); break;
+                        case "m": this._go("{% url 'my_day' %}");    break;
+                        case "t": this._go("{% url 'task_list' %}"); break;
+                        case "p": this._go("{% url 'project_list' %}"); break;
+                        default: /* séquence inconnue, on ignore */     break;
+                    }
+                }
+            },
+        }));
+    });
+</script>

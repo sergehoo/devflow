@@ -44,21 +44,31 @@ class ProjectFinancialPermissionMixin:
         return workspace.memberships.filter(user=self.request.user).select_related("team").first()
 
     def can_view_financials(self, project):
+        """
+        PR26 — Délègue à RBACService.can("budget.view"). On garde aussi
+        les vérifs Django perm + TeamMembership.role en fallback pour
+        ne casser aucun setup existant.
+        """
         user = self.request.user
 
         if not user.is_authenticated:
             return False
 
-        if user.is_superuser:
+        # 1) SuperAdmin / RBAC
+        from project.services.rbac import RBACService
+        if project is None:
+            return user.is_superuser
+        if RBACService.can(user, "budget.view", workspace=project.workspace):
             return True
 
+        # 2) Django permissions (fallback compat)
         if user.has_perm("project.view_financial_data") or user.has_perm("project.view_projectexpense_financial"):
             return True
 
+        # 3) Legacy : TeamMembership.role technique (fallback ultime)
         membership = self.get_workspace_membership(project.workspace)
         if not membership:
             return False
-
         return membership.role in [
             dm.TeamMembership.Role.ADMIN,
             dm.TeamMembership.Role.CTO,

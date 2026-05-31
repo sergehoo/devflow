@@ -7,13 +7,15 @@ au chef de projet (PM ou owner). Le PM doit ensuite arbitrer :
 
 from __future__ import annotations
 
+import logging
+
 from django.conf import settings
-from django.core.mail import send_mail
-from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
 from project import models as dm
+
+logger = logging.getLogger(__name__)
 
 
 # Statuts de projet considérés comme "actifs" : seuls ces projets peuvent
@@ -105,43 +107,22 @@ def notify_pm_task_overdue(task, *, request=None, force=False) -> bool:
     except Exception:
         pass
 
-    # Email
+    # Email ASYNC (Phase 0): on planifie l'envoi sur Celery pour ne pas
+    # bloquer la requête HTTP / le worker de scan_overdue_tasks sur SMTP.
+    # Si Celery est indisponible, on log et on continue — l'in-app notif a
+    # déjà été créée et l'update pm_overdue_notified_at empêche le re-spam.
     if pm.email:
         try:
-            ctx = {
-                "task": task,
-                "project": task.project,
-                "pm": pm,
-                "days_overdue": days_overdue,
-                "extend_url": extend_url,
-                "expire_url": expire_url,
-            }
-            subject = f"[Dev'Flow] Tâche en retard · {task.title}"
-            try:
-                message_txt = render_to_string("emails/task_overdue.txt", ctx)
-            except Exception:
-                message_txt = (
-                    f"Bonjour {pm.first_name or pm.username},\n\n"
-                    f"La tâche « {task.title} » du projet {task.project} "
-                    f"est en retard de {days_overdue} jour(s).\n\n"
-                    f"Reconduisez : {extend_url}\n"
-                    f"Maintenir expirée : {expire_url}\n"
-                )
-            try:
-                message_html = render_to_string("emails/task_overdue.html", ctx)
-            except Exception:
-                message_html = None
+            from project.tasks import send_pm_task_overdue_email_task
 
-            send_mail(
-                subject=subject,
-                message=message_txt,
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-                recipient_list=[pm.email],
-                html_message=message_html,
-                fail_silently=True,
+            send_pm_task_overdue_email_task.delay(
+                task.pk, pm.pk, extend_url, expire_url, days_overdue,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Failed to enqueue overdue email for task %s: %s",
+                task.pk, exc,
+            )
 
     # Marquer la dernière notification pour éviter les doublons
     dm.Task.objects.filter(pk=task.pk).update(pm_overdue_notified_at=timezone.now())

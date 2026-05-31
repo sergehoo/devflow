@@ -1,0 +1,99 @@
+{# ─────────────────────────────────────────────────────────────────────
+   Partial Waterfall — Phase 2 (PR11)
+
+   À include depuis project/detail.html quand methodology == WATERFALL.
+   Contexte attendu :
+       project          : dm.Project
+       mode_phases      : queryset de ProjectPhase (ordonnées par position)
+   ───────────────────────────────────────────────────────────────────── #}
+
+<div class="card p-5">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <div class="card-title">Phases du projet</div>
+            <div class="text-xs text-devtext3">
+                Pilotage séquentiel — gates aux étapes critiques
+            </div>
+        </div>
+        <span class="badge b-cyan">Waterfall</span>
+    </div>
+
+    {% if mode_phases %}
+    <ol class="space-y-3">
+        {% for phase in mode_phases %}
+        <li class="flex items-start gap-3">
+            {# Pastille position #}
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center
+                        rounded-full bg-devbg3 border border-devborder
+                        text-xs font-semibold text-devtext2">
+                {{ forloop.counter }}
+            </div>
+
+            <div class="flex-1 min-w-0 rounded-xl border border-devborder
+                        bg-devbg3/50 p-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="min-w-0">
+                        <div class="text-sm font-semibold text-devtext1">
+                            {{ phase.name }}
+                            {% if phase.gate_required %}
+                            <span class="ml-1 text-devamber text-[11px]"
+                                  title="Validation obligatoire avant phase suivante">🚦 Gate</span>
+                            {% endif %}
+                        </div>
+                        {% if phase.description %}
+                        <div class="text-xs text-devtext3 mt-0.5">
+                            {{ phase.description|truncatechars:120 }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <span class="badge
+                        {% if phase.status == 'DONE' %}b-green
+                        {% elif phase.status == 'IN_PROGRESS' %}b-amber
+                        {% elif phase.status == 'REVIEW' %}b-cyan
+                        {% elif phase.status == 'BLOCKED' %}b-red
+                        {% else %}b-purple{% endif %}">
+                        {{ phase.get_status_display }}
+                    </span>
+                </div>
+
+                <div class="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-devtext3">
+                    {% if phase.start_date %}
+                    <span>📅 {{ phase.start_date|date:"d M" }}{% if phase.end_date %} → {{ phase.end_date|date:"d M Y" }}{% endif %}</span>
+                    {% endif %}
+                    {% if phase.owner %}
+                    <span>👤 {{ phase.owner }}</span>
+                    {% endif %}
+                </div>
+
+                {# Barre de progression #}
+                <div class="mt-2">
+                    <div class="flex items-center justify-between text-[10px] text-devtext3 mb-1">
+                        <span>Avancement</span>
+                        <span>{{ phase.progress_percent }}%</span>
+                    </div>
+                    <div class="h-1.5 bg-devbg4 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full
+                            {% if phase.progress_percent >= 100 %}bg-devgreen
+                            {% elif phase.progress_percent >= 50 %}bg-devamber
+                            {% else %}bg-devaccent{% endif %}"
+                            style="width: {{ phase.progress_percent }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ol>
+    {% else %}
+    <div class="text-center py-8">
+        <div class="text-3xl mb-2">📋</div>
+        <div class="text-sm text-devtext2">
+            Aucune phase définie pour ce projet Waterfall.
+        </div>
+        <div class="text-xs text-devtext3 mt-1">
+            Les phases peuvent être ajoutées via l'API
+            <code class="bg-devbg3 px-1.5 py-0.5 rounded">/api/v1/project-phases/</code>
+            ou auto-générées via DevFlow Genesis.
+        </div>
+    </div>
+    {% endif %}
+</div>

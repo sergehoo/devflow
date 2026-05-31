@@ -4,10 +4,12 @@ Service d'invitation workspace : génération de liens publics et envoi d'email.
 
 from __future__ import annotations
 
+import logging
+
 from django.conf import settings
-from django.core.mail import send_mail
-from django.template.loader import render_to_string
 from django.urls import reverse
+
+logger = logging.getLogger(__name__)
 
 
 def build_invitation_url(invitation, request=None) -> str:
@@ -20,46 +22,31 @@ def build_invitation_url(invitation, request=None) -> str:
 
 
 def send_invitation_email(invitation, request=None) -> bool:
-    """Envoie l'email d'invitation. Retourne True si envoyé, False sinon."""
+    """
+    Planifie l'envoi de l'email d'invitation via Celery (Phase 0).
+
+    L'URL d'acceptation est calculée ICI (côté requête HTTP) pour avoir le
+    bon host (`request.build_absolute_uri`), puis passée à la task qui
+    fait l'envoi SMTP en arrière-plan — la requête HTTP n'est plus bloquée.
+
+    Retourne :
+      * True  : la task a été planifiée correctement
+      * False : pas d'email destinataire, ou échec définitif du planning
+    """
     if not invitation.email:
         return False
 
     accept_url = build_invitation_url(invitation, request=request)
-    subject = f"[DevFlow] Vous êtes invité·e à rejoindre {invitation.workspace.name}"
 
-    context = {
-        "invitation": invitation,
-        "workspace": invitation.workspace,
-        "team": invitation.team,
-        "invited_by": invitation.invited_by,
-        "role_label": invitation.get_role_display(),
-        "accept_url": accept_url,
-        "expires_at": invitation.expires_at,
-    }
-
+    # Import local pour éviter tout cycle d'import au démarrage.
     try:
-        message_txt = render_to_string("emails/workspace_invitation.txt", context)
-    except Exception:
-        message_txt = (
-            f"Bonjour,\n\n"
-            f"{invitation.invited_by or 'Un collaborateur'} vous invite à rejoindre "
-            f"le workspace {invitation.workspace.name} sur DevFlow en tant que "
-            f"{invitation.get_role_display()}.\n\n"
-            f"Cliquez ici pour accepter : {accept_url}\n\n"
-            f"L'invitation expire le {invitation.expires_at:%d/%m/%Y}.\n"
+        from project.tasks import send_invitation_email_task
+
+        send_invitation_email_task.delay(invitation.pk, accept_url)
+        return True
+    except Exception as exc:
+        logger.exception(
+            "Failed to enqueue invitation email for invitation %s: %s",
+            invitation.pk, exc,
         )
-
-    try:
-        message_html = render_to_string("emails/workspace_invitation.html", context)
-    except Exception:
-        message_html = None
-
-    sent = send_mail(
-        subject=subject,
-        message=message_txt,
-        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-        recipient_list=[invitation.email],
-        html_message=message_html,
-        fail_silently=False,
-    )
-    return bool(sent)
+        return False

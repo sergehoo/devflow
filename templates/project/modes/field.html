@@ -1,0 +1,106 @@
+{# ─────────────────────────────────────────────────────────────────────
+   Partial Terrain / Chantier — Phase 2 (PR11)
+
+   Contexte attendu :
+       project              : dm.Project
+       mode_field_reports   : queryset de FieldReport (30 derniers)
+   ───────────────────────────────────────────────────────────────────── #}
+
+<div class="card p-5">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <div class="card-title">Rapports de chantier</div>
+            <div class="text-xs text-devtext3">
+                Suivi journalier · {{ mode_field_reports|length }} affiché{{ mode_field_reports|length|pluralize }}
+            </div>
+        </div>
+        <span class="badge b-amber">Terrain</span>
+    </div>
+
+    {% if mode_field_reports %}
+    <ul class="space-y-3">
+        {% for report in mode_field_reports %}
+        <li class="rounded-xl border border-devborder bg-devbg3/50 p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <div class="text-sm font-semibold text-devtext1">
+                        {{ report.report_date|date:"l j F Y" }}
+                    </div>
+                    {% if report.location_name %}
+                    <div class="text-xs text-devtext3 mt-0.5">
+                        📍 {{ report.location_name }}
+                        {% if report.location_lat and report.location_lng %}
+                        · {{ report.location_lat }}, {{ report.location_lng }}
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="flex items-center gap-2 text-[11px]">
+                    {% if report.weather %}
+                    <span class="badge
+                        {% if report.weather == 'SUNNY' %}b-amber
+                        {% elif report.weather == 'CLOUDY' %}b-gray
+                        {% elif report.weather == 'RAINY' or report.weather == 'STORMY' %}b-cyan
+                        {% elif report.weather == 'WINDY' %}b-purple
+                        {% else %}b-gray{% endif %}">
+                        {{ report.get_weather_display }}
+                    </span>
+                    {% endif %}
+                    {% if report.workforce_count %}
+                    <span class="text-devtext2">👷 {{ report.workforce_count }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if report.notes %}
+            <div class="mt-2 text-xs text-devtext2">
+                {{ report.notes|truncatechars:200 }}
+            </div>
+            {% endif %}
+
+            {% if report.incidents %}
+            <div class="mt-2 rounded-md bg-devred/10 border border-devred/20 px-2 py-1.5 text-xs text-devred">
+                ⚠ {{ report.incidents|truncatechars:160 }}
+            </div>
+            {% endif %}
+
+            {% if report.photos.all %}
+            <div class="mt-3 flex flex-wrap gap-2">
+                {% for photo in report.photos.all|slice:":6" %}
+                <a href="{{ photo.image.url }}" target="_blank"
+                   class="block w-16 h-16 rounded-md overflow-hidden border border-devborder
+                          hover:border-devaccent transition">
+                    <img src="{{ photo.image.url }}"
+                         alt="{{ photo.caption|default:'Photo chantier' }}"
+                         class="w-full h-full object-cover">
+                </a>
+                {% endfor %}
+                {% if report.photos.count > 6 %}
+                <div class="flex items-center justify-center w-16 h-16 rounded-md
+                            bg-devbg3 border border-devborder text-xs text-devtext2">
+                    +{{ report.photos.count|add:"-6" }}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <div class="mt-2 flex items-center justify-between text-[11px] text-devtext3">
+                <span>{% if report.reporter %}{{ report.reporter }}{% else %}—{% endif %}</span>
+                <span>{{ report.created_at|date:"d M H:i" }}</span>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="text-center py-8">
+        <div class="text-3xl mb-2">🏗️</div>
+        <div class="text-sm text-devtext2">
+            Aucun rapport pour l'instant.
+        </div>
+        <div class="text-xs text-devtext3 mt-1">
+            Création via
+            <code class="bg-devbg3 px-1.5 py-0.5 rounded">POST /api/v1/field-reports/</code>
+        </div>
+    </div>
+    {% endif %}
+</div>

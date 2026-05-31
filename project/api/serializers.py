@@ -397,3 +397,162 @@ class BudgetOverviewSerializer(serializers.Serializer):
     forecast_margin = serializers.DecimalField(max_digits=14, decimal_places=2)
     real_margin = serializers.DecimalField(max_digits=14, decimal_places=2)
     currency = serializers.CharField()
+
+
+# =========================================================================
+# Phase 2 — Multi-modes projet (PR12)
+# =========================================================================
+class ProjectPhaseSerializer(serializers.ModelSerializer):
+    """Phase d'un projet Waterfall — voir Project.Methodology.WATERFALL."""
+
+    class Meta:
+        model = dm.ProjectPhase
+        fields = [
+            "id", "workspace", "project", "name", "description",
+            "position", "status", "start_date", "end_date",
+            "gate_required", "progress_percent", "owner",
+            "is_archived", "created_at", "updated_at",
+        ]
+        # workspace est dérivé automatiquement du project côté save() — on
+        # le rend read-only pour éviter qu'un client ne tente de bypass.
+        read_only_fields = ["workspace", "is_archived", "created_at", "updated_at"]
+
+
+class ProjectViewPreferenceSerializer(serializers.ModelSerializer):
+    """Préférence de vue par (user, project)."""
+
+    class Meta:
+        model = dm.ProjectViewPreference
+        fields = ["id", "user", "project", "view_mode",
+                  "created_at", "updated_at"]
+        read_only_fields = ["user", "created_at", "updated_at"]
+
+
+class FieldReportPhotoSerializer(serializers.ModelSerializer):
+    """Photo rattachée à un FieldReport."""
+
+    class Meta:
+        model = dm.FieldReportPhoto
+        fields = ["id", "report", "image", "caption", "uploaded_by",
+                  "created_at"]
+        read_only_fields = ["uploaded_by", "created_at"]
+
+
+class FieldReportSerializer(serializers.ModelSerializer):
+    """
+    Rapport de chantier — voir Project.Methodology.FIELD.
+
+    Inclut les photos en read-only (utiliser l'endpoint dédié pour upload).
+    """
+    photos = FieldReportPhotoSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = dm.FieldReport
+        fields = [
+            "id", "workspace", "project", "reporter", "report_date",
+            "location_name", "location_lat", "location_lng",
+            "weather", "workforce_count", "incidents", "notes",
+            "photos", "is_archived", "created_at", "updated_at",
+        ]
+        read_only_fields = ["workspace", "is_archived", "created_at", "updated_at"]
+
+
+class RealEstateLotSerializer(serializers.ModelSerializer):
+    """Lot d'un projet immobilier — voir Project.Methodology.REAL_ESTATE."""
+
+    class Meta:
+        model = dm.RealEstateLot
+        fields = [
+            "id", "workspace", "project", "lot_number", "floor",
+            "surface_m2", "bedrooms", "price", "currency", "status",
+            "buyer_name", "buyer_email", "buyer_phone",
+            "reserved_at", "sold_at", "notes",
+            "is_archived", "created_at", "updated_at",
+        ]
+        read_only_fields = ["workspace", "is_archived", "created_at", "updated_at"]
+
+
+class AdminCaseSerializer(serializers.ModelSerializer):
+    """Dossier administratif — voir Project.Methodology.ADMINISTRATIVE."""
+
+    class Meta:
+        model = dm.AdminCase
+        fields = [
+            "id", "workspace", "project", "reference", "title",
+            "applicant", "document_type", "status",
+            "requested_at", "sla_days", "deadline", "decided_at",
+            "assignee", "notes",
+            "is_archived", "created_at", "updated_at",
+        ]
+        # deadline est auto-calculée dans Model.save() si non fournie.
+        read_only_fields = ["workspace", "is_archived",
+                            "created_at", "updated_at"]
+
+
+# =========================================================================
+# Phase 3 — Budget V2 (PR15)
+# =========================================================================
+class ProjectBudgetSnapshotSerializer(serializers.ModelSerializer):
+    """Snapshot d'un budget projet à un instant T."""
+
+    class Meta:
+        model = dm.ProjectBudgetSnapshot
+        fields = [
+            "id", "workspace", "project", "label", "kind", "snapshot_date",
+            "payload", "notes", "created_by",
+            "created_at", "updated_at",
+        ]
+        # workspace dérivé du project ; snapshot_date par défaut auto.
+        read_only_fields = ["workspace", "payload", "created_by",
+                            "created_at", "updated_at"]
+
+
+class ProjectBudgetForecastRunSerializer(serializers.ModelSerializer):
+    """Run IA de BudgetForecastService — read-only via API."""
+
+    class Meta:
+        model = dm.ProjectBudgetForecastRun
+        fields = [
+            "id", "workspace", "project", "horizon_end",
+            "base_cost", "optimistic_cost", "pessimistic_cost",
+            "expected_margin", "expected_margin_percent",
+            "overrun_risk_percent", "confidence",
+            "used_provider", "used_model", "tokens_used",
+            "ai_summary", "payload", "triggered_by",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = fields  # full read-only (créé via le service IA)
+
+
+class BudgetAlertSerializer(serializers.Serializer):
+    """Sérialiseur read-only pour BudgetAlert (dataclass, pas un modèle)."""
+
+    project_id = serializers.IntegerField()
+    project_name = serializers.CharField()
+    workspace_id = serializers.IntegerField()
+    severity = serializers.CharField()
+    consumption_percent = serializers.IntegerField()
+    alert_threshold_percent = serializers.IntegerField()
+    approved_budget = serializers.CharField()
+    actual_cost = serializers.CharField()
+    forecast_final_cost = serializers.CharField()
+    currency = serializers.CharField()
+
+
+# =========================================================================
+# Phase 5 — Rapports IA hebdomadaires (PR22)
+# =========================================================================
+class ProjectAIReportSerializer(serializers.ModelSerializer):
+    """Rapport projet IA — créé via service, exposé en lecture par l'API."""
+
+    class Meta:
+        model = dm.ProjectAIReport
+        fields = [
+            "id", "workspace", "project", "period",
+            "period_start", "period_end", "title", "status",
+            "content_markdown", "summary", "payload",
+            "used_provider", "used_model", "tokens_used",
+            "generated_at", "generated_by",
+            "is_archived", "created_at", "updated_at",
+        ]
+        read_only_fields = fields  # entièrement créé via service

@@ -1,0 +1,256 @@
+{% extends "layout/base.html" %}
+
+{% block title %}DevFlow — Ma journée{% endblock %}
+{% block page_title %}{{ greeting }}{% if request.user.first_name %}, {{ request.user.first_name }}{% else %}, {{ request.user.username }}{% endif %}{% endblock %}
+{% block breadcrumb %}Aujourd'hui · {{ today|date:"l j F Y" }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    {# ─────────── Bandeau citation + stats ─────────── #}
+    <div class="rounded-2xl bg-gradient-to-r from-devaccent/10 to-devaccent2/10
+                border border-devborder p-6">
+        <div class="text-sm italic text-devtext2">« {{ quote_of_day }} »</div>
+
+        <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="rounded-xl bg-devbg3/70 border border-devborder p-3">
+                <div class="text-[11px] uppercase tracking-wide text-devtext3">Dues aujourd'hui</div>
+                <div class="mt-1 text-2xl font-semibold text-devaccent">{{ stats.due_today }}</div>
+            </div>
+            <div class="rounded-xl bg-devbg3/70 border border-devborder p-3">
+                <div class="text-[11px] uppercase tracking-wide text-devtext3">En retard</div>
+                <div class="mt-1 text-2xl font-semibold
+                    {% if stats.overdue %}text-devred{% else %}text-devtext1{% endif %}">
+                    {{ stats.overdue }}
+                </div>
+            </div>
+            <div class="rounded-xl bg-devbg3/70 border border-devborder p-3">
+                <div class="text-[11px] uppercase tracking-wide text-devtext3">En cours</div>
+                <div class="mt-1 text-2xl font-semibold text-devamber">{{ stats.in_progress }}</div>
+            </div>
+            <div class="rounded-xl bg-devbg3/70 border border-devborder p-3">
+                <div class="text-[11px] uppercase tracking-wide text-devtext3">Notifs non lues</div>
+                <div class="mt-1 text-2xl font-semibold text-devcyan">{{ stats.unread_notifs }}</div>
+            </div>
+        </div>
+    </div>
+
+    {# ─────────── Layout 2 colonnes ─────────── #}
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {# ─── Colonne gauche : tâches (2/3) ─── #}
+        <div class="lg:col-span-2 space-y-4">
+
+            {# Section : À traiter aujourd'hui #}
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <div class="card-title">À traiter aujourd'hui</div>
+                        <div class="text-xs text-devtext3">
+                            {{ tasks_today|length }} tâche{{ tasks_today|length|pluralize }}
+                        </div>
+                    </div>
+                    <a href="{% url 'task_list' %}" class="text-xs text-devaccent hover:underline">
+                        Tout voir →
+                    </a>
+                </div>
+
+                {% if tasks_today %}
+                    <ul class="divide-y divide-devborder/40">
+                        {% for task in tasks_today %}
+                        <li class="flex items-center gap-3 py-2.5">
+                            <a href="{% url 'task_detail' task.id %}"
+                               class="flex-1 min-w-0">
+                                <div class="text-sm font-medium text-devtext1 truncate">
+                                    {{ task.title }}
+                                </div>
+                                <div class="text-[11px] text-devtext3 mt-0.5">
+                                    {{ task.project_name|default:"Sans projet" }}
+                                    · {{ task.priority }}
+                                </div>
+                            </a>
+                            {% include "components/_quick_action_button.html" with endpoint=task.toggle_complete_url label="Terminer" icon="✓" variant="success" size="xs" success_message="Tâche terminée" on_success="$el.closest('li').remove();" %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="py-6 text-center text-sm text-devtext3">
+                        <div class="text-2xl mb-2">🎯</div>
+                        Aucune tâche due aujourd'hui — profitez-en pour préparer demain !
+                    </div>
+                {% endif %}
+            </div>
+
+            {# Section : En retard #}
+            {% if tasks_overdue %}
+            <div class="card p-5 border border-devred/30">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <div class="card-title text-devred">En retard</div>
+                        <div class="text-xs text-devtext3">
+                            {{ tasks_overdue|length }} à traiter en priorité
+                        </div>
+                    </div>
+                </div>
+                <ul class="divide-y divide-devborder/40">
+                    {% for task in tasks_overdue %}
+                    <li class="flex items-center gap-3 py-2.5">
+                        <a href="{{ task.detail_url }}" class="flex-1 min-w-0">
+                            <div class="text-sm font-medium text-devtext1 truncate">
+                                {{ task.title }}
+                            </div>
+                            <div class="text-[11px] text-devred mt-0.5">
+                                Échéance {{ task.due_date }}
+                                · {{ task.project_name|default:"" }}
+                            </div>
+                        </a>
+                        {% include "components/_quick_action_button.html" with endpoint=task.snooze_url label="Snoozer 1j" icon="⏱" variant="ghost" size="xs" payload_json='{"until": new Date(Date.now()+86400000).toISOString()}' success_message="Reportée à demain" on_success="$el.closest('li').remove();" %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {# Section : En cours #}
+            {% if tasks_in_progress %}
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <div class="card-title">En cours</div>
+                        <div class="text-xs text-devtext3">
+                            Avancement actif
+                        </div>
+                    </div>
+                </div>
+                <ul class="divide-y divide-devborder/40">
+                    {% for task in tasks_in_progress %}
+                    <li class="flex items-center gap-3 py-2.5">
+                        <a href="{{ task.detail_url }}" class="flex-1 min-w-0">
+                            <div class="text-sm font-medium text-devtext1 truncate">
+                                {{ task.title }}
+                            </div>
+                            <div class="text-[11px] text-devtext3 mt-0.5">
+                                {{ task.project_name|default:"" }}
+                            </div>
+                        </a>
+                        {% include "components/_quick_action_button.html" with endpoint=task.toggle_complete_url label="Marquer fait" icon="✓" variant="success" size="xs" success_message="Bravo — tâche terminée !" on_success="$el.closest('li').remove();" %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+        </div>
+
+        {# ─── Colonne droite : meeting + IA + notifs (1/3) ─── #}
+        <div class="space-y-4">
+
+            {# Suivi réunions #}
+            <div class="card p-5">
+                <div class="card-title mb-3">Suivi réunions</div>
+                {% if meeting_action_items %}
+                    <ul class="space-y-2 text-sm">
+                        {% for item in meeting_action_items %}
+                        <li class="flex items-start gap-2">
+                            <span class="text-devaccent leading-tight">•</span>
+                            <div class="flex-1 min-w-0">
+                                <a href="{% url 'meeting_detail' item.meeting_id %}"
+                                   class="text-devtext1 hover:underline truncate block">
+                                    {{ item.title }}
+                                </a>
+                                <div class="text-[11px] text-devtext3">
+                                    {{ item.meeting_title }}
+                                </div>
+                            </div>
+                            <span class="badge
+                                {% if item.priority == 'CRITICAL' %}b-red
+                                {% elif item.priority == 'HIGH' %}b-amber
+                                {% else %}b-purple{% endif %}">
+                                {{ item.priority }}
+                            </span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="text-xs text-devtext3 py-2">
+                        Aucune action en suspens.
+                    </div>
+                {% endif %}
+            </div>
+
+            {# Insights IA #}
+            <div class="card p-5">
+                <div class="card-title mb-3 flex items-center gap-2">
+                    <span>Insights IA</span>
+                    <span class="text-[11px] font-normal text-devtext3">prioritaires</span>
+                </div>
+                {% if ai_insights %}
+                    <ul class="space-y-3 text-sm">
+                        {% for insight in ai_insights %}
+                        <li class="border-l-2
+                            {% if insight.severity == 'CRITICAL' %}border-devred
+                            {% elif insight.severity == 'HIGH' %}border-devamber
+                            {% else %}border-devcyan{% endif %}
+                            pl-3">
+                            <div class="font-medium text-devtext1 leading-snug">
+                                {{ insight.title }}
+                            </div>
+                            <div class="text-[11px] text-devtext3 mt-0.5">
+                                {{ insight.project_name }} · Score {{ insight.score }}
+                            </div>
+                            {% if insight.recommendation %}
+                            <div class="text-[12px] text-devtext2 mt-1">
+                                {{ insight.recommendation|truncatechars:140 }}
+                            </div>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="text-xs text-devtext3 py-2">
+                        Aucun signal IA détecté — situation stable.
+                    </div>
+                {% endif %}
+            </div>
+
+            {# Notifications non lues #}
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="card-title">Notifications</div>
+                    {% if stats.unread_notifs %}
+                    <a href="{% url 'notification_list' %}"
+                       class="text-xs text-devaccent hover:underline">
+                        Toutes ({{ stats.unread_notifs }})
+                    </a>
+                    {% endif %}
+                </div>
+                {% if unread_notifications %}
+                    <ul class="divide-y divide-devborder/40 text-sm">
+                        {% for notif in unread_notifications %}
+                        <li class="py-2">
+                            {% if notif.url %}
+                            <a href="{{ notif.url }}" class="block hover:bg-devbg3 -mx-2 px-2 py-1 rounded">
+                                <div class="text-devtext1 font-medium truncate">{{ notif.title }}</div>
+                                {% if notif.body %}
+                                <div class="text-[11px] text-devtext3 mt-0.5">
+                                    {{ notif.body|truncatechars:80 }}
+                                </div>
+                                {% endif %}
+                            </a>
+                            {% else %}
+                            <div class="text-devtext1 font-medium">{{ notif.title }}</div>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="text-xs text-devtext3 py-2">
+                        Tout est lu — boîte vide ✨
+                    </div>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

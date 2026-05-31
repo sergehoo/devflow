@@ -76,6 +76,8 @@ from project.views_budget import ProjectBudgetCreateView, ProjectBudgetDetailVie
     ProjectRevenueCreateView, GenerateEstimateLinesFromTasksView, ProjectExpenseCreateView, ProjectBudgetUpdateView, \
     RecalculateProjectBudgetView, ProjectExpenseRejectView, ProjectExpenseApproveLevel2View, \
     ProjectExpenseApproveLevel1View, ProjectExpenseUpdateView, ProjectExpenseDetailView, ProjectExpenseListView
+from project.views_my_day import MyDayView  # Phase 1 — PR7
+from project.views_chat import ChatView  # Chat unifié
 
 app_name = "project"
 
@@ -84,6 +86,12 @@ urlpatterns = [
     path('accounts/', include('allauth.urls')),
     # path("", HomeView.as_view(), name="home"),
     path("", DashboardView.as_view(), name="dashboard"),
+
+    # Phase 1 — Mes actions du jour (PR7)
+    path("my-day/", MyDayView.as_view(), name="my_day"),
+
+    # Chat collaborateurs unifié (DM + groupes)
+    path("chat/", ChatView.as_view(), name="chat"),
 
     path("profile/", ProfileDetailView.as_view(), name="profile_detail"),
     path("profile/update/", ProfileUpdateView.as_view(), name="profile_update"),

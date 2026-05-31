@@ -120,10 +120,60 @@ class ChannelChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def user_in_channel(self, user_id, channel_id):
-        return dm.ChannelMembership.objects.filter(
-            channel_id=channel_id,
-            user_id=user_id,
-        ).exists()
+        """
+        PR27 — Vérification renforcée d'accès WebSocket à un canal :
+          1. Le canal doit exister et son workspace doit être accessible
+             à l'utilisateur (via TeamMembership ou UserProfile).
+          2. Pour un canal PRIVÉ : membership direct requise.
+          3. Pour un canal PUBLIC : accès workspace suffit.
+        """
+        from project.utils.workspaces import get_user_workspace_ids
+
+        channel = (
+            dm.DirectChannel.objects
+            .select_related("workspace")
+            .filter(pk=channel_id)
+            .first()
+        )
+        if channel is None:
+            return False
+
+        # 1) Le workspace du canal doit être dans les workspaces du user
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = User.objects.filter(pk=user_id).first()
+        if user is None:
+            return False
+        accessible_ws = get_user_workspace_ids(user)
+        if channel.workspace_id not in accessible_ws:
+            # Log de l'incident pour audit
+            try:
+                from project.services.security_audit import SecurityAuditService
+                SecurityAuditService.log(
+                    event_type=dm.SecurityAuditLog.EventType.ACCESS_DENIED,
+                    action="ws.chat.cross_tenant_attempt",
+                    user=user,
+                    workspace=channel.workspace,
+                    target=channel,
+                    severity=dm.SecurityAuditLog.Severity.WARNING,
+                    success=False,
+                    error_message=(
+                        f"WebSocket cross-tenant attempt sur canal {channel_id} "
+                        f"depuis user {user_id}"
+                    ),
+                )
+            except Exception:
+                pass
+            return False
+
+        # 2) Canal privé : membership direct exigée
+        if channel.is_private:
+            return dm.ChannelMembership.objects.filter(
+                channel_id=channel_id, user_id=user_id,
+            ).exists()
+
+        # 3) Canal public : accès workspace suffit
+        return True
 
     @database_sync_to_async
     def create_message(self, channel_id, author_id, body, parent_id=None):

@@ -1,0 +1,522 @@
+{% extends "layout/base.html" %}
+
+{% block title %}DevFlow — Discussions{% endblock %}
+{% block page_title %}Discussions{% endblock %}
+{% block breadcrumb %}Collaboration · Messages{% endblock %}
+
+{% block content %}
+<div
+    x-data="devflowChat()"
+    x-init="init()"
+    class="card overflow-hidden"
+    style="height: calc(100vh - 200px); min-height: 540px;"
+>
+    <div class="flex h-full">
+
+        {# ──────── Colonne canaux ──────── #}
+        <aside class="w-72 shrink-0 border-r border-devborder flex flex-col">
+
+            {# Header sidebar + bouton nouveau message #}
+            <div class="p-3 border-b border-devborder flex items-center gap-2">
+                <input
+                    type="search"
+                    x-model="channelFilter"
+                    placeholder="Rechercher…"
+                    class="flex-1 min-w-0 rounded-lg border border-devborder bg-devbg3
+                           px-3 py-1.5 text-sm text-devtext1 placeholder:text-devtext3
+                           focus:outline-none focus:border-devaccent"
+                >
+                <button type="button" @click="openNewModal()"
+                        class="shrink-0 rounded-lg bg-devaccent text-white px-3 py-1.5 text-sm font-medium
+                               hover:opacity-90 transition">
+                    + Nouveau
+                </button>
+            </div>
+
+            {# Liste canaux #}
+            <div class="flex-1 overflow-y-auto">
+                <template x-if="!loadingChannels && filteredChannels.length === 0">
+                    <div class="p-6 text-center text-sm text-devtext3">
+                        Aucune discussion.<br>
+                        <button @click="openNewModal()" class="text-devaccent hover:underline mt-2">
+                            Démarrer la première
+                        </button>
+                    </div>
+                </template>
+
+                <template x-if="loadingChannels">
+                    <div class="p-4 text-center text-xs text-devtext3">Chargement…</div>
+                </template>
+
+                <template x-for="channel in filteredChannels" :key="channel.id">
+                    <button
+                        type="button"
+                        @click="selectChannel(channel)"
+                        class="w-full text-left px-3 py-2.5 border-b border-devborder/40
+                               hover:bg-devbg3/60 transition"
+                        :class="selectedChannel && channel.id === selectedChannel.id
+                                ? 'bg-devbg3 border-l-2 border-l-devaccent' : ''"
+                    >
+                        <div class="flex items-center gap-2 min-w-0">
+                            {# Avatar : 🗣 DM, 👥 groupe #}
+                            <span class="shrink-0 w-8 h-8 rounded-full bg-devbg4
+                                         flex items-center justify-center text-base"
+                                  x-text="channel.is_dm ? '🗣' : '👥'"></span>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center justify-between gap-2">
+                                    <div class="text-sm font-medium text-devtext1 truncate"
+                                         x-text="channel.display_name"></div>
+                                    <div class="text-[10px] text-devtext3 shrink-0"
+                                         x-text="formatTime(channel.last_message_at)"></div>
+                                </div>
+                                <div class="text-[11px] text-devtext3 truncate"
+                                     x-text="channel.last_message_preview || channel.display_subtitle"></div>
+                            </div>
+                        </div>
+                    </button>
+                </template>
+            </div>
+        </aside>
+
+        {# ──────── Colonne conversation ──────── #}
+        <section class="flex-1 flex flex-col min-w-0">
+            <template x-if="!selectedChannel">
+                <div class="flex-1 flex items-center justify-center text-center px-6">
+                    <div>
+                        <div class="text-4xl mb-3">💬</div>
+                        <div class="text-sm text-devtext2">
+                            Sélectionnez une discussion à gauche<br>ou démarrez-en une nouvelle.
+                        </div>
+                        <button type="button" @click="openNewModal()"
+                                class="mt-4 rounded-lg bg-devaccent text-white px-4 py-2 text-sm">
+                            + Nouvelle discussion
+                        </button>
+                    </div>
+                </div>
+            </template>
+
+            <template x-if="selectedChannel">
+                <div class="flex-1 flex flex-col min-h-0">
+                    {# Header conversation #}
+                    <div class="px-4 py-3 border-b border-devborder flex items-center gap-3">
+                        <span class="w-9 h-9 rounded-full bg-devbg4 flex items-center justify-center"
+                              x-text="selectedChannel.is_dm ? '🗣' : '👥'"></span>
+                        <div class="min-w-0 flex-1">
+                            <div class="text-sm font-semibold text-devtext1 truncate"
+                                 x-text="selectedChannel.display_name"></div>
+                            <div class="text-[11px] text-devtext3 truncate"
+                                 x-text="selectedChannel.display_subtitle"></div>
+                        </div>
+                        <span class="text-[11px] px-2 py-0.5 rounded-full bg-devbg3 text-devtext2"
+                              x-text="selectedChannel.is_private ? 'Privé' : 'Public'"></span>
+                    </div>
+
+                    {# Messages #}
+                    <div
+                        x-ref="messagesContainer"
+                        class="flex-1 overflow-y-auto px-4 py-3 space-y-3"
+                    >
+                        <template x-if="loadingMessages">
+                            <div class="text-center text-xs text-devtext3 py-4">Chargement…</div>
+                        </template>
+
+                        <template x-for="msg in messages" :key="msg.id">
+                            <div class="flex gap-2"
+                                 :class="msg.is_self ? 'flex-row-reverse' : ''">
+                                <div class="shrink-0 w-8 h-8 rounded-full bg-devbg4
+                                            flex items-center justify-center text-xs font-semibold"
+                                     :class="msg.is_self ? 'bg-devaccent text-white' : 'text-devtext2'"
+                                     x-text="(msg.author_name || '?').substring(0,1).toUpperCase()"></div>
+                                <div class="max-w-[75%]">
+                                    <div class="flex items-baseline gap-2 mb-0.5"
+                                         :class="msg.is_self ? 'justify-end' : ''">
+                                        <span class="text-[11px] font-semibold text-devtext2"
+                                              x-text="msg.is_self ? 'Vous' : msg.author_name"></span>
+                                        <span class="text-[10px] text-devtext3"
+                                              x-text="formatTime(msg.created_at)"></span>
+                                    </div>
+                                    <div class="rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words"
+                                         :class="msg.is_self
+                                                  ? 'bg-devaccent text-white'
+                                                  : 'bg-devbg3 text-devtext1 border border-devborder'"
+                                         x-text="msg.body"></div>
+                                </div>
+                            </div>
+                        </template>
+
+                        <template x-if="!loadingMessages && messages.length === 0">
+                            <div class="text-center text-xs text-devtext3 py-6">
+                                Aucun message pour l'instant — soyez le premier !
+                            </div>
+                        </template>
+                    </div>
+
+                    {# Composeur #}
+                    <form @submit.prevent="sendMessage()"
+                          class="border-t border-devborder p-3 flex items-end gap-2">
+                        <textarea
+                            x-model="composer"
+                            x-ref="composerInput"
+                            @keydown.enter.prevent="$event.shiftKey ? (composer += '\n') : sendMessage()"
+                            placeholder="Écrire un message… (Entrée pour envoyer, Maj+Entrée pour saut de ligne)"
+                            rows="2"
+                            class="flex-1 resize-none rounded-lg border border-devborder bg-devbg3
+                                   px-3 py-2 text-sm text-devtext1 placeholder:text-devtext3
+                                   focus:outline-none focus:border-devaccent"
+                            :disabled="sending"
+                        ></textarea>
+                        <button
+                            type="submit"
+                            :disabled="sending || !composer.trim()"
+                            class="shrink-0 rounded-lg bg-devaccent text-white px-4 py-2 text-sm font-medium
+                                   hover:opacity-90 transition disabled:opacity-50">
+                            <span x-show="!sending">Envoyer</span>
+                            <span x-show="sending">…</span>
+                        </button>
+                    </form>
+                </div>
+            </template>
+        </section>
+    </div>
+
+    {# ──────── Modal Nouveau message ──────── #}
+    <div
+        x-show="newModalOpen"
+        x-transition.opacity
+        class="fixed inset-0 z-[150] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+        @click.self="newModalOpen = false"
+        x-cloak
+    >
+        <div class="card max-w-lg w-full mx-4 p-6 shadow-lgsoft">
+            <div class="flex items-center justify-between mb-4">
+                <div class="card-title">Nouvelle discussion</div>
+                <button type="button" @click="newModalOpen = false"
+                        class="text-devtext3 hover:text-devtext1 text-xl leading-none">×</button>
+            </div>
+
+            {# Toggle mode DM/Groupe #}
+            <div class="inline-flex rounded-lg bg-devbg3 p-1 mb-4">
+                <button type="button" @click="newMode = 'dm'"
+                        class="px-3 py-1.5 text-xs rounded-md transition"
+                        :class="newMode === 'dm' ? 'bg-devaccent text-white' : 'text-devtext2'">
+                    🗣 Message direct
+                </button>
+                <button type="button" @click="newMode = 'group'"
+                        class="px-3 py-1.5 text-xs rounded-md transition"
+                        :class="newMode === 'group' ? 'bg-devaccent text-white' : 'text-devtext2'">
+                    👥 Groupe
+                </button>
+            </div>
+
+            {# Nom (groupe uniquement) #}
+            <div x-show="newMode === 'group'" class="mb-3">
+                <label class="block text-xs text-devtext2 mb-1">Nom du groupe</label>
+                <input type="text" x-model="newGroupName"
+                       placeholder="ex: Équipe produit"
+                       class="w-full rounded-lg border border-devborder bg-devbg3 px-3 py-2 text-sm text-devtext1
+                              focus:outline-none focus:border-devaccent">
+            </div>
+
+            {# Recherche contacts #}
+            <div class="mb-3">
+                <label class="block text-xs text-devtext2 mb-1">
+                    <span x-show="newMode === 'dm'">Choisir un collaborateur</span>
+                    <span x-show="newMode === 'group'">Ajouter des membres</span>
+                </label>
+                <input type="search" x-model="contactSearch" @input.debounce.300ms="searchContacts()"
+                       placeholder="Rechercher un nom ou un email…"
+                       class="w-full rounded-lg border border-devborder bg-devbg3 px-3 py-2 text-sm text-devtext1
+                              focus:outline-none focus:border-devaccent">
+            </div>
+
+            {# Résultats + sélection #}
+            <div class="max-h-56 overflow-y-auto border border-devborder rounded-lg mb-3">
+                <template x-if="loadingContacts">
+                    <div class="p-3 text-center text-xs text-devtext3">Recherche…</div>
+                </template>
+                <template x-if="!loadingContacts && contactResults.length === 0">
+                    <div class="p-3 text-center text-xs text-devtext3">
+                        Aucun contact trouvé.
+                    </div>
+                </template>
+                <template x-for="contact in contactResults" :key="contact.id">
+                    <button
+                        type="button"
+                        @click="toggleContact(contact)"
+                        class="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-devbg3/60 border-b border-devborder/40 last:border-b-0">
+                        <span class="shrink-0 w-7 h-7 rounded-full bg-devbg4 flex items-center justify-center text-xs font-semibold text-devtext2"
+                              x-text="(contact.display_name || '?').substring(0,1).toUpperCase()"></span>
+                        <div class="min-w-0 flex-1">
+                            <div class="text-sm text-devtext1 truncate" x-text="contact.display_name"></div>
+                            <div class="text-[11px] text-devtext3 truncate"
+                                 x-text="contact.email || '@' + contact.username"></div>
+                        </div>
+                        <span x-show="isSelected(contact)"
+                              class="text-devaccent text-base shrink-0">✓</span>
+                    </button>
+                </template>
+            </div>
+
+            {# Aperçu sélectionnés (groupe seulement) #}
+            <div x-show="newMode === 'group' && selectedContacts.length > 0" class="mb-3">
+                <div class="text-[11px] uppercase tracking-wide text-devtext3 mb-1">
+                    Membres ajoutés (<span x-text="selectedContacts.length"></span>)
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                    <template x-for="c in selectedContacts" :key="c.id">
+                        <span class="inline-flex items-center gap-1 rounded-full bg-devbg3 border border-devborder
+                                     px-2 py-1 text-xs text-devtext1">
+                            <span x-text="c.display_name"></span>
+                            <button type="button" @click="toggleContact(c)"
+                                    class="text-devtext3 hover:text-devred">×</button>
+                        </span>
+                    </template>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 mt-2">
+                <button type="button" @click="newModalOpen = false"
+                        class="btn-soft text-sm">Annuler</button>
+                <button type="button" @click="createConversation()"
+                        :disabled="!canCreate || creating"
+                        class="rounded-lg bg-devaccent text-white px-4 py-2 text-sm font-medium
+                               hover:opacity-90 disabled:opacity-50">
+                    <span x-show="!creating" x-text="newMode === 'dm' ? 'Ouvrir le DM' : 'Créer le groupe'"></span>
+                    <span x-show="creating">…</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    /* ─────────────────────────────────────────────────────────────────
+       Composant Alpine : devflowChat
+       Consomme /api/v1/me/chat/* via window.devflowApi (CSRF intégré).
+       Polling 5s pour rafraîchir les nouveaux messages du canal actif.
+       ──────────────────────────────────────────────────────────────── */
+    document.addEventListener("alpine:init", () => {
+        Alpine.data("devflowChat", () => ({
+            channels: [],
+            channelFilter: "",
+            selectedChannel: null,
+            loadingChannels: false,
+
+            messages: [],
+            loadingMessages: false,
+            composer: "",
+            sending: false,
+            pollTimer: null,
+            lastMessageId: 0,
+
+            newModalOpen: false,
+            newMode: "dm",
+            newGroupName: "",
+            contactSearch: "",
+            contactResults: [],
+            loadingContacts: false,
+            selectedContacts: [],
+            creating: false,
+
+            get filteredChannels() {
+                const q = (this.channelFilter || "").toLowerCase().trim();
+                if (!q) return this.channels;
+                return this.channels.filter(c =>
+                    (c.display_name || "").toLowerCase().includes(q)
+                    || (c.last_message_preview || "").toLowerCase().includes(q)
+                );
+            },
+
+            get canCreate() {
+                if (this.newMode === "dm") {
+                    return this.selectedContacts.length === 1;
+                }
+                return this.selectedContacts.length >= 1
+                       && this.newGroupName.trim().length > 0;
+            },
+
+            async init() {
+                await this.loadChannels();
+            },
+
+            async loadChannels() {
+                this.loadingChannels = true;
+                try {
+                    const data = await window.devflowApi.get("/api/v1/me/chat/channels/");
+                    this.channels = (data && data.channels) || [];
+                } finally {
+                    this.loadingChannels = false;
+                }
+            },
+
+            formatTime(iso) {
+                if (!iso) return "";
+                const d = new Date(iso);
+                const now = new Date();
+                const sameDay = d.toDateString() === now.toDateString();
+                if (sameDay) {
+                    return d.toLocaleTimeString([], {
+                        hour: "2-digit", minute: "2-digit",
+                    });
+                }
+                return d.toLocaleDateString([], {
+                    day: "2-digit", month: "2-digit",
+                });
+            },
+
+            async selectChannel(channel) {
+                this.selectedChannel = channel;
+                this.messages = [];
+                this.lastMessageId = 0;
+                this.loadingMessages = true;
+                this.stopPolling();
+                try {
+                    const data = await window.devflowApi.get(
+                        `/api/v1/me/chat/channels/${channel.id}/messages/`
+                    );
+                    if (data) {
+                        this.messages = data.messages || [];
+                        if (this.messages.length) {
+                            this.lastMessageId = this.messages[this.messages.length - 1].id;
+                        }
+                        this.$nextTick(() => this.scrollToBottom());
+                    }
+                } finally {
+                    this.loadingMessages = false;
+                }
+                this.startPolling();
+            },
+
+            scrollToBottom() {
+                const el = this.$refs.messagesContainer;
+                if (el) el.scrollTop = el.scrollHeight;
+            },
+
+            async sendMessage() {
+                const body = this.composer.trim();
+                if (!body || !this.selectedChannel || this.sending) return;
+                this.sending = true;
+                try {
+                    const msg = await window.devflowApi.post(
+                        `/api/v1/me/chat/channels/${this.selectedChannel.id}/messages/`,
+                        { body }
+                    );
+                    if (msg && msg.id) {
+                        this.messages.push(msg);
+                        this.lastMessageId = msg.id;
+                        this.composer = "";
+                        this.$nextTick(() => this.scrollToBottom());
+                        // Refresh canaux pour mettre à jour le last_message_preview
+                        this.loadChannels();
+                    }
+                } finally {
+                    this.sending = false;
+                    this.$refs.composerInput && this.$refs.composerInput.focus();
+                }
+            },
+
+            startPolling() {
+                this.stopPolling();
+                this.pollTimer = setInterval(async () => {
+                    if (!this.selectedChannel || document.hidden) return;
+                    try {
+                        const data = await window.devflowApi.get(
+                            `/api/v1/me/chat/channels/${this.selectedChannel.id}/messages/?after=${this.lastMessageId}`
+                        );
+                        if (data && data.messages && data.messages.length) {
+                            this.messages.push(...data.messages);
+                            this.lastMessageId =
+                                data.messages[data.messages.length - 1].id;
+                            this.$nextTick(() => this.scrollToBottom());
+                        }
+                    } catch (e) { /* silent */ }
+                }, 5000);
+            },
+
+            stopPolling() {
+                if (this.pollTimer) {
+                    clearInterval(this.pollTimer);
+                    this.pollTimer = null;
+                }
+            },
+
+            // ── Modal Nouveau ──
+            openNewModal() {
+                this.newModalOpen = true;
+                this.newMode = "dm";
+                this.newGroupName = "";
+                this.contactSearch = "";
+                this.contactResults = [];
+                this.selectedContacts = [];
+                this.searchContacts();
+            },
+
+            async searchContacts() {
+                this.loadingContacts = true;
+                try {
+                    const q = encodeURIComponent(this.contactSearch || "");
+                    const data = await window.devflowApi.get(
+                        `/api/v1/me/chat/contacts/?q=${q}`
+                    );
+                    this.contactResults = (data && data.contacts) || [];
+                } finally {
+                    this.loadingContacts = false;
+                }
+            },
+
+            isSelected(contact) {
+                return this.selectedContacts.some(c => c.id === contact.id);
+            },
+
+            toggleContact(contact) {
+                if (this.newMode === "dm") {
+                    this.selectedContacts = [contact];
+                    return;
+                }
+                if (this.isSelected(contact)) {
+                    this.selectedContacts = this.selectedContacts.filter(
+                        c => c.id !== contact.id
+                    );
+                } else {
+                    this.selectedContacts.push(contact);
+                }
+            },
+
+            async createConversation() {
+                if (!this.canCreate || this.creating) return;
+                this.creating = true;
+                try {
+                    let result;
+                    if (this.newMode === "dm") {
+                        result = await window.devflowApi.post(
+                            "/api/v1/me/chat/direct/",
+                            { user_id: this.selectedContacts[0].id }
+                        );
+                    } else {
+                        result = await window.devflowApi.post(
+                            "/api/v1/me/chat/groups/",
+                            {
+                                name: this.newGroupName.trim(),
+                                member_ids: this.selectedContacts.map(c => c.id),
+                            }
+                        );
+                    }
+                    if (result && result.id) {
+                        this.newModalOpen = false;
+                        await this.loadChannels();
+                        // Sélectionne le nouveau canal
+                        const created = this.channels.find(c => c.id === result.id);
+                        if (created) this.selectChannel(created);
+                        window.devflowToast(
+                            this.newMode === "dm" ? "DM ouvert" : "Groupe créé",
+                            "success"
+                        );
+                    }
+                } finally {
+                    this.creating = false;
+                }
+            },
+        }));
+    });
+</script>
+{% endblock %}

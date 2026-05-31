@@ -1,0 +1,47 @@
+
+
+{% with btn_variant=variant|default:"neutral" btn_size=size|default:"xs" %}
+    <button
+            type="button"
+            x-data="{ loading: false }"
+            :disabled="loading"
+            @click="
+        {% if confirm_text %}
+        if (!window.confirm('{{ confirm_text|escapejs }}')) return;
+        {% endif %}
+        loading = true;
+        (async () => {
+            try {
+                const result = await window.devflowApi.post(
+                    '{{ endpoint }}',
+                    {{ payload_json|default:'{}' }}
+                );
+                if (result !== null) {
+                    window.devflowToast(
+                        '{{ success_message|default:label|escapejs }}',
+                        'success'
+                    );
+                    {% if on_success %}{{ on_success|safe }}{% endif %}
+                }
+            } finally {
+                loading = false;
+            }
+        })();
+    "
+            class="inline-flex items-center gap-1.5 font-medium rounded-lg transition
+           disabled:opacity-50 disabled:cursor-wait
+           {% if btn_size == 'md' %} px-4 py-2 text-sm
+           {% elif btn_size == 'sm' %} px-3 py-1.5 text-xs
+           {% else %} px-2.5 py-1 text-[11px]
+           {% endif %}
+           {% if btn_variant == 'success' %} bg-devgreen text-white hover:opacity-90
+           {% elif btn_variant == 'danger' %}  bg-devred   text-white hover:opacity-90
+           {% elif btn_variant == 'ghost' %}   bg-transparent text-devtext2 hover:text-devtext1 hover:bg-devbg3
+           {% else %}                          bg-devbg3 text-devtext1 hover:bg-devbg4 border border-devborder
+           {% endif %}"
+    >
+        {% if icon %}<span class="leading-none">{{ icon|safe }}</span>{% endif %}
+        <span x-show="!loading">{{ label }}</span>
+        <span x-show="loading">…</span>
+    </button>
+{% endwith %}

@@ -126,6 +126,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'project.context_processors.devflow_notifications',
+                'project.context_processors.devflow_rbac',
             ],
         },
     },
@@ -194,6 +195,35 @@ CELERY_BEAT_SCHEDULE = {
         "task": "project.tasks.run_task_reminder_sweep",
         "schedule": crontab(hour=16, minute=0),
     },
+    # Phase 3 — PR16 : Budget V2
+    # 5h00 : recalcule EAC + Cost Variance avant le scan d'alertes
+    "recompute-project-eac-sweep": {
+        "task": "project.tasks.recompute_project_eac_sweep",
+        "schedule": crontab(hour=5, minute=0),
+    },
+    # 6h00 : détecte les dépassements et notifie les PM (anti-spam 24h)
+    "scan-budget-overruns": {
+        "task": "project.tasks.scan_budget_overruns",
+        "schedule": crontab(hour=6, minute=0),
+    },
+    # Phase 5 — PR21 : Digest quotidien des notifications
+    # 8h00 : récap email pour les users avec notify_frequency=DAILY
+    "send-daily-notification-digest": {
+        "task": "project.tasks.send_daily_notification_digest",
+        "schedule": crontab(hour=8, minute=0),
+    },
+    # Phase 5 — PR22 : Rapports IA hebdomadaires
+    # Lundi 6h : génère le rapport semaine N-1 pour chaque projet actif
+    "generate-project-weekly-reports": {
+        "task": "project.tasks.generate_project_weekly_reports",
+        "schedule": crontab(hour=6, minute=0, day_of_week=1),
+    },
+    # PR24 — Purge audit log (rétention 90j)
+    # Dimanche 3h : nettoie les vieux logs sécurité
+    "purge-old-security-logs": {
+        "task": "project.tasks.purge_old_security_logs",
+        "schedule": crontab(hour=3, minute=0, day_of_week=0),
+    },
 }
 
 # Paramètres du moteur de relance (surchargeable via env)
@@ -201,12 +231,57 @@ TASK_REMINDER_COOLDOWN_HOURS = int(os.getenv("TASK_REMINDER_COOLDOWN_HOURS", "10
 TASK_STALE_DAYS = int(os.getenv("TASK_STALE_DAYS", "2"))
 TASK_DUE_SOON_DAYS = int(os.getenv("TASK_DUE_SOON_DAYS", "3"))
 
-CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://127.0.0.1:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://127.0.0.1:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "Africa/Abidjan"
+
+# =========================================================================
+# Celery — durcissement Phase 0 (PR6)
+# =========================================================================
+# Sans ces options, une tâche acquittée mais non encore terminée disparaît si
+# le worker reçoit un SIGKILL (OOM, redéploiement brutal) → email perdu,
+# rapport non généré, mise à jour budget partielle.
+#
+# Réf : https://docs.celeryq.dev/en/stable/userguide/configuration.html
+
+# Acquitte la tâche APRÈS exécution réussie (au lieu de "before"). Doublonne
+# l'idempotence côté tâche (déjà OK pour nos tasks de mail + AI proposal),
+# mais garantit qu'une tâche tuée à mi-chemin sera redonnée à un autre worker.
+CELERY_TASK_ACKS_LATE = True
+
+# Couplé à acks_late : si le worker meurt pendant l'exécution, la tâche est
+# requeuée. Sans cela, elle resterait coincée en "running" indéfiniment.
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+
+# Marque la tâche comme STARTED dès qu'un worker la prend — visible dans
+# Flower / result backend pour distinguer "en attente" de "en cours".
+CELERY_TASK_TRACK_STARTED = True
+
+# Recyclage worker pour limiter les fuites mémoire des imports IA + parsing
+# PDF (ProjectAIImportService) qui peuvent consommer des centaines de Mo par
+# document. Le worker redémarre après N tâches, libérant la RAM.
+CELERY_WORKER_MAX_TASKS_PER_CHILD = int(
+    os.getenv("CELERY_WORKER_MAX_TASKS_PER_CHILD", "200")
+)
+
+# Une tâche IA peut prendre 20-40s ; on borne explicitement pour éviter qu'un
+# appel OpenAI bloqué tienne un worker indéfiniment.
+# Soft = SIGTERM (la task peut catch), hard = SIGKILL.
+CELERY_TASK_SOFT_TIME_LIMIT = int(os.getenv("CELERY_TASK_SOFT_TIME_LIMIT", "300"))
+CELERY_TASK_TIME_LIMIT = int(os.getenv("CELERY_TASK_TIME_LIMIT", "360"))
+
+# Préfetch limité pour répartir équitablement le travail entre workers,
+# notamment pour les tâches longues (IA proposal generation).
+CELERY_WORKER_PREFETCH_MULTIPLIER = int(
+    os.getenv("CELERY_WORKER_PREFETCH_MULTIPLIER", "1")
+)
+
+# Celery 5.3+: silence le warning au démarrage si Redis n'est pas encore up,
+# tente la reconnexion automatique (utile lors d'un déploiement rolling).
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -215,11 +290,20 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 # Couche IA (provider hybride) — voir project/services/ai/
 # =========================================================================
 # Backend actif :
-#   - "auto"   : OpenAI si clé dispo, sinon endpoint local, sinon désactivé
-#   - "openai" : force OpenAI
-#   - "local"  : force endpoint local (Ollama, vLLM...)
-#   - "none"   : désactive toute IA (heuristiques uniquement)
+#   - "auto"     : DeepSeek si clé → OpenAI si clé → local → désactivé
+#                  (recommandé en prod ; Phase 4 PR17 met DeepSeek en tête)
+#   - "deepseek" : force DeepSeek (provider principal DevFlow)
+#   - "openai"   : force OpenAI
+#   - "local"    : force endpoint local (Ollama, vLLM...)
+#   - "none"     : désactive toute IA (heuristiques uniquement)
 AI_BACKEND = os.getenv("AI_BACKEND", "auto")
+
+# DeepSeek (Phase 4 — PR17) — provider principal
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+AI_DEEPSEEK_MODEL = os.getenv("AI_DEEPSEEK_MODEL", "deepseek-chat")
+AI_DEEPSEEK_BASE_URL = os.getenv(
+    "AI_DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1",
+)
 
 # OpenAI
 AI_OPENAI_MODEL = os.getenv("AI_OPENAI_MODEL", "gpt-4o-mini")

@@ -1102,10 +1102,13 @@ class TaskForm(BaseStyledModelForm):
                     or (getattr(self.instance, "project_id", None) if self.instance else None)
                 )
 
-                assignee_qs = get_user_model().objects.filter(
-                    is_active=True,
-                    devflow_memberships__workspace=workspace,
-                ).distinct()
+                # SECURITY — Utilise le helper centralisé qui couvre
+                # team_memberships + profile.workspace + owned_workspaces.
+                # Avant : seul devflow_memberships était considéré (fuite
+                # potentielle inverse : un user du workspace sans
+                # TeamMembership n'apparaissait pas).
+                from project.utils.workspaces import users_in_workspaces
+                assignee_qs = users_in_workspaces([workspace.pk])
 
                 if project_id:
                     project_member_ids = list(

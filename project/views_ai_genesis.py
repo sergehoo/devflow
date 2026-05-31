@@ -25,6 +25,7 @@ from project import models as dm
 from project.forms_budget import StyledModelForm
 from project.services.ai.services.chat import DevFlowContextBuilder
 from project.services.ai.services.project_genesis import ProjectGenesisService
+from project.utils.workspaces import user_can_access_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,18 @@ class ProjectGenesisForm(forms.Form):
         label="Priorité",
         choices=dm.Project.Priority.choices,
         initial=dm.Project.Priority.MEDIUM,
+        widget=forms.Select(attrs={
+            "class": "w-full rounded-[14px] border border-devborder bg-devbg3 px-4 py-3 text-sm text-devtext1",
+        }),
+    )
+    # Phase 2 — PR13 : permet de typer le projet à la création (par défaut
+    # AGILE pour préserver le comportement existant).
+    methodology = forms.ChoiceField(
+        label="Méthodologie",
+        choices=dm.Project.Methodology.choices,
+        initial=dm.Project.Methodology.AGILE,
+        required=False,
+        help_text="Détermine les vues et les structures générées par l'IA.",
         widget=forms.Select(attrs={
             "class": "w-full rounded-[14px] border border-devborder bg-devbg3 px-4 py-3 text-sm text-devtext1",
         }),
@@ -118,6 +131,7 @@ class ProjectGenesisView(LoginRequiredMixin, View):
                 owner=request.user,
                 priority=form.cleaned_data["priority"],
                 target_date=form.cleaned_data.get("target_date"),
+                methodology=form.cleaned_data.get("methodology") or None,
                 use_ai=True,
                 auto_apply=form.cleaned_data.get("auto_apply", True),
             )
@@ -167,13 +181,27 @@ class ProjectGenesisAPIView(LoginRequiredMixin, View):
                 status=400,
             )
 
+        # SECURITY (Phase 0): on n'autorise que les workspaces auxquels
+        # l'utilisateur a réellement accès. Sans ce contrôle, un user pouvait
+        # créer un projet IA dans le workspace d'un autre tenant.
         workspace = None
         if workspace_id:
-            workspace = dm.Workspace.objects.filter(pk=workspace_id).first()
+            candidate = dm.Workspace.objects.filter(pk=workspace_id).first()
+            if candidate and user_can_access_workspace(request.user, candidate):
+                workspace = candidate
+            elif candidate is not None:
+                # workspace existe mais l'utilisateur n'y a pas accès
+                return JsonResponse(
+                    {"ok": False, "error": "workspace inaccessible"},
+                    status=403,
+                )
         if not workspace:
             workspace = DevFlowContextBuilder._infer_workspace(request.user)
         if not workspace:
             return JsonResponse({"ok": False, "error": "aucun workspace disponible"}, status=400)
+        # Double check final (cas où _infer_workspace retournerait un workspace public)
+        if not user_can_access_workspace(request.user, workspace):
+            return JsonResponse({"ok": False, "error": "workspace inaccessible"}, status=403)
 
         target_date_raw = payload.get("target_date")
         target_date = None
@@ -191,6 +219,7 @@ class ProjectGenesisAPIView(LoginRequiredMixin, View):
                 owner=request.user,
                 priority=payload.get("priority") or dm.Project.Priority.MEDIUM,
                 target_date=target_date,
+                methodology=payload.get("methodology") or None,
                 use_ai=bool(payload.get("use_ai", True)),
                 auto_apply=bool(payload.get("auto_apply", True)),
             )

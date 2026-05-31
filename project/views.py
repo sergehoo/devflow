@@ -7,6 +7,7 @@ from decimal import Decimal
 from io import BytesIO
 
 from django import forms
+from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -49,7 +50,11 @@ from .forms import (
     InvoiceGenerateForm,
 )
 from .services.budget import ProjectBudgetService
-from .utils.workspaces import ensure_workspace
+from .utils.workspaces import (
+    ensure_workspace,
+    get_user_workspace_ids,
+    users_for_user,
+)
 
 APP_LABEL = "project"
 
@@ -443,11 +448,39 @@ class DevflowDeleteView(WorkspaceSecurityMixin, DevflowBaseMixin, DeleteView):
     template_name = "project/crud/confirm_delete.html"
     context_object_name = "item"
 
+    # PR28 — Permission RBAC requise par défaut sur tout DELETE
+    # (peut être surchargé par sous-classe via ``rbac_delete_action``).
+    rbac_delete_action: str | None = None
+
     def get_queryset(self):
         return self.filter_by_workspace(super().get_queryset())
 
     def get_success_url(self):
         return reverse_lazy(self.success_list_url_name)
+
+    def dispatch(self, request, *args, **kwargs):
+        """PR28 — Check RBAC avant tout sur DELETE."""
+        if self.rbac_delete_action and request.user.is_authenticated:
+            from project.services.rbac import RBACService
+            obj = self.get_object()
+            if not RBACService.can(request.user, self.rbac_delete_action, target=obj):
+                # Audit log de l'accès refusé
+                try:
+                    from project.services.security_audit import SecurityAuditService
+                    SecurityAuditService.log(
+                        event_type=dm.SecurityAuditLog.EventType.ACCESS_DENIED,
+                        action=self.rbac_delete_action,
+                        user=request.user,
+                        target=obj,
+                        request=request,
+                        severity=dm.SecurityAuditLog.Severity.WARNING,
+                        success=False,
+                    )
+                except Exception:
+                    pass
+                from django.core.exceptions import PermissionDenied
+                raise PermissionDenied("Suppression non autorisée pour votre rôle.")
+        return super().dispatch(request, *args, **kwargs)
 
     def delete(self, request, *args, **kwargs):
         messages.success(request, f"{self.model._meta.verbose_name.title()} supprimé avec succès.")
@@ -1221,18 +1254,25 @@ class DashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, TemplateView):
 
             "analysis_cards": analysis_cards,
 
-            "debug_info": {
-                "workspace_found": True,
-                "workspace_name": current_workspace.name,
-                "projects_count": projects.count(),
-                "tasks_count": tasks.count(),
-                "memberships_count": memberships.count(),
-                "profiles_count": user_profiles.count(),
-                "sprints_count": sprints.count(),
-                "risks_count": risks.count(),
-                "notifications_count": notifications.count(),
-                "activities_count": activities.count(),
-            },
+            # PERF (Phase 0): les 8 COUNT() ci-dessous étaient exécutés à chaque
+            # affichage du dashboard en production, même quand le template ne
+            # consomme pas `debug_info`. On les conditionne désormais à DEBUG.
+            "debug_info": (
+                {
+                    "workspace_found": True,
+                    "workspace_name": current_workspace.name,
+                    "projects_count": projects.count(),
+                    "tasks_count": tasks.count(),
+                    "memberships_count": memberships.count(),
+                    "profiles_count": user_profiles.count(),
+                    "sprints_count": sprints.count(),
+                    "risks_count": risks.count(),
+                    "notifications_count": notifications.count(),
+                    "activities_count": activities.count(),
+                }
+                if django_settings.DEBUG
+                else None
+            ),
         })
         return ctx
 
@@ -1960,45 +2000,54 @@ class ProjectListView(DevflowListView):
 
             "history_summary": history_summary,
 
-            "stats": {
+            # PERF (Phase 0): 6 COUNT séquentiels → 1 aggregate. Sur un workspace
+            # avec quelques centaines de projets, c'est 5 allers-retours SQL en moins
+            # à chaque chargement de la liste.
+            "stats": base_qs.aggregate(
 
-                "total": base_qs.count(),
+                total=Count("id"),
 
-                "in_progress": base_qs.filter(status=dm.Project.Status.IN_PROGRESS).count(),
+                in_progress=Count("id", filter=Q(status=dm.Project.Status.IN_PROGRESS)),
 
-                "done": base_qs.filter(status=dm.Project.Status.DONE).count(),
+                done=Count("id", filter=Q(status=dm.Project.Status.DONE)),
 
-                "blocked": base_qs.filter(status=dm.Project.Status.BLOCKED).count(),
+                blocked=Count("id", filter=Q(status=dm.Project.Status.BLOCKED)),
 
-                "delayed": base_qs.filter(
+                delayed=Count(
 
-                    Q(status=dm.Project.Status.DELAYED) |
+                    "id",
 
-                    Q(
+                    filter=(
 
-                        target_date__lt=today,
+                        Q(status=dm.Project.Status.DELAYED)
 
-                        status__in=[
+                        | Q(
 
-                            dm.Project.Status.PLANNED,
+                            target_date__lt=today,
 
-                            dm.Project.Status.IN_PROGRESS,
+                            status__in=[
 
-                            dm.Project.Status.IN_DELIVERY,
+                                dm.Project.Status.PLANNED,
 
-                            dm.Project.Status.BLOCKED,
+                                dm.Project.Status.IN_PROGRESS,
 
-                            dm.Project.Status.ON_HOLD,
+                                dm.Project.Status.IN_DELIVERY,
 
-                        ],
+                                dm.Project.Status.BLOCKED,
 
-                    )
+                                dm.Project.Status.ON_HOLD,
 
-                ).count(),
+                            ],
 
-                "critical": base_qs.filter(priority=dm.Project.Priority.CRITICAL).count(),
+                        )
 
-            }
+                    ),
+
+                ),
+
+                critical=Count("id", filter=Q(priority=dm.Project.Priority.CRITICAL)),
+
+            )
 
         })
 
@@ -3369,6 +3418,49 @@ class ProjectDetailView(DevflowDetailView):
             }
 
         ctx["active_quick_actions"] = quick_actions.get(active_tab, [])
+
+        # ─── Phase 2 — Multi-modes (PR11) ─────────────────────────────────
+        # On expose la méthodologie + le chemin du partial à inclure dans le
+        # template, et on précharge les querysets spécifiques au mode pour
+        # ne pas faire N+1 dans le template.
+        methodology = getattr(project, "methodology",
+                              dm.Project.Methodology.AGILE)
+        methodology_partial_map = {
+            dm.Project.Methodology.WATERFALL: "project/modes/waterfall.html",
+            dm.Project.Methodology.FIELD: "project/modes/field.html",
+            dm.Project.Methodology.REAL_ESTATE: "project/modes/real_estate.html",
+            dm.Project.Methodology.ADMINISTRATIVE: "project/modes/administrative.html",
+        }
+        ctx["methodology"] = methodology
+        ctx["methodology_label"] = project.get_methodology_display() \
+            if hasattr(project, "get_methodology_display") else methodology
+        ctx["methodology_partial"] = methodology_partial_map.get(methodology)
+
+        # Querysets préchargés (filtrés is_archived=False par les modèles).
+        ctx["mode_phases"] = (
+            project.phases.filter(is_archived=False)
+            .select_related("owner")
+            .order_by("position", "id")
+        ) if methodology == dm.Project.Methodology.WATERFALL else []
+
+        ctx["mode_field_reports"] = (
+            project.field_reports.filter(is_archived=False)
+            .select_related("reporter")
+            .prefetch_related("photos")
+            .order_by("-report_date", "-id")[:30]
+        ) if methodology == dm.Project.Methodology.FIELD else []
+
+        ctx["mode_lots"] = (
+            project.real_estate_lots.filter(is_archived=False)
+            .order_by("lot_number")
+        ) if methodology == dm.Project.Methodology.REAL_ESTATE else []
+
+        ctx["mode_cases"] = (
+            project.admin_cases.filter(is_archived=False)
+            .select_related("assignee")
+            .order_by("-requested_at", "-id")
+        ) if methodology == dm.Project.Methodology.ADMINISTRATIVE else []
+
         return ctx
 
 class ProjectCreateView(DevflowCreateView):
@@ -3867,7 +3959,14 @@ def sprint_status_update(request):
                 status=400
             )
 
-        sprint = get_object_or_404(dm.Sprint, pk=sprint_id)
+        # SECURITY (Phase 0): scoper le sprint aux workspaces du user
+        # pour éviter qu'un utilisateur ne modifie le sprint d'un autre tenant.
+        user_workspace_ids = get_user_workspace_ids(request.user)
+        sprint = get_object_or_404(
+            dm.Sprint,
+            pk=sprint_id,
+            workspace_id__in=user_workspace_ids,
+        )
         sprint.status = status
         sprint.save(update_fields=["status", "updated_at"])
 
@@ -3904,7 +4003,14 @@ def task_status_update(request):
         if status not in allowed_statuses:
             return JsonResponse({"success": False, "message": "Statut invalide."}, status=400)
 
-        task = get_object_or_404(dm.Task, pk=task_id)
+        # SECURITY (Phase 0): scoper la tâche aux workspaces du user
+        # pour éviter qu'un utilisateur ne modifie la tâche d'un autre tenant.
+        user_workspace_ids = get_user_workspace_ids(request.user)
+        task = get_object_or_404(
+            dm.Task,
+            pk=task_id,
+            workspace_id__in=user_workspace_ids,
+        )
         task.status = status
         task.save(update_fields=["status", "updated_at"])
 
@@ -4312,7 +4418,16 @@ class TaskToggleFlagView(DevflowBaseMixin, View):
 
 class TaskQuickAttachmentView(LoginRequiredMixin, View):
     def post(self, request, pk):
-        task = get_object_or_404(dm.Task, pk=pk, is_archived=False)
+        # SECURITY (Phase 0): cohérence avec les autres TaskQuick*View qui
+        # filtrent déjà par workspace. Sans cela un user pouvait uploader
+        # une pièce jointe sur la tâche d'un autre tenant.
+        user_workspace_ids = get_user_workspace_ids(request.user)
+        task = get_object_or_404(
+            dm.Task,
+            pk=pk,
+            is_archived=False,
+            workspace_id__in=user_workspace_ids,
+        )
         uploaded = request.FILES.get("file")
 
         if not uploaded:
@@ -4333,9 +4448,19 @@ class TaskQuickAttachmentView(LoginRequiredMixin, View):
 
         messages.success(request, "Pièce jointe ajoutée.")
         return redirect(request.META.get("HTTP_REFERER", "task_list"))
+
+
 class TaskKanbanMoveView(LoginRequiredMixin, View):
     def post(self, request, pk):
-        task = get_object_or_404(dm.Task, pk=pk, is_archived=False)
+        # SECURITY (Phase 0): scoper la tâche aux workspaces du user pour
+        # empêcher la modification de statut/position cross-tenant.
+        user_workspace_ids = get_user_workspace_ids(request.user)
+        task = get_object_or_404(
+            dm.Task,
+            pk=pk,
+            is_archived=False,
+            workspace_id__in=user_workspace_ids,
+        )
         new_status = request.POST.get("status")
         new_position = request.POST.get("position")
 
@@ -4551,8 +4676,11 @@ class TaskListView(DevflowListView):
                 .distinct()
                 .order_by("assignee__username")
             ),
+            # SECURITY — assignable_users scoped strictement aux workspaces
+            # de l'utilisateur courant. Avant : tous les users actifs étaient
+            # exposés (fuite cross-tenant).
             "assignable_users": (
-                get_user_model().objects.filter(is_active=True)
+                users_for_user(self.request.user)
                 .order_by("username")
                 .only("id", "username", "first_name", "last_name")
             ),
@@ -5347,20 +5475,32 @@ class AInsightDashboardView(DevflowBaseMixin, TemplateView):
             avg_score=Avg("score"),
         )
 
+        # PERF (Phase 0): on remplace 8+5 COUNT séquentiels par 2 GROUP BY.
+        # Avant : ~13 requêtes SQL ; après : 2.
+        type_counts = dict(
+            active_insights.values_list("insight_type")
+            .annotate(c=Count("id"))
+            .values_list("insight_type", "c")
+        )
         type_breakdown = [
             {
                 "key": choice[0],
                 "label": choice[1],
-                "count": active_insights.filter(insight_type=choice[0]).count(),
+                "count": type_counts.get(choice[0], 0),
             }
             for choice in dm.AInsight.InsightType.choices
         ]
 
+        severity_counts = dict(
+            active_insights.values_list("severity")
+            .annotate(c=Count("id"))
+            .values_list("severity", "c")
+        )
         severity_breakdown = [
             {
                 "key": choice[0],
                 "label": choice[1],
-                "count": active_insights.filter(severity=choice[0]).count(),
+                "count": severity_counts.get(choice[0], 0),
             }
             for choice in dm.AInsight.Severity.choices
         ]
@@ -6699,9 +6839,14 @@ class MilestoneListView(DevflowListView):
     search_fields = ("name", "description", "status", "project__name", "owner__username")
 
     def get_queryset(self):
+        # SECURITY (Phase 0): on appelle bien super() pour préserver le
+        # filtrage workspace + recherche + filtres déclaratifs hérités de
+        # DevflowListView. L'override précédent court-circuitait totalement
+        # le filtre workspace et exposait tous les jalons à tous les users.
         today = timezone.localdate()
         return (
-            dm.Milestone.objects.select_related("workspace", "project", "owner")
+            super().get_queryset()
+            .select_related("workspace", "project", "owner")
             .annotate(
                 tasks_count=Count("milestone_tasks", distinct=True),
                 completed_tasks_count=Count(

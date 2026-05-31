@@ -1,4 +1,5 @@
 {% load static %}
+{% load devflow_extras %}
 {% with current_url=request.resolver_match.url_name %}
 <style>
   .sidebar-scroll {
@@ -124,6 +125,23 @@
       <span>Tableau de bord</span>
     </a>
 
+    <!-- Ma journée (Phase 1 — PR9) -->
+    <a class="nav-item {% if current_url == 'my_day' %}lenk-active{% endif %}" href="{% url 'my_day' %}">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="5"/>
+        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+      </svg>
+      <span>Ma journée</span>
+    </a>
+
+    <!-- Discussions (Chat unifié DM + groupes) -->
+    <a class="nav-item {% if current_url == 'chat' %}lenk-active{% endif %}" href="{% url 'chat' %}">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+      </svg>
+      <span>Discussions</span>
+    </a>
+
     <!-- Espace de travail -->
     <details class="nav-group"
       {% if current_url == 'workspace_list' or current_url == 'workspace_settings_list' or current_url == 'workspace_invitation_list' or current_url == 'workspace_detail' or current_url == 'workspace_create' or current_url == 'workspace_update' %}
@@ -238,6 +256,8 @@
       </div>
     </details>
 
+    
+      {% if rbac_permissions|has_perm:"budget.view" %}
     <!-- Finance & TJM -->
     <details class="nav-group"
       {% if current_url == 'project_expense_list' or current_url == 'project_expense_detail' or current_url == 'project_expense_create' or current_url == 'project_expense_update' or current_url == 'project_budget_create' or current_url == 'project_budget_detail' or current_url == 'project_budget_update' or current_url == 'project_revenue_create' or current_url == 'workspace_financial_portfolio' or current_url == 'project_financial_ai_forecast' or current_url == 'project_financial_ai_risks' or current_url == 'workspace_financial_ai_allocation_template' %}
@@ -261,7 +281,10 @@
         {% endif %}
       </div>
     </details>
+    {% endif %}{# fin RBAC budget.view #}
 
+    {# Facturation visible uniquement aux rôles "billing.view" (Owner, SuperAdmin) #}
+    {% if rbac_permissions|has_perm:"billing.view" %}
     <!-- Facturation -->
     <details class="nav-group"
       {% if current_url == 'invoice_list' or current_url == 'invoice_detail' or current_url == 'invoice_create' or current_url == 'invoice_update' or current_url == 'invoice_print' or current_url == 'invoice_client_list' or current_url == 'invoice_client_detail' or current_url == 'invoice_client_create' or current_url == 'invoice_client_update' or current_url == 'invoice_generate_from_project' %}
@@ -284,6 +307,7 @@
         <a class="nav-subitem {% if current_url == 'invoice_client_list' or current_url == 'invoice_client_detail' or current_url == 'invoice_client_create' or current_url == 'invoice_client_update' %}lenk-active{% endif %}" href="{% url 'invoice_client_list' %}">Clients</a>
       </div>
     </details>
+    {% endif %}{# fin RBAC billing.view #}
 
     <!-- Collaboration -->
     <details class="nav-group"
@@ -334,6 +358,8 @@
       </div>
     </details>
 
+    {# Intégrations / Webhooks / API Keys = sensible (Owner & SuperAdmin) #}
+    {% if rbac_permissions|has_perm:"integration.manage" or rbac_permissions|has_perm:"settings.manage" %}
     <!-- Intégrations -->
     <details class="nav-group"
       {% if current_url == 'integration_list' or current_url == 'integration_detail' or current_url == 'integration_create' or current_url == 'integration_update' or current_url == 'webhook_list' or current_url == 'webhook_detail' or current_url == 'webhook_create' or current_url == 'webhook_update' or current_url == 'api_key_list' or current_url == 'api_key_detail' or current_url == 'api_key_create' or current_url == 'api_key_update' %}
@@ -354,6 +380,7 @@
         <a class="nav-subitem {% if current_url == 'api_key_list' or current_url == 'api_key_detail' or current_url == 'api_key_create' or current_url == 'api_key_update' %}lenk-active{% endif %}" href="{% url 'api_key_list' %}">API Keys</a>
       </div>
     </details>
+    {% endif %}{# fin RBAC integration.manage #}
 
   </div>
 

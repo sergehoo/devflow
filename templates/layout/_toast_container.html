@@ -1,1 +1,129 @@
-<div class="toast-wrap" id="toastWrap"></div>
+{# Toast container global DevFlow — Phase 1 (PR8) #}
+{# Expose window.devflowToast(message, type) et window.devflowApi.post(url, body) #}
+{# Type ∈ "success" | "error" | "info" | "warning" #}
+
+<div
+    x-data="devflowToastStore"
+    x-init="window.devflowToast = (m, t) => $data.show(m, t)"
+    class="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 max-w-sm pointer-events-none"
+    aria-live="polite"
+    aria-atomic="true"
+>
+    <template x-for="toast in toasts" :key="toast.id">
+        <div
+            x-transition:enter="transition transform duration-200 ease-out"
+            x-transition:enter-start="translate-y-2 opacity-0"
+            x-transition:enter-end="translate-y-0 opacity-100"
+            x-transition:leave="transition opacity duration-150 ease-in"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+            class="rounded-xl shadow-mdsoft px-4 py-3 text-sm flex items-start gap-3
+                   pointer-events-auto border min-w-[260px] max-w-sm"
+            :class="{
+                'bg-devgreen/90 text-white border-devgreen/40':   toast.type === 'success',
+                'bg-devred/90 text-white border-devred/40':       toast.type === 'error',
+                'bg-devamber/90 text-white border-devamber/40':   toast.type === 'warning',
+                'bg-devbg3 text-devtext1 border-devborder':       toast.type === 'info' || !toast.type,
+            }"
+        >
+            <span x-show="toast.type === 'success'" class="text-base leading-none">✓</span>
+            <span x-show="toast.type === 'error'"   class="text-base leading-none">✕</span>
+            <span x-show="toast.type === 'warning'" class="text-base leading-none">!</span>
+            <span x-show="!toast.type || toast.type === 'info'" class="text-base leading-none">ℹ</span>
+            <span x-text="toast.message" class="flex-1"></span>
+            <button
+                type="button"
+                @click="dismiss(toast.id)"
+                class="text-current opacity-60 hover:opacity-100 transition"
+                aria-label="Fermer">×</button>
+        </div>
+    </template>
+</div>
+
+<script>
+    /* ---------------------------------------------------------------
+       Store Alpine pour les toasts. Auto-init via x-data ci-dessus.
+       ---------------------------------------------------------------- */
+    document.addEventListener("alpine:init", () => {
+        Alpine.data("devflowToastStore", () => ({
+            toasts: [],
+            show(message, type = "info", timeout = 3500) {
+                const id = Date.now() + Math.random();
+                this.toasts.push({ id, message: String(message), type });
+                if (timeout > 0) {
+                    setTimeout(() => this.dismiss(id), timeout);
+                }
+            },
+            dismiss(id) {
+                this.toasts = this.toasts.filter(t => t.id !== id);
+            },
+        }));
+    });
+
+    /* ---------------------------------------------------------------
+       Helper API DevFlow — fetch JSON + CSRF + toast d'erreur auto.
+       Utilise getCookie() défini plus haut dans base.html.
+       ---------------------------------------------------------------- */
+    window.devflowApi = window.devflowApi || (() => {
+        const csrfHeader = () => ({
+            "X-CSRFToken": (typeof getCookie === "function") ? getCookie("csrftoken") : "",
+            "X-Requested-With": "XMLHttpRequest",
+        });
+
+        const handle = async (url, options) => {
+            let response;
+            try {
+                response = await fetch(url, options);
+            } catch (err) {
+                if (window.devflowToast) {
+                    window.devflowToast("Connexion impossible — réessayez", "error");
+                }
+                throw err;
+            }
+            if (response.status === 429) {
+                if (window.devflowToast) {
+                    window.devflowToast("Trop de requêtes — patientez quelques secondes", "warning");
+                }
+                throw new Error("Throttled");
+            }
+            if (response.status === 403) {
+                if (window.devflowToast) {
+                    window.devflowToast("Action non autorisée", "error");
+                }
+                throw new Error("Forbidden");
+            }
+            if (!response.ok && response.status !== 404) {
+                if (window.devflowToast) {
+                    window.devflowToast(`Erreur ${response.status}`, "error");
+                }
+            }
+            // 404 est utilisé volontairement par les endpoints de quick-action
+            // pour signaler une tâche hors workspace — on laisse le caller gérer.
+            return response;
+        };
+
+        return {
+            async post(url, body = {}) {
+                const response = await handle(url, {
+                    method: "POST",
+                    headers: { ...csrfHeader(), "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                });
+                if (response.ok) {
+                    try { return await response.json(); } catch { return {}; }
+                }
+                return null;
+            },
+            async get(url) {
+                const response = await handle(url, {
+                    method: "GET",
+                    headers: csrfHeader(),
+                });
+                if (response.ok) {
+                    try { return await response.json(); } catch { return {}; }
+                }
+                return null;
+            },
+        };
+    })();
+</script>

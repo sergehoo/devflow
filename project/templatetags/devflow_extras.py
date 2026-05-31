@@ -10,6 +10,51 @@ def attr(obj, name):
     return getattr(obj, name, "")
 
 
+# ─── PR23 — RBAC : templatetag user_can ───────────────────────────────────
+@register.simple_tag(takes_context=True)
+def user_can(context, action, target=None):
+    """
+    Vérifie une permission RBAC dans un template Django :
+
+        {% load devflow_extras %}
+        {% user_can "project.edit" project as can_edit %}
+        {% if can_edit %}
+            <button>Modifier</button>
+        {% endif %}
+
+    Ou simplement :
+
+        {% if request.user.is_superuser or rbac_permissions|has_perm:"project.edit" %}
+
+    Préférer ``user_can`` car il sait dériver le workspace depuis ``target``.
+    """
+    request = context.get("request")
+    if request is None or not getattr(request, "user", None):
+        return False
+    from project.services.rbac import RBACService
+    workspace = context.get("rbac_workspace") or context.get("current_workspace")
+    return RBACService.can(request.user, action, target=target, workspace=workspace)
+
+
+@register.filter
+def has_perm(perms_set, action):
+    """
+    Filtre rapide pour vérifier une permission depuis le set exposé par
+    le context processor ``devflow_rbac`` :
+
+        {% if rbac_permissions|has_perm:"workspace.manage" %}
+    """
+    if not perms_set:
+        return False
+    if "*" in perms_set:
+        return True
+    if action in perms_set:
+        return True
+    # Wildcard domaine
+    domain = action.split(".", 1)[0] if "." in action else action
+    return f"{domain}.*" in perms_set
+
+
 @register.filter
 def get_item(d, key):
     """Accès dictionnaire depuis un template : {{ mydict|get_item:"key" }}."""

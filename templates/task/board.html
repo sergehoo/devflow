@@ -1,10 +1,202 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{# ─────────────────────────────────────────────────────────────────────
+   Vue ALTERNATIVE Kanban tâches — DevFlow Phase 1 (PR8)
 
-</body>
-</html>
+   Vrai kanban Alpine.js + SortableJS. Drag & drop branché sur l'endpoint
+   /api/v1/tasks/{id}/move-kanban/ qui scope par workspace (PR3).
+
+   Contexte fourni par DevflowListView (TaskListView) :
+       items                : queryset de Task pour l'utilisateur
+       page_obj / paginator : si pagination — ici on charge .all() en passant
+                              ?paginate_by=200 ou via override de la vue
+       current_project_obj  : projet courant si filtré (optionnel)
+
+   Pour activer cette vue : TaskListView.template_name = "task/board.html"
+   ───────────────────────────────────────────────────────────────────── #}
+
+{% extends "layout/base.html" %}
+
+{% block title %}DevFlow — Kanban tâches{% endblock %}
+{% block page_title %}Kanban tâches{% endblock %}
+{% block breadcrumb %}Exécution · Vue kanban{% endblock %}
+
+{% block content %}
+<div
+    x-data="devflowKanban({
+        items: [
+            {% for task in items %}
+            {
+                id: {{ task.pk }},
+                title: {{ task.title|escapejs|stringformat:'\"%s\"'|safe }},
+                status: '{{ task.status }}',
+                priority: '{{ task.priority }}',
+                priority_label: '{{ task.get_priority_display|escapejs }}',
+                assignee: {% if task.assignee %}{{ task.assignee|stringformat:'\"%s\"'|escapejs|safe }}{% else %}null{% endif %},
+                project_name: {{ task.project.name|default_if_none:''|escapejs|stringformat:'\"%s\"'|safe }},
+                due_date: '{{ task.due_date|date:'Y-m-d'|default:'' }}',
+                detail_url: '{% url 'task_detail' task.pk %}'
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ]
+    })"
+    x-init="init()"
+    class="space-y-4"
+>
+    {# ─── Header ─── #}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+            <div class="text-sm text-devtext2">
+                <span x-text="items.length"></span> tâche<span x-text="items.length > 1 ? 's' : ''"></span>
+                · Glissez-déposez entre colonnes pour changer de statut
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="{% url 'task_create' %}" class="btn-main">+ Nouvelle tâche</a>
+            <a href="?view=list" class="btn-soft text-xs">Vue liste</a>
+        </div>
+    </div>
+
+    {# ─── Board ─── #}
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <template x-for="col in columns" :key="col.status">
+            <div class="card p-3 flex flex-col min-h-[320px]">
+                <div class="flex items-center justify-between mb-3 px-1">
+                    <div class="flex items-center gap-2">
+                        <span
+                            class="inline-block h-2 w-2 rounded-full"
+                            :class="{
+                                'bg-devtext3': col.status === 'TODO',
+                                'bg-devamber': col.status === 'IN_PROGRESS',
+                                'bg-devcyan':  col.status === 'REVIEW',
+                                'bg-devgreen': col.status === 'DONE',
+                                'bg-devred':   col.status === 'BLOCKED',
+                            }"></span>
+                        <span class="font-semibold text-sm text-devtext1" x-text="col.label"></span>
+                    </div>
+                    <span class="text-[11px] text-devtext3"
+                          x-text="tasksFor(col.status).length"></span>
+                </div>
+
+                <div
+                    class="flex-1 space-y-2 min-h-[60px]"
+                    :data-status="col.status"
+                    :id="'kanban-col-' + col.status"
+                >
+                    <template x-for="task in tasksFor(col.status)" :key="task.id">
+                        <div
+                            class="rounded-lg border border-devborder bg-devbg3 p-3
+                                   shadow-soft cursor-grab active:cursor-grabbing
+                                   hover:border-devaccent transition"
+                            :data-id="task.id"
+                        >
+                            <a :href="task.detail_url"
+                               class="block text-sm font-medium text-devtext1 hover:text-devaccent">
+                                <span x-text="task.title"></span>
+                            </a>
+                            <div class="mt-1.5 flex items-center justify-between text-[11px] text-devtext3">
+                                <span x-text="task.project_name || 'Sans projet'"></span>
+                                <span x-show="task.due_date"
+                                      x-text="task.due_date"
+                                      class="text-devtext2"></span>
+                            </div>
+                            <div class="mt-2 flex items-center justify-between gap-2">
+                                <span class="badge"
+                                      :class="{
+                                          'b-red':    task.priority === 'CRITICAL',
+                                          'b-amber':  task.priority === 'HIGH',
+                                          'b-cyan':   task.priority === 'MEDIUM',
+                                          'b-purple': task.priority === 'LOW',
+                                      }"
+                                      x-text="task.priority_label"></span>
+                                <span class="text-[11px] text-devtext3"
+                                      x-text="task.assignee || 'Non assignée'"></span>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="tasksFor(col.status).length === 0"
+                         class="text-center text-[11px] text-devtext3 py-6 italic">
+                        Déposez ici
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>
+
+<script>
+    /* ─────────────────────────────────────────────────────────────────
+       Composant Alpine : devflowKanban
+       ──────────────────────────────────────────────────────────────── */
+    document.addEventListener("alpine:init", () => {
+        Alpine.data("devflowKanban", (config) => ({
+            items: config.items || [],
+            columns: [
+                { status: "TODO",        label: "À faire" },
+                { status: "IN_PROGRESS", label: "En cours" },
+                { status: "REVIEW",      label: "Revue" },
+                { status: "DONE",        label: "Terminé" },
+            ],
+
+            init() {
+                // Attendre que le DOM soit prêt + SortableJS chargé (CDN base.html)
+                this.$nextTick(() => this.bindSortables());
+            },
+
+            tasksFor(status) {
+                return this.items.filter(t => t.status === status);
+            },
+
+            bindSortables() {
+                if (typeof Sortable === "undefined") {
+                    console.warn("[DevFlow] SortableJS introuvable — drag&drop désactivé.");
+                    return;
+                }
+
+                this.columns.forEach(col => {
+                    const el = document.getElementById("kanban-col-" + col.status);
+                    if (!el) return;
+                    Sortable.create(el, {
+                        group: "devflow-kanban",
+                        animation: 150,
+                        ghostClass: "opacity-40",
+                        onEnd: (evt) => this.onDrop(evt, col.status),
+                    });
+                });
+            },
+
+            async onDrop(evt, newStatus) {
+                const card = evt.item;
+                const taskId = parseInt(card.dataset.id, 10);
+                const newPosition = evt.newIndex;
+
+                // Source = colonne d'origine. Si même colonne → juste un repositionnement.
+                const oldStatus = (evt.from && evt.from.dataset && evt.from.dataset.status) || null;
+
+                try {
+                    const result = await window.devflowApi.post(
+                        `/api/v1/tasks/${taskId}/move-kanban/`,
+                        { status: newStatus, position: newPosition }
+                    );
+                    if (result === null) {
+                        window.devflowToast("Déplacement refusé — tâche hors workspace", "error");
+                        // Le DOM a déjà bougé : forcer un reload pour resync.
+                        setTimeout(() => window.location.reload(), 1200);
+                        return;
+                    }
+                    // Mise à jour locale du modèle
+                    const item = this.items.find(t => t.id === taskId);
+                    if (item) item.status = result.status || newStatus;
+                    if (oldStatus !== newStatus) {
+                        window.devflowToast(
+                            `Statut → ${result.status_label || newStatus}`,
+                            "success"
+                        );
+                    }
+                } catch (err) {
+                    window.devflowToast("Erreur réseau — vue actualisée", "error");
+                    setTimeout(() => window.location.reload(), 1200);
+                }
+            },
+        }));
+    });
+</script>
+{% endblock %}

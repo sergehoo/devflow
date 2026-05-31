@@ -381,6 +381,32 @@ class Project(TimeStampedModel, SoftDeleteModel):
         RED = "RED", "Rouge"
         GRAY = "GRAY", "Neutre"
 
+    class Methodology(models.TextChoices):
+        """
+        Phase 2 — Multi-modes projet.
+
+        Détermine les vues, modèles et générations IA disponibles pour
+        un projet. Default AGILE pour préserver l'expérience existante
+        (tous les projets pré-Phase 2 restent en AGILE → aucun changement
+        visible côté UI).
+        """
+        SCRUM = "SCRUM", "Scrum"
+        KANBAN = "KANBAN", "Kanban"
+        AGILE = "AGILE", "Agile (mixte)"
+        WATERFALL = "WATERFALL", "Waterfall / Cycle V"
+        MILESTONE = "MILESTONE", "Pilotage par jalons"
+        FIELD = "FIELD", "Terrain / Chantier"
+        REAL_ESTATE = "REAL_ESTATE", "Immobilier"
+        ADMINISTRATIVE = "ADMINISTRATIVE", "Administratif"
+
+    methodology = models.CharField(
+        max_length=20,
+        choices=Methodology.choices,
+        default=Methodology.AGILE,
+        db_index=True,
+        help_text="Détermine les vues et générations IA disponibles pour ce projet.",
+    )
+
     category = models.ForeignKey(
         ProjectCategory,
         on_delete=models.SET_NULL,
@@ -429,11 +455,33 @@ class Project(TimeStampedModel, SoftDeleteModel):
     is_favorite = models.BooleanField(default=False)
     image = models.ImageField(upload_to="devflow/projects/covers/", null=True, blank=True)
 
+    # Phase 3 — PR14 : EAC (Estimate at Completion) et Cost Variance stockés.
+    # Recalculés périodiquement par la tâche Celery scan_budget_overruns
+    # (à venir en PR15/PR16) et exposés tels quels dans le dashboard pour
+    # éviter de recalculer à chaque affichage. Reste 0 tant que pas recalculé.
+    computed_eac = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal("0"),
+        help_text="Estimate at Completion : coût total prévu à la fin du projet.",
+    )
+    computed_cost_variance = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal("0"),
+        help_text="Écart entre baseline et forecast (positif = dépassement).",
+    )
+    eac_computed_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         unique_together = [("workspace", "name")]
         ordering = ["name"]
         permissions = [
             ("view_financial_data", "Peut voir les données financières des projets"),
+        ]
+        # PERF (Phase 0): supporte ProjectListView.get_queryset() + stats
+        # (filter workspace + status + priority).
+        indexes = [
+            models.Index(
+                fields=["workspace", "status", "priority"],
+                name="proj_ws_status_prio_idx",
+            ),
         ]
 
     def __str__(self):
@@ -521,26 +569,19 @@ class CostCategory(TimeStampedModel):
     description = models.TextField(blank=True)
     color = models.CharField(max_length=20, default="#7C6FF7")
 
-    @property
-    def is_labor_category(self):
-        return self.category_type == self.CategoryType.HUMAN
-
-    @property
-    def is_direct_cost_category(self):
-        return self.category_type in {
-            self.CategoryType.SOFTWARE,
-            self.CategoryType.INFRA,
-            self.CategoryType.EQUIPMENT,
-            self.CategoryType.SUBCONTRACT,
-            self.CategoryType.TRAVEL,
-            self.CategoryType.TRAINING,
-        }
-
     class Meta:
         ordering = ["name"]
 
     def __str__(self):
         return self.name
+
+    # ─── Phase 3 (PR14) : nettoyage du doublon @property ──────────────
+    # Avant Phase 3, ces 2 propriétés étaient définies 2× chacune. Python
+    # ne gardait que la dernière définition, ce qui faisait :
+    #   * is_labor_category : identique → aucun impact métier
+    #   * is_direct_cost_category : la 2nde version INCLUAIT `OTHER`,
+    #     la 1ère version l'EXCLUAIT. La sémantique active était donc
+    #     la 2nde (avec OTHER). On garde ce comportement.
 
     @property
     def is_direct_cost_category(self):
@@ -603,10 +644,26 @@ class BillingRate(TimeStampedModel, SoftDeleteModel):
     is_internal_cost = models.BooleanField(default=True)
     is_billable_rate = models.BooleanField(default=True)
 
+    # Phase 3 — PR14 : TJM négocié sur un projet précis. Null = tarif
+    # générique (workspace-wide). Lookup order côté ProjectBudgetService :
+    # tarif projet-spécifique > tarif workspace > UserProfile (legacy).
+    project = models.ForeignKey(
+        "Project",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="billing_rates",
+        help_text="Si renseigné, ce tarif ne s'applique qu'à ce projet.",
+    )
+
     class Meta:
         ordering = ["-valid_from"]
         verbose_name = "Tarif de facturation"
         verbose_name_plural = "Tarifs de facturation"
+        indexes = [
+            # Phase 3 : lookup TJM rapide par (user, project, validité)
+            models.Index(fields=["user", "project", "-valid_from"],
+                         name="billing_user_proj_idx"),
+        ]
 
     def clean(self):
         errors = {}
@@ -651,7 +708,7 @@ class BillingRate(TimeStampedModel, SoftDeleteModel):
         return Decimal(str(getattr(_s, "WORKING_DAYS_PER_MONTH", 22)))
 
     @classmethod
-    def _daily_amount_for_user(cls, user, *, kind: str, on_date=None):
+    def _daily_amount_for_user(cls, user, *, kind: str, on_date=None, project=None):
         """
         Méthode interne factorisée : renvoie le montant journalier (coût ou
         vente) pour un utilisateur à une date donnée. Évite la duplication
@@ -660,6 +717,10 @@ class BillingRate(TimeStampedModel, SoftDeleteModel):
         :param kind: "cost" pour le coût interne, "sale" pour le tarif de vente.
         :param on_date: date de référence (par défaut today). Permet aux
             services de prévision de calculer un coût "comme à la date X".
+        :param project: Phase 3 (PR15). Si fourni, on cherche d'abord un
+            BillingRate spécifique à ce projet (TJM négocié). Si aucun, on
+            retombe sur les tarifs génériques (project__isnull=True).
+            Si project=None : comportement legacy (tous tarifs confondus).
         """
         if kind not in ("cost", "sale"):
             raise ValueError("kind must be 'cost' or 'sale'")
@@ -673,12 +734,31 @@ class BillingRate(TimeStampedModel, SoftDeleteModel):
         else:
             filter_kwargs["is_billable_rate"] = True
 
-        rate = (
-            BillingRate.objects.filter(**filter_kwargs)
-            .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
-            .order_by("-valid_from", "-id")
-            .first()
-        )
+        # Phase 3 — PR15 : lookup en 2 passes si project fourni
+        # 1ère passe : tarif projet-spécifique → priorité absolue
+        # 2nde passe : tarif générique (project NULL) → fallback
+        rate = None
+        if project is not None:
+            project_id = (
+                project.pk if hasattr(project, "pk") else project
+            )
+            rate = (
+                BillingRate.objects.filter(**filter_kwargs, project_id=project_id)
+                .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
+                .order_by("-valid_from", "-id")
+                .first()
+            )
+        if rate is None:
+            generic_filter = dict(filter_kwargs)
+            if project is not None:
+                # On cible explicitement les tarifs génériques (sans projet).
+                generic_filter["project__isnull"] = True
+            rate = (
+                BillingRate.objects.filter(**generic_filter)
+                .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
+                .order_by("-valid_from", "-id")
+                .first()
+            )
 
         amount_field = "cost_rate_amount" if kind == "cost" else "sale_rate_amount"
 
@@ -712,12 +792,16 @@ class BillingRate(TimeStampedModel, SoftDeleteModel):
         return Decimal("0")
 
     @classmethod
-    def get_user_daily_cost(cls, user, on_date=None):
-        return cls._daily_amount_for_user(user, kind="cost", on_date=on_date)
+    def get_user_daily_cost(cls, user, on_date=None, project=None):
+        return cls._daily_amount_for_user(
+            user, kind="cost", on_date=on_date, project=project,
+        )
 
     @classmethod
-    def get_user_sale_daily_rate(cls, user, on_date=None):
-        return cls._daily_amount_for_user(user, kind="sale", on_date=on_date)
+    def get_user_sale_daily_rate(cls, user, on_date=None, project=None):
+        return cls._daily_amount_for_user(
+            user, kind="sale", on_date=on_date, project=project,
+        )
 
     @property
     def target_label(self):
@@ -802,6 +886,80 @@ class ProjectBudget(TimeStampedModel, SoftDeleteModel):
 
     class Meta:
         ordering = ["-created_at"]
+
+    # ─── Phase 3 (PR16) — Machine à états ProjectBudget.status ──────────
+    # Whitelist des transitions autorisées. Toute transition vers CLOSED
+    # est toujours possible (clôture forcée). Toute transition non listée
+    # lève ValidationError.
+    ALLOWED_STATUS_TRANSITIONS: dict = {
+        "DRAFT":     {"ESTIMATED", "CLOSED"},
+        "ESTIMATED": {"BASELINE", "DRAFT", "CLOSED"},
+        "BASELINE":  {"APPROVED", "REVISED", "CLOSED"},
+        "APPROVED":  {"REVISED", "CLOSED"},
+        "REVISED":   {"APPROVED", "BASELINE", "CLOSED"},
+        "CLOSED":    set(),  # terminal, plus de transition
+    }
+
+    def transition_to(self, new_status: str, *, actor=None, label: str = "",
+                      auto_snapshot: bool = True):
+        """
+        Phase 3 (PR16) — Transition contrôlée du statut budget.
+
+        Lève ``ValidationError`` si la transition n'est pas autorisée.
+        Quand on passe à BASELINE et ``auto_snapshot=True``, on capture
+        automatiquement un ProjectBudgetSnapshot kind=BASELINE pour figer
+        la référence.
+
+        :param new_status: nouvelle valeur de status (constante de Status)
+        :param actor: user qui déclenche la transition (pour audit snapshot)
+        :param label: libellé du snapshot baseline (auto si vide)
+        :param auto_snapshot: si False, pas de snapshot automatique
+        :return: l'instance ProjectBudget mise à jour (sauvegardée).
+        """
+        from django.core.exceptions import ValidationError as _ValidationError
+
+        current = self.status or "DRAFT"
+        if new_status == current:
+            return self  # no-op
+
+        allowed = self.ALLOWED_STATUS_TRANSITIONS.get(current, set())
+        if new_status not in allowed:
+            raise _ValidationError(
+                f"Transition de statut budget interdite : "
+                f"{current} → {new_status}. "
+                f"Transitions autorisées depuis {current} : "
+                f"{sorted(allowed) or 'aucune (état terminal)'}"
+            )
+
+        self.status = new_status
+        if new_status == "APPROVED" and not self.approved_at:
+            self.approved_at = timezone.now()
+            if actor is not None:
+                self.approved_by = actor
+            self.save(update_fields=["status", "approved_at", "approved_by",
+                                      "updated_at"])
+        else:
+            self.save(update_fields=["status", "updated_at"])
+
+        # Auto-snapshot BASELINE pour figer la référence (import local
+        # pour éviter le cycle services ↔ models).
+        if auto_snapshot and new_status == "BASELINE":
+            try:
+                from project.services.budget_snapshots import BudgetSnapshotService
+
+                BudgetSnapshotService.capture(
+                    self.project,
+                    label=label or f"Baseline V{self.version_number}",
+                    kind="BASELINE",
+                    actor=actor,
+                    notes="Snapshot auto à la transition vers BASELINE.",
+                )
+            except Exception:
+                # Best-effort : la transition principale a réussi, on ne
+                # bloque pas si le snapshot échoue (le log côté service suffit).
+                pass
+
+        return self
 
     @property
     def total_estimated_cost(self):
@@ -1136,6 +1294,11 @@ class BacklogItem(TimeStampedModel, SoftDeleteModel):
         BUG = "BUG", "Bug"
         IMPROVEMENT = "IMPROVEMENT", "Improvement"
         SPIKE = "SPIKE", "Spike"
+        # Phase 2 — Multi-modes (PR10) : étend la sémantique pour Waterfall,
+        # livrables jalons et lots immobiliers.
+        PHASE = "PHASE", "Phase"
+        DELIVERABLE = "DELIVERABLE", "Livrable"
+        LOT = "LOT", "Lot"
 
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="backlog_items")
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="backlog_items")
@@ -1207,6 +1370,14 @@ class Task(TimeStampedModel, SoftDeleteModel):
         null=True, blank=True,
         help_text="Dernière fois que le PM a été notifié du dépassement d'échéance.",
     )
+    # UX (Phase 1): permet à un utilisateur de "snoozer" une tâche jusqu'à
+    # une date donnée. Affecte uniquement la visibilité dans la vue
+    # "Mes actions du jour" (les listes complètes la voient toujours).
+    snoozed_until = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Si défini, la tâche est masquée des dashboards rapides "
+                  "jusqu'à cette date.",
+    )
     reporter = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1228,6 +1399,12 @@ class Task(TimeStampedModel, SoftDeleteModel):
 
     class Meta:
         ordering = ["position", "-priority", "title"]
+        # PERF (Phase 0): supporte TaskListView (filter workspace + status),
+        # le scan overdue (filter due_date < today) et le kanban du sprint actif.
+        indexes = [
+            models.Index(fields=["workspace", "status"], name="task_ws_status_idx"),
+            models.Index(fields=["due_date"], name="task_due_date_idx"),
+        ]
 
     def __str__(self):
         return self.title
@@ -1566,6 +1743,14 @@ class Notification(TimeStampedModel):
 
     class Meta:
         ordering = ["-created_at"]
+        # PERF (Phase 0): supporte le panel notifications (filter recipient
+        # + is_read=False order by -created_at) appelé sur chaque page.
+        indexes = [
+            models.Index(
+                fields=["recipient", "is_read", "-created_at"],
+                name="notif_unread_idx",
+            ),
+        ]
 
     def __str__(self):
         return self.title
@@ -1677,6 +1862,11 @@ class TimesheetEntry(TimeStampedModel):
 
     class Meta:
         ordering = ["-entry_date", "-created_at"]
+        # PERF (Phase 0): supporte les fiches de temps user (filter user +
+        # entry_date) — utilisé partout dans budget.py et task_reminder.
+        indexes = [
+            models.Index(fields=["user", "entry_date"], name="ts_user_date_idx"),
+        ]
 
     def clean(self):
         # Les heures peuvent être 0 (saisie en attente) — on bloque seulement les valeurs négatives
@@ -2063,6 +2253,17 @@ class BoardColumn(TimeStampedModel):
         help_text="Limite Work-In-Progress (0 = illimitée).",
     )
     is_done_column = models.BooleanField(default=False)
+    # Phase 2 — Multi-modes (PR10) : permet de grouper les colonnes par phase
+    # en mode Waterfall (ex: "Études · À faire", "Études · En cours", puis
+    # "Construction · À faire", etc.). Reference forward-string car ProjectPhase
+    # est défini plus bas dans le fichier.
+    phase = models.ForeignKey(
+        "ProjectPhase",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="board_columns",
+        help_text="Optionnel : rattache la colonne à une phase Waterfall.",
+    )
 
     class Meta:
         unique_together = [("project", "name")]
@@ -3556,3 +3757,926 @@ class InvoicePayment(TimeStampedModel):
 
     def __str__(self):
         return f"{self.amount} · {self.invoice.number} ({self.get_method_display()})"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Phase 2 — Multi-modes projet
+# ════════════════════════════════════════════════════════════════════════════
+# Cinq modèles additifs pour les méthodologies Waterfall / Terrain /
+# Immobilier / Administratif + préférences de vue. Aucun impact sur les
+# modèles existants : tous nullable et liés en CASCADE / SET_NULL au projet
+# parent. Les projets Scrum / Kanban / Agile n'utilisent simplement aucune
+# de ces tables.
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class ProjectPhase(TimeStampedModel, SoftDeleteModel):
+    """
+    Phase d'un projet Waterfall / Cycle V (séquentielle).
+
+    Une phase peut bloquer la suivante via `gate_required=True`. Le %
+    d'avancement est calculé par les vues (pas via signal pour rester
+    léger). Utilisable en parallèle des sprints sur un projet hybride.
+    """
+
+    class Status(models.TextChoices):
+        PLANNED = "PLANNED", "Planifiée"
+        IN_PROGRESS = "IN_PROGRESS", "En cours"
+        REVIEW = "REVIEW", "Revue de gate"
+        DONE = "DONE", "Terminée"
+        BLOCKED = "BLOCKED", "Bloquée"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="phases",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="phases",
+    )
+    name = models.CharField(max_length=160)
+    description = models.TextField(blank=True)
+    position = models.PositiveIntegerField(default=0)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PLANNED,
+        db_index=True,
+    )
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    gate_required = models.BooleanField(
+        default=False,
+        help_text="Si vrai, la phase suivante ne peut démarrer qu'après "
+                  "validation de cette phase.",
+    )
+    progress_percent = models.PositiveSmallIntegerField(default=0)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="owned_phases",
+    )
+
+    class Meta:
+        ordering = ["project", "position", "id"]
+        unique_together = [("project", "name")]
+        indexes = [
+            models.Index(fields=["project", "position"],
+                         name="phase_project_pos_idx"),
+        ]
+
+    def clean(self):
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValidationError(
+                "La date de début ne peut pas être postérieure à la date de fin."
+            )
+
+    def save(self, *args, **kwargs):
+        if not self.workspace_id and self.project_id:
+            self.workspace = self.project.workspace
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.project.name} · {self.name}"
+
+
+class ProjectViewPreference(TimeStampedModel):
+    """
+    Préférence de vue par utilisateur et par projet.
+
+    Stocke le mode d'affichage choisi (KANBAN, LIST, GANTT, CALENDAR,
+    PHASES, MAP) pour qu'un utilisateur retrouve sa vue habituelle.
+    Indépendant de Project.methodology (la méthodologie définit ce qui
+    est *disponible*, la préférence ce qui est *affiché par défaut*).
+    """
+
+    class ViewMode(models.TextChoices):
+        KANBAN = "KANBAN", "Kanban"
+        LIST = "LIST", "Liste"
+        GANTT = "GANTT", "Gantt"
+        CALENDAR = "CALENDAR", "Calendrier"
+        PHASES = "PHASES", "Phases"
+        MAP = "MAP", "Carte"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="project_view_preferences",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE,
+        related_name="view_preferences",
+    )
+    view_mode = models.CharField(
+        max_length=20, choices=ViewMode.choices, default=ViewMode.KANBAN,
+    )
+
+    class Meta:
+        unique_together = [("user", "project")]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.user} · {self.project} → {self.view_mode}"
+
+
+class FieldReport(TimeStampedModel, SoftDeleteModel):
+    """
+    Rapport journalier de chantier / terrain.
+
+    Conçu pour les projets `Project.Methodology.FIELD` : photos, météo,
+    effectifs, géolocalisation, notes. Un rapport par jour et par projet
+    par défaut (pas de contrainte unique pour permettre plusieurs équipes
+    sur un même chantier).
+    """
+
+    class Weather(models.TextChoices):
+        SUNNY = "SUNNY", "Ensoleillé"
+        CLOUDY = "CLOUDY", "Nuageux"
+        RAINY = "RAINY", "Pluvieux"
+        STORMY = "STORMY", "Orageux"
+        WINDY = "WINDY", "Venteux"
+        OTHER = "OTHER", "Autre"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="field_reports",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="field_reports",
+    )
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="field_reports",
+    )
+    report_date = models.DateField(default=timezone.localdate)
+    location_name = models.CharField(max_length=200, blank=True)
+    location_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+    )
+    location_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+    )
+    weather = models.CharField(
+        max_length=12, choices=Weather.choices,
+        default=Weather.OTHER, blank=True,
+    )
+    workforce_count = models.PositiveIntegerField(default=0)
+    incidents = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-report_date", "-id"]
+        indexes = [
+            models.Index(fields=["project", "-report_date"],
+                         name="field_report_proj_date_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.workspace_id and self.project_id:
+            self.workspace = self.project.workspace
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.project.name} — {self.report_date}"
+
+
+class FieldReportPhoto(TimeStampedModel):
+    """Photo rattachée à un rapport de chantier."""
+
+    report = models.ForeignKey(
+        FieldReport, on_delete=models.CASCADE, related_name="photos",
+    )
+    image = models.ImageField(upload_to="devflow/field_reports/")
+    caption = models.CharField(max_length=200, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="uploaded_field_photos",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Photo · {self.report}"
+
+
+class RealEstateLot(TimeStampedModel, SoftDeleteModel):
+    """
+    Lot d'un projet immobilier (`Project.Methodology.REAL_ESTATE`).
+
+    Cas d'usage : promotion immobilière (vente lots), gestion locative
+    (suivi occupation), etc. Le statut du lot suit son cycle commercial.
+    """
+
+    class LotStatus(models.TextChoices):
+        AVAILABLE = "AVAILABLE", "Disponible"
+        RESERVED = "RESERVED", "Réservé"
+        OPTION = "OPTION", "Sous option"
+        SOLD = "SOLD", "Vendu"
+        DELIVERED = "DELIVERED", "Livré"
+        WITHDRAWN = "WITHDRAWN", "Retiré"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="real_estate_lots",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="real_estate_lots",
+    )
+    lot_number = models.CharField(max_length=40)
+    floor = models.CharField(max_length=40, blank=True)
+    surface_m2 = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal("0"),
+    )
+    bedrooms = models.PositiveSmallIntegerField(default=0)
+    price = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal("0"),
+    )
+    currency = models.CharField(max_length=3, default="XOF")
+    status = models.CharField(
+        max_length=12, choices=LotStatus.choices,
+        default=LotStatus.AVAILABLE, db_index=True,
+    )
+    buyer_name = models.CharField(max_length=200, blank=True)
+    buyer_email = models.EmailField(blank=True)
+    buyer_phone = models.CharField(max_length=40, blank=True)
+    reserved_at = models.DateField(null=True, blank=True)
+    sold_at = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["project", "lot_number"]
+        unique_together = [("project", "lot_number")]
+        indexes = [
+            models.Index(fields=["project", "status"],
+                         name="lot_proj_status_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.workspace_id and self.project_id:
+            self.workspace = self.project.workspace
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.project.name} · Lot {self.lot_number}"
+
+
+class AdminCase(TimeStampedModel, SoftDeleteModel):
+    """
+    Dossier administratif (`Project.Methodology.ADMINISTRATIVE`).
+
+    Cas d'usage : instruction de dossier (permis, licence, demande),
+    workflow administratif avec deadline et SLA. Le `requested_at` et
+    `sla_days` permettent de calculer la date limite côté vue.
+    """
+
+    class CaseStatus(models.TextChoices):
+        DRAFT = "DRAFT", "Brouillon"
+        SUBMITTED = "SUBMITTED", "Déposé"
+        UNDER_REVIEW = "UNDER_REVIEW", "Instruction"
+        AWAITING_INFO = "AWAITING_INFO", "Informations attendues"
+        APPROVED = "APPROVED", "Validé"
+        REJECTED = "REJECTED", "Rejeté"
+        CLOSED = "CLOSED", "Clôturé"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="admin_cases",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="admin_cases",
+    )
+    reference = models.CharField(max_length=80)
+    title = models.CharField(max_length=200)
+    applicant = models.CharField(max_length=200, blank=True)
+    document_type = models.CharField(
+        max_length=120, blank=True,
+        help_text="Ex: permis de construire, licence d'exploitation, …",
+    )
+    status = models.CharField(
+        max_length=20, choices=CaseStatus.choices,
+        default=CaseStatus.DRAFT, db_index=True,
+    )
+    requested_at = models.DateField(null=True, blank=True)
+    sla_days = models.PositiveIntegerField(
+        default=0,
+        help_text="Délai de traitement réglementaire en jours (0 = pas de SLA).",
+    )
+    deadline = models.DateField(null=True, blank=True)
+    decided_at = models.DateField(null=True, blank=True)
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="assigned_admin_cases",
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-requested_at", "-id"]
+        unique_together = [("project", "reference")]
+        indexes = [
+            models.Index(fields=["project", "status"],
+                         name="case_proj_status_idx"),
+            models.Index(fields=["deadline"], name="case_deadline_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.workspace_id and self.project_id:
+            self.workspace = self.project.workspace
+        # Auto-calcul deadline si requested_at + sla_days et pas de deadline manuelle
+        if (self.requested_at and self.sla_days and not self.deadline):
+            from datetime import timedelta
+            self.deadline = self.requested_at + timedelta(days=int(self.sla_days))
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.reference} · {self.title}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Phase 3 — Budget V2
+# ════════════════════════════════════════════════════════════════════════════
+# Snapshots de budget (baseline & forecast) + persistance des runs IA pour
+# mesurer la précision dans le temps. Tous nouveaux modèles additifs,
+# scopés workspace.
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class ProjectBudgetSnapshot(TimeStampedModel):
+    """
+    Snapshot d'un budget projet à un instant T.
+
+    Cas d'usage :
+      * Baseline V1 (à la validation initiale du budget)
+      * Forecast à date (suivi mensuel / trimestriel)
+      * Avant-après réorganisation projet
+
+    Le payload est un dump JSON du résultat de
+    ``ProjectBudgetService.build_budget_overview(project)`` figé au moment
+    du snapshot. Permet de comparer côte-à-côte deux versions du budget.
+    """
+
+    class SnapshotKind(models.TextChoices):
+        BASELINE = "BASELINE", "Baseline (référence)"
+        FORECAST = "FORECAST", "Forecast (projection)"
+        MANUAL = "MANUAL", "Snapshot manuel"
+        AUTO = "AUTO", "Snapshot automatique"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="budget_snapshots",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="budget_snapshots",
+    )
+    label = models.CharField(max_length=120)
+    kind = models.CharField(
+        max_length=20, choices=SnapshotKind.choices,
+        default=SnapshotKind.MANUAL, db_index=True,
+    )
+    snapshot_date = models.DateField(default=timezone.localdate)
+    payload = models.JSONField(default=dict)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="created_budget_snapshots",
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-snapshot_date", "-id"]
+        indexes = [
+            models.Index(fields=["project", "-snapshot_date"],
+                         name="snap_proj_date_idx"),
+            models.Index(fields=["project", "kind"],
+                         name="snap_proj_kind_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.workspace_id and self.project_id:
+            self.workspace = self.project.workspace
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.project.name} · {self.label} ({self.snapshot_date})"
+
+
+class ProjectBudgetForecastRun(TimeStampedModel):
+    """
+    Persistance d'un run IA de ``BudgetForecastService.forecast()``.
+
+    Sert deux objectifs :
+      1. Audit (qui a déclenché ce forecast, avec quel provider, combien
+         de tokens consommés).
+      2. Mesure de précision dans le temps : à T+30 jours, on compare
+         ``forecast_at_completion`` au coût réel observé. Indispensable
+         pour calibrer la confiance dans les prédictions IA.
+    """
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE,
+        related_name="budget_forecast_runs",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE,
+        related_name="budget_forecast_runs",
+    )
+    horizon_end = models.DateField()
+    base_cost = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"))
+    optimistic_cost = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"))
+    pessimistic_cost = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"))
+    expected_margin = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"))
+    expected_margin_percent = models.DecimalField(max_digits=7, decimal_places=2, default=Decimal("0"))
+    overrun_risk_percent = models.PositiveSmallIntegerField(default=0)
+    confidence = models.CharField(max_length=10, default="medium",
+                                   help_text="low / medium / high")
+    used_provider = models.CharField(max_length=30, default="heuristic")
+    used_model = models.CharField(max_length=80, blank=True)
+    tokens_used = models.PositiveIntegerField(default=0)
+    ai_summary = models.TextField(blank=True)
+    payload = models.JSONField(default=dict)
+    triggered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="triggered_forecast_runs",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["project", "-created_at"],
+                         name="forecast_proj_date_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.workspace_id and self.project_id:
+            self.workspace = self.project.workspace
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.project.name} · Forecast {self.created_at:%Y-%m-%d}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Phase 4 — IA V2 (PR18-19-20)
+# ════════════════════════════════════════════════════════════════════════════
+# Deux modèles additifs :
+#   * AIUsageQuota : limite mensuelle de tokens par workspace
+#   * AIPromptTemplate : bibliothèque de prompts éditable par workspace
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class AIUsageQuota(TimeStampedModel):
+    """
+    Quota mensuel de consommation IA par workspace.
+
+    Vérifié AVANT chaque appel provider via ``AIQuotaService.check_and_consume``.
+    Réinitialisé automatiquement quand on franchit ``period_start + 1 mois``.
+    """
+
+    workspace = models.OneToOneField(
+        Workspace, on_delete=models.CASCADE, related_name="ai_quota",
+    )
+    monthly_token_limit = models.PositiveIntegerField(
+        default=1_000_000,
+        help_text="Quota mensuel de tokens (0 = illimité).",
+    )
+    monthly_tokens_used = models.PositiveIntegerField(default=0)
+    period_start = models.DateField(
+        default=timezone.localdate,
+        help_text="Début du cycle mensuel courant.",
+    )
+    last_call_at = models.DateTimeField(null=True, blank=True)
+    over_limit_notified_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    @property
+    def is_unlimited(self) -> bool:
+        return self.monthly_token_limit == 0
+
+    @property
+    def remaining_tokens(self) -> int:
+        if self.is_unlimited:
+            return 10**9  # symbole illimité
+        return max(self.monthly_token_limit - self.monthly_tokens_used, 0)
+
+    @property
+    def usage_percent(self) -> int:
+        if self.is_unlimited or self.monthly_token_limit <= 0:
+            return 0
+        return min(int(self.monthly_tokens_used * 100 / self.monthly_token_limit), 999)
+
+    def __str__(self):
+        return f"AIQuota[{self.workspace.name}] {self.monthly_tokens_used}/{self.monthly_token_limit}"
+
+
+class AIPromptTemplate(TimeStampedModel, SoftDeleteModel):
+    """
+    Bibliothèque de prompts éditables par workspace.
+
+    Les services IA (Genesis, Forecast, Risk, Summary…) appellent
+    ``AIPromptLibrary.get_prompt(intent, workspace, default=...)`` pour
+    récupérer le prompt à utiliser. Si aucun template workspace n'est défini
+    pour cet intent, le default codé en dur dans le service est utilisé
+    (rétro-compatible avec l'existant Phase 0-3).
+    """
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="ai_prompts",
+    )
+    name = models.CharField(max_length=120)
+    intent = models.CharField(
+        max_length=60,
+        help_text="Clé d'usage : project_summary, project_recommendations, "
+                  "budget_forecast, risk_analysis, project_genesis…",
+    )
+    template = models.TextField(
+        help_text="Prompt complet. Variables Jinja-like : {project_name}, "
+                  "{description}, {team}, etc. — interpolées côté service.",
+    )
+    is_default = models.BooleanField(
+        default=False,
+        help_text="Si vrai, ce template est utilisé en premier pour cet intent.",
+    )
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="created_ai_prompts",
+    )
+
+    class Meta:
+        ordering = ["workspace", "intent", "name"]
+        unique_together = [("workspace", "intent", "name")]
+        indexes = [
+            models.Index(fields=["workspace", "intent", "is_default"],
+                         name="prompt_ws_intent_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.workspace.name} · {self.intent} · {self.name}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Phase 5 — Notifications intelligentes (PR21)
+# ════════════════════════════════════════════════════════════════════════════
+# Modèle de préférences notifications + digests pour réduire le spam et
+# permettre à chaque user de choisir comment / quand être notifié.
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class NotificationPreference(TimeStampedModel):
+    """
+    Préférences notifications par utilisateur (1-1).
+
+    Chaque user peut choisir :
+      * sur quels canaux il reçoit chaque notification (in-app, email, digest)
+      * à quelle fréquence (immédiat, horaire regroupé, quotidien digest)
+      * pendant quelles heures NE PAS recevoir d'email (silence nocturne)
+
+    Auto-seedé à la première lecture via NotificationPreferenceService.
+    """
+
+    class NotifyFrequency(models.TextChoices):
+        IMMEDIATE = "IMMEDIATE", "Immédiat"
+        HOURLY = "HOURLY", "Toutes les heures (regroupé)"
+        DAILY = "DAILY", "Quotidien (digest)"
+        DISABLED = "DISABLED", "Désactivées"
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_preference",
+    )
+    channel_in_app = models.BooleanField(default=True)
+    channel_email = models.BooleanField(default=True)
+    channel_digest = models.BooleanField(
+        default=True,
+        help_text="Recevoir un digest récap (cumul des notifs sur la période).",
+    )
+    notify_frequency = models.CharField(
+        max_length=12,
+        choices=NotifyFrequency.choices,
+        default=NotifyFrequency.IMMEDIATE,
+    )
+    # Heures de calme (timezone Africa/Abidjan par défaut côté CELERY_TIMEZONE) :
+    # quiet_hours_start=22, quiet_hours_end=7 → silence 22h-7h.
+    # Si start == end → pas de silence (mode 24/7).
+    quiet_hours_start = models.PositiveSmallIntegerField(
+        default=22,
+        help_text="Heure de début du silence (0-23). Aucun email envoyé.",
+    )
+    quiet_hours_end = models.PositiveSmallIntegerField(
+        default=7,
+        help_text="Heure de fin du silence (0-23).",
+    )
+    # Liste des notification_type qui forcent un envoi immédiat même en
+    # mode HOURLY/DAILY/quiet hours (urgences). JSON pour rester souple.
+    priority_types = models.JSONField(
+        default=list, blank=True,
+        help_text='Notification types qui bypassent le digest. Ex: ["RISK"].',
+    )
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def is_quiet_hour(self, now=None) -> bool:
+        """Retourne True si l'heure courante est dans la plage de silence."""
+        from datetime import datetime as _dt
+        now = now or timezone.localtime()
+        if isinstance(now, _dt):
+            hour = now.hour
+        else:
+            hour = int(now)
+        if self.quiet_hours_start == self.quiet_hours_end:
+            return False
+        if self.quiet_hours_start < self.quiet_hours_end:
+            # ex: 1-7 → silence si 1 <= h < 7
+            return self.quiet_hours_start <= hour < self.quiet_hours_end
+        # ex: 22-7 → silence si h >= 22 OU h < 7 (déborde minuit)
+        return hour >= self.quiet_hours_start or hour < self.quiet_hours_end
+
+    def __str__(self):
+        return f"NotifPrefs[{self.user}] {self.notify_frequency}"
+
+
+class NotificationDigest(TimeStampedModel):
+    """
+    Digest envoyé périodiquement à un user (regroupe N notifications).
+
+    Conserve l'historique pour audit + permet de re-télécharger un digest.
+    """
+
+    class Frequency(models.TextChoices):
+        HOURLY = "HOURLY", "Horaire"
+        DAILY = "DAILY", "Quotidien"
+        WEEKLY = "WEEKLY", "Hebdomadaire"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_digests",
+    )
+    frequency = models.CharField(
+        max_length=10,
+        choices=Frequency.choices,
+        default=Frequency.DAILY,
+    )
+    period_start = models.DateTimeField()
+    period_end = models.DateTimeField()
+    notifications_count = models.PositiveIntegerField(default=0)
+    payload = models.JSONField(
+        default=dict,
+        help_text="Récap structuré : groupes par type/projet, top 5 actions...",
+    )
+    sent_at = models.DateTimeField(null=True, blank=True)
+    sent_via_email = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-period_end", "-id"]
+        indexes = [
+            models.Index(fields=["user", "-period_end"],
+                         name="digest_user_period_idx"),
+        ]
+
+    def __str__(self):
+        return f"Digest {self.frequency} pour {self.user} ({self.period_end:%Y-%m-%d})"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Phase 5 — PR22 : Rapports projet IA hebdomadaires
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class ProjectAIReport(TimeStampedModel, SoftDeleteModel):
+    """
+    Rapport projet généré automatiquement par l'IA (hebdomadaire par défaut,
+    ou à la demande).
+
+    Le contenu est en Markdown structuré (résumé exécutif, avancement,
+    risques, recommandations, KPIs). Persisté pour audit + permet de
+    re-télécharger / partager un rapport passé.
+    """
+
+    class ReportStatus(models.TextChoices):
+        PENDING = "PENDING", "En attente"
+        GENERATING = "GENERATING", "Génération en cours"
+        READY = "READY", "Prêt"
+        FAILED = "FAILED", "Échec"
+
+    class ReportPeriod(models.TextChoices):
+        WEEKLY = "WEEKLY", "Hebdomadaire"
+        MONTHLY = "MONTHLY", "Mensuel"
+        AD_HOC = "AD_HOC", "À la demande"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="ai_reports",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="ai_reports",
+    )
+    period = models.CharField(
+        max_length=10, choices=ReportPeriod.choices,
+        default=ReportPeriod.WEEKLY,
+    )
+    period_start = models.DateField()
+    period_end = models.DateField()
+    title = models.CharField(max_length=200)
+
+    status = models.CharField(
+        max_length=15, choices=ReportStatus.choices,
+        default=ReportStatus.PENDING, db_index=True,
+    )
+    content_markdown = models.TextField(
+        blank=True,
+        help_text="Contenu structuré en Markdown.",
+    )
+    summary = models.TextField(
+        blank=True,
+        help_text="Résumé exécutif (1-2 phrases) extrait du rapport.",
+    )
+    payload = models.JSONField(
+        default=dict, blank=True,
+        help_text="Données structurées qui ont servi à générer le rapport.",
+    )
+
+    used_provider = models.CharField(max_length=30, default="heuristic")
+    used_model = models.CharField(max_length=80, blank=True)
+    tokens_used = models.PositiveIntegerField(default=0)
+    generated_at = models.DateTimeField(null=True, blank=True)
+    generated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="generated_ai_reports",
+    )
+    failure_reason = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-period_end", "-id"]
+        indexes = [
+            models.Index(fields=["project", "-period_end"],
+                         name="ai_report_proj_period_idx"),
+            models.Index(fields=["project", "status"],
+                         name="ai_report_proj_status_idx"),
+        ]
+        # Anti-doublon : un rapport hebdo par projet par semaine
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "period", "period_start"],
+                name="uniq_ai_report_period",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.workspace_id and self.project_id:
+            self.workspace = self.project.workspace
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Rapport {self.project.name} · {self.period_start} → {self.period_end}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# RBAC — Workspace Role Assignment (PR23 — Sécurité globale)
+# ════════════════════════════════════════════════════════════════════════════
+# Modèle ORTHOGONAL à TeamMembership.Role (qui est technique : CTO, PM, Dev…).
+# Ici on définit le **rôle business RBAC** d'un user dans un workspace
+# donné : SuperAdmin, Owner, PM, Lead, Member, Client.
+#
+# Un user peut avoir des rôles DIFFÉRENTS dans des workspaces différents
+# (ex: Owner de W1 + Member de W2).
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class WorkspaceRoleAssignment(TimeStampedModel):
+    """
+    Attribue un rôle RBAC à un utilisateur dans un workspace.
+
+    Conventions :
+      * SUPER_ADMIN est défini par ``User.is_superuser`` (pas une row ici)
+      * WORKSPACE_OWNER est implicite pour ``Workspace.owner`` (pas besoin
+        d'une assignation explicite, mais on peut en avoir une pour audit)
+      * Les autres rôles requièrent une row explicite, sinon ``MEMBER``
+        par défaut pour tout user ayant accès au workspace.
+    """
+
+    class Role(models.TextChoices):
+        WORKSPACE_OWNER = "WORKSPACE_OWNER", "Propriétaire workspace"
+        PROJECT_MANAGER = "PROJECT_MANAGER", "Chef de projet"
+        TEAM_LEAD = "TEAM_LEAD", "Lead équipe"
+        MEMBER = "MEMBER", "Membre"
+        CLIENT = "CLIENT", "Client"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="rbac_assignments",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="rbac_assignments",
+    )
+    role = models.CharField(
+        max_length=20, choices=Role.choices, default=Role.MEMBER,
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="rbac_assignments_made",
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["workspace", "user"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workspace", "user"],
+                name="uniq_workspace_role_per_user",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["workspace", "role"],
+                name="rbac_ws_role_idx",
+            ),
+            models.Index(
+                fields=["user", "workspace"],
+                name="rbac_user_ws_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} · {self.workspace.name} → {self.get_role_display()}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PR24 — Security Audit Log
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class SecurityAuditLog(models.Model):
+    """
+    Journal d'audit sécurité. Trace les événements sensibles :
+      * login / logout / failed login
+      * création / modification / suppression de ressources sensibles
+      * accès refusé (403)
+      * changements de permissions / rôles
+      * exports de données
+    """
+
+    class EventType(models.TextChoices):
+        LOGIN = "LOGIN", "Connexion"
+        LOGOUT = "LOGOUT", "Déconnexion"
+        LOGIN_FAILED = "LOGIN_FAILED", "Connexion échouée"
+        CREATE = "CREATE", "Création"
+        UPDATE = "UPDATE", "Modification"
+        DELETE = "DELETE", "Suppression"
+        ACCESS_DENIED = "ACCESS_DENIED", "Accès refusé"
+        PERMISSION_CHANGE = "PERMISSION_CHANGE", "Permissions modifiées"
+        ROLE_CHANGE = "ROLE_CHANGE", "Rôle modifié"
+        EXPORT = "EXPORT", "Export de données"
+        OTHER = "OTHER", "Autre"
+
+    class Severity(models.TextChoices):
+        INFO = "INFO", "Info"
+        WARNING = "WARNING", "Avertissement"
+        CRITICAL = "CRITICAL", "Critique"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="security_audit_logs",
+    )
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="security_audit_logs",
+    )
+    event_type = models.CharField(
+        max_length=20, choices=EventType.choices, db_index=True,
+    )
+    severity = models.CharField(
+        max_length=10, choices=Severity.choices,
+        default=Severity.INFO, db_index=True,
+    )
+    action = models.CharField(
+        max_length=80,
+        help_text="Code action métier (ex: project.delete, budget.export).",
+    )
+    target_type = models.CharField(
+        max_length=80, blank=True,
+        help_text="Nom du modèle ciblé (ex: Project, Workspace).",
+    )
+    target_id = models.PositiveBigIntegerField(null=True, blank=True)
+    target_repr = models.CharField(max_length=200, blank=True)
+
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    request_path = models.CharField(max_length=500, blank=True)
+    request_method = models.CharField(max_length=10, blank=True)
+
+    metadata = models.JSONField(default=dict, blank=True)
+    success = models.BooleanField(default=True)
+    error_message = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["workspace", "-created_at"],
+                         name="audit_ws_date_idx"),
+            models.Index(fields=["user", "-created_at"],
+                         name="audit_user_date_idx"),
+            models.Index(fields=["event_type", "-created_at"],
+                         name="audit_event_date_idx"),
+        ]
+
+    def __str__(self):
+        return f"[{self.severity}] {self.event_type} · {self.action} · {self.created_at:%Y-%m-%d %H:%M}"

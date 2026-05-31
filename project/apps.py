@@ -8,3 +8,5 @@ class ProjectConfig(AppConfig):
 
     def ready(self):
         import project.signals  # noqa
+        # PR24 — Active les signaux d'audit sécurité
+        import project.services.security_audit  # noqa

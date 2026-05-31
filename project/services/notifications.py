@@ -30,6 +30,11 @@ def create_in_app_notification(
 
 
 def send_assignment_email(*, recipient, task, assigned_by=None):
+    """
+    Envoi SYNCHRONE de l'email d'assignation. Conservé pour tests / mode dev
+    sans broker Celery. Les appels production passent par
+    `send_task_assignment_email_task.delay(...)` (cf. notify_task_assignment).
+    """
     if not recipient or not recipient.email:
         return
 
@@ -59,6 +64,14 @@ def send_assignment_email(*, recipient, task, assigned_by=None):
 
 
 def notify_task_assignment(*, task, recipient, assigned_by=None):
+    """
+    Crée la notification in-app (sync, DB locale) et planifie l'envoi email
+    en arrière-plan via Celery pour ne pas bloquer la requête HTTP sur SMTP.
+
+    Compat : avec settings.CELERY_TASK_ALWAYS_EAGER=True (tests / dev sans
+    broker), .delay() exécute la task de façon synchrone — comportement
+    identique à l'ancien code.
+    """
     if not recipient:
         return
 
@@ -77,11 +90,25 @@ def notify_task_assignment(*, task, recipient, assigned_by=None):
         },
     )
 
-    send_assignment_email(
-        recipient=recipient,
-        task=task,
-        assigned_by=assigned_by,
-    )
+    # ASYNC (Phase 0): on ne bloque plus la requête HTTP sur l'envoi SMTP.
+    # Import local pour éviter tout cycle (tasks.py importe models, pas les services).
+    try:
+        from project.tasks import send_task_assignment_email_task
+
+        send_task_assignment_email_task.delay(
+            task.pk,
+            recipient.pk,
+            assigned_by.pk if assigned_by else None,
+        )
+    except Exception:
+        # Si Celery est indisponible (broker down et pas en EAGER), fallback
+        # synchrone — la notification in-app a déjà été créée, l'utilisateur
+        # ne reste donc pas sans signal.
+        send_assignment_email(
+            recipient=recipient,
+            task=task,
+            assigned_by=assigned_by,
+        )
 
 
 class ChannelDetailView(LoginRequiredMixin, DetailView):

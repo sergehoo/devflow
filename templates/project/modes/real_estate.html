@@ -1,0 +1,92 @@
+{# ─────────────────────────────────────────────────────────────────────
+   Partial Immobilier — Phase 2 (PR11)
+
+   Contexte attendu :
+       project       : dm.Project
+       mode_lots     : queryset de RealEstateLot
+   ───────────────────────────────────────────────────────────────────── #}
+
+<div class="card p-5">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <div class="card-title">Lots du projet</div>
+            <div class="text-xs text-devtext3">
+                {{ mode_lots|length }} lot{{ mode_lots|length|pluralize }}
+            </div>
+        </div>
+        <span class="badge b-purple">Immobilier</span>
+    </div>
+
+    {% if mode_lots %}
+    {# Stats rapides : compteur par statut #}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+        {% regroup mode_lots by status as lots_by_status %}
+        {% for group in lots_by_status %}
+        <div class="rounded-lg bg-devbg3/70 border border-devborder p-2.5 text-center">
+            <div class="text-[10px] uppercase tracking-wide text-devtext3">
+                {{ group.list.0.get_status_display }}
+            </div>
+            <div class="mt-1 text-lg font-semibold
+                {% if group.grouper == 'SOLD' or group.grouper == 'DELIVERED' %}text-devgreen
+                {% elif group.grouper == 'RESERVED' or group.grouper == 'OPTION' %}text-devamber
+                {% elif group.grouper == 'WITHDRAWN' %}text-devred
+                {% else %}text-devtext1{% endif %}">
+                {{ group.list|length }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="text-[11px] uppercase tracking-wide text-devtext3 border-b border-devborder">
+                <tr>
+                    <th class="text-left py-2 px-2 font-medium">Lot</th>
+                    <th class="text-left py-2 px-2 font-medium hidden md:table-cell">Étage</th>
+                    <th class="text-right py-2 px-2 font-medium">Surface</th>
+                    <th class="text-right py-2 px-2 font-medium hidden md:table-cell">Pièces</th>
+                    <th class="text-right py-2 px-2 font-medium">Prix</th>
+                    <th class="text-left py-2 px-2 font-medium">Statut</th>
+                    <th class="text-left py-2 px-2 font-medium hidden lg:table-cell">Acquéreur</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-devborder/40">
+                {% for lot in mode_lots %}
+                <tr class="hover:bg-devbg3/30 transition">
+                    <td class="py-2 px-2 font-semibold text-devtext1">{{ lot.lot_number }}</td>
+                    <td class="py-2 px-2 text-devtext2 hidden md:table-cell">{{ lot.floor|default:"—" }}</td>
+                    <td class="py-2 px-2 text-right text-devtext2">{{ lot.surface_m2 }} m²</td>
+                    <td class="py-2 px-2 text-right text-devtext2 hidden md:table-cell">{{ lot.bedrooms }}</td>
+                    <td class="py-2 px-2 text-right font-medium text-devtext1">
+                        {% if lot.price %}{{ lot.price }} {{ lot.currency }}{% else %}—{% endif %}
+                    </td>
+                    <td class="py-2 px-2">
+                        <span class="badge
+                            {% if lot.status == 'SOLD' or lot.status == 'DELIVERED' %}b-green
+                            {% elif lot.status == 'RESERVED' or lot.status == 'OPTION' %}b-amber
+                            {% elif lot.status == 'WITHDRAWN' %}b-red
+                            {% else %}b-cyan{% endif %}">
+                            {{ lot.get_status_display }}
+                        </span>
+                    </td>
+                    <td class="py-2 px-2 text-devtext2 hidden lg:table-cell">
+                        {{ lot.buyer_name|default:"—" }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-8">
+        <div class="text-3xl mb-2">🏘️</div>
+        <div class="text-sm text-devtext2">
+            Aucun lot enregistré pour ce projet.
+        </div>
+        <div class="text-xs text-devtext3 mt-1">
+            Création via
+            <code class="bg-devbg3 px-1.5 py-0.5 rounded">POST /api/v1/real-estate-lots/</code>
+        </div>
+    </div>
+    {% endif %}
+</div>

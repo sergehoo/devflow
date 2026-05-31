@@ -1,44 +1,186 @@
-{% extends 'layout/base.html' %}
+{# ─────────────────────────────────────────────────────────────────────
+   Vue ALTERNATIVE liste tâches — DevFlow Phase 1 (PR8)
 
-{% block title %}DevFlow — Tâches{% endblock %}
+   Vue compacte avec quick-actions inline (toggle complete, snooze).
+   À activer en pointant TaskListView.template_name = "task/list.html"
+   (par défaut, la vue charge "project/task/list.html" = kanban riche).
+
+   Contexte fourni par DevflowListView :
+       items                   : queryset paginé
+       filter_definitions      : filtres déclarés sur le viewset
+       active_filters          : valeurs courantes
+       search_q, search_placeholder
+       has_filters_or_search
+       page_obj, paginator, is_paginated
+   ───────────────────────────────────────────────────────────────────── #}
+
+{% extends "layout/base.html" %}
+{% load devflow_extras %}
+
+{% block title %}DevFlow — Tâches (liste){% endblock %}
 {% block page_title %}Tâches{% endblock %}
-{% block breadcrumb %}Exécution · Liste des tâches{% endblock %}
+{% block breadcrumb %}Exécution · Vue liste{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-head">
+<div class="space-y-4">
+
+    {# ─── Header + actions ─── #}
+    <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-            <div class="card-title">Liste des tâches</div>
-            <div class="card-sub">Suivi opérationnel</div>
+            <div class="text-sm text-devtext2">
+                {% if paginator %}{{ paginator.count }} tâche{{ paginator.count|pluralize }}{% else %}{{ items|length }} affichée{{ items|length|pluralize }}{% endif %}
+            </div>
         </div>
-        <a href="{% url 'task_create' %}" class="btn-main">+ Nouvelle tâche</a>
+        <div class="flex items-center gap-2">
+            <a href="{% url 'task_create' %}" class="btn-main">+ Nouvelle tâche</a>
+        </div>
     </div>
 
-    <table class="tbl">
-        <thead>
-            <tr>
-                <th>Titre</th>
-                <th>Projet</th>
-                <th>Assigné</th>
-                <th>Statut</th>
-                <th>Priorité</th>
-                <th>Échéance</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for task in items %}
-            <tr>
-                <td><a href="{% url 'task_detail' task.pk %}">{{ task.title }}</a></td>
-                <td>{{ task.project }}</td>
-                <td>{{ task.assignee|default:'—' }}</td>
-                <td><span class="badge b-purple">{{ task.get_status_display }}</span></td>
-                <td><span class="badge b-amber">{{ task.get_priority_display }}</span></td>
-                <td>{{ task.due_date|default:'—' }}</td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="6">Aucune tâche disponible.</td></tr>
+    {# ─── Barre filtres + recherche ─── #}
+    <div class="card p-3">
+        <form method="get" class="flex flex-wrap items-center gap-2">
+            <input
+                type="search"
+                name="q"
+                value="{{ search_q|default_if_none:'' }}"
+                placeholder="{{ search_placeholder|default:'Rechercher…' }}"
+                class="flex-1 min-w-[200px] rounded-lg border border-devborder bg-devbg3
+                       px-3 py-2 text-sm text-devtext1 placeholder:text-devtext3
+                       focus:outline-none focus:border-devaccent"
+            >
+            {% for f in filter_definitions %}
+                {% if f.type == "choices" %}
+                <select name="{{ f.name }}"
+                        class="rounded-lg border border-devborder bg-devbg3
+                               px-3 py-2 text-sm text-devtext1 focus:outline-none">
+                    <option value="">{{ f.label }}</option>
+                    {% for choice in f.choices %}
+                    <option value="{{ choice.0 }}"
+                        {% if active_filters|get_item:f.name == choice.0 %}selected{% endif %}>
+                        {{ choice.1 }}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% endif %}
             {% endfor %}
-        </tbody>
-    </table>
+            <button type="submit" class="btn-soft text-xs">Filtrer</button>
+            {% if has_filters_or_search %}
+                <a href="?" class="text-xs text-devtext3 hover:text-devtext1">Réinitialiser</a>
+            {% endif %}
+        </form>
+    </div>
+
+    {# ─── Liste enrichie ─── #}
+    <div class="card overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-devbg3 text-[11px] uppercase tracking-wide text-devtext3">
+                <tr>
+                    <th class="text-left px-4 py-3 font-medium">Tâche</th>
+                    <th class="text-left px-4 py-3 font-medium hidden md:table-cell">Projet</th>
+                    <th class="text-left px-4 py-3 font-medium hidden lg:table-cell">Assigné</th>
+                    <th class="text-left px-4 py-3 font-medium">Statut</th>
+                    <th class="text-left px-4 py-3 font-medium hidden md:table-cell">Échéance</th>
+                    <th class="text-right px-4 py-3 font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-devborder/40">
+                {% for task in items %}
+                <tr class="hover:bg-devbg3/30 transition" x-data="{ removed: false }" x-show="!removed">
+                    <td class="px-4 py-3">
+                        <a href="{% url 'task_detail' task.pk %}"
+                           class="font-medium text-devtext1 hover:text-devaccent">
+                            {{ task.title }}
+                        </a>
+                        {% if task.is_flagged %}
+                            <span class="ml-1 text-devamber" title="Tâche signalée">⚑</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-devtext2 hidden md:table-cell">
+                        {{ task.project|default:"—" }}
+                    </td>
+                    <td class="px-4 py-3 text-devtext2 hidden lg:table-cell">
+                        {{ task.assignee|default:"—" }}
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="badge
+                            {% if task.status == 'DONE' %}b-green
+                            {% elif task.status == 'IN_PROGRESS' %}b-amber
+                            {% elif task.status == 'BLOCKED' %}b-red
+                            {% elif task.status == 'REVIEW' %}b-cyan
+                            {% else %}b-purple{% endif %}">
+                            {{ task.get_status_display }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-devtext2 hidden md:table-cell">
+                        {% if task.due_date %}
+                            {{ task.due_date|date:"d M Y" }}
+                        {% else %}
+                            <span class="text-devtext3">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {# PR-fix : on construit l'URL via stringformat sur task.pk
+                           pour éviter str+int dans le filtre |add: qui retournait
+                           silencieusement "" (bug bouton "Marquer fait" my-day). #}
+                        {% with task_id=task.pk|stringformat:"s" %}
+                        <div class="flex items-center justify-end gap-1.5">
+                            {% include "components/_quick_action_button.html" with
+                                endpoint="/api/v1/tasks/"|add:task_id|add:"/toggle-complete/"
+                                label="Terminer" icon="✓"
+                                variant="success" size="xs"
+                                success_message="Statut basculé"
+                                on_success="removed = true;" %}
+                            {% include "components/_quick_action_button.html" with
+                                endpoint="/api/v1/tasks/"|add:task_id|add:"/snooze/"
+                                label="Snoozer 1j" icon="⏱"
+                                variant="ghost" size="xs"
+                                payload_json='{"until": new Date(Date.now()+86400000).toISOString()}'
+                                success_message="Reportée à demain"
+                                on_success="removed = true;" %}
+                        </div>
+                        {% endwith %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="px-4 py-10 text-center">
+                        <div class="text-3xl mb-2">📋</div>
+                        <div class="text-sm text-devtext2">
+                            {% if has_filters_or_search %}
+                                Aucun résultat pour ces filtres.
+                                <a href="?" class="text-devaccent hover:underline">Tout afficher</a>
+                            {% else %}
+                                Aucune tâche pour l'instant.
+                                <a href="{% url 'task_create' %}" class="text-devaccent hover:underline">
+                                    Créer la première
+                                </a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {# ─── Pagination ─── #}
+    {% if is_paginated %}
+    <div class="flex items-center justify-between text-sm text-devtext2">
+        <div>
+            Page {{ page_obj.number }} / {{ paginator.num_pages }}
+            · {{ paginator.count }} tâche{{ paginator.count|pluralize }}
+        </div>
+        <div class="flex items-center gap-2">
+            {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}{% for k,v in active_filters.items %}{% if v %}&{{ k }}={{ v }}{% endif %}{% endfor %}{% if search_q %}&q={{ search_q }}{% endif %}"
+               class="btn-soft text-xs">← Précédent</a>
+            {% endif %}
+            {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}{% for k,v in active_filters.items %}{% if v %}&{{ k }}={{ v }}{% endif %}{% endfor %}{% if search_q %}&q={{ search_q }}{% endif %}"
+               class="btn-soft text-xs">Suivant →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

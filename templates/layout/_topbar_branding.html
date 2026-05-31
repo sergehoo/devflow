@@ -1,0 +1,42 @@
+
+{% load static %}
+
+{% if ws and ws.logo %}
+    <a href="{% url 'dashboard' %}" class="topbar-logo-link"
+       title="{{ ws.name }}">
+        <img src="{{ ws.logo.url }}" alt="{{ ws.name }}"
+             style="height:42px;width:auto;max-width:160px;object-fit:contain;">
+    </a>
+{% else %}
+    <a href="{% url 'dashboard' %}" class="topbar-logo-link"
+       title="{% if ws %}{{ ws.name }}{% else %}DevFlow{% endif %}">
+        <img src="{% static 'img/logo_datarium-black.png' %}"
+             alt="DevFlow" width="120">
+    </a>
+{% endif %}
+
+<div>
+    <div class="page-title">
+        {% if page_title %}{{ page_title }}
+        {% elif ws %}{{ ws.name }}
+        {% else %}DevFlow{% endif %}
+    </div>
+    <div class="breadcrumb">
+        {% if ws %}
+            <strong style="color:var(--text2)">{{ ws.name }}</strong>
+            {% if ws.quarter_label %} · {{ ws.quarter_label }}{% endif %}
+        {% else %}
+            Vue d'ensemble
+        {% endif %}
+        {# Lien sélecteur workspace si l'utilisateur en a plusieurs #}
+        {% if workspaces and workspaces.count > 1 %}
+            <span class="topbar-ws-switcher"> ·
+                <a href="{% url 'workspace_list' %}"
+                   style="color:var(--accent);text-decoration:none;font-weight:500"
+                   title="Changer de workspace">
+                    Changer ↔
+                </a>
+            </span>
+        {% endif %}
+    </div>
+</div>

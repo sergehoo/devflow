@@ -1,596 +1,353 @@
-<!-- CHAT PANEL GLOBAL -->
+
+
 <div
-  id="chatPanel"
-  class="fixed bottom-6 right-6 z-[120] w-[390px] max-w-[calc(100vw-24px)] translate-y-4 scale-95 rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] opacity-0 shadow-[0_24px_80px_rgba(15,23,42,0.28)] backdrop-blur-xl transition-all duration-300"
-  style="display:none;"
+    x-data="devflowChatBubble()"
+    x-init="init()"
+    x-cloak
 >
-  <div class="overflow-hidden rounded-[28px]">
-    <!-- Header -->
-    <div class="border-b border-[var(--border)] bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.08)_45%,transparent_100%)] px-4 py-4">
-      <div class="flex items-center justify-between">
-        <div class="flex min-w-0 items-center gap-3">
-          <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,var(--accent),var(--accent2))] text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)]">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 4v-4z"/>
-            </svg>
-          </div>
-
-          <div class="min-w-0">
-            <div class="truncate text-sm font-semibold text-[var(--text1)]">Messagerie DevFlow</div>
-            <div id="chatConnectionStatus" class="mt-1 flex items-center gap-2 text-[11px] text-[var(--text3)]">
-              <span class="inline-flex h-2 w-2 rounded-full bg-[var(--green)]"></span>
-              Prêt
-            </div>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <button
-            type="button"
-            onclick="minimizeChatPanel()"
-            class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] text-[var(--text2)] transition hover:scale-105 hover:text-[var(--text1)]"
-            title="Réduire"
-          >
-            ─
-          </button>
-          <button
-            type="button"
-            onclick="closeChatPanel()"
-            class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] text-[var(--text2)] transition hover:scale-105 hover:text-[var(--text1)]"
-            title="Fermer"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Body -->
-    <div id="chatPanelBody" class="grid h-[580px] max-h-[72vh] grid-cols-[118px_1fr]">
-      <!-- Sidebar channels -->
-      <aside class="border-r border-[var(--border)] bg-[var(--bg3)]/70">
-        <div class="border-b border-[var(--border)] p-3">
-          <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text3)]">
-            Channels
-          </div>
-        </div>
-
-        <div id="chatChannelsList" class="h-[calc(100%-49px)] space-y-1 overflow-y-auto p-2">
-          <div class="rounded-2xl bg-[var(--bg2)] px-3 py-3 text-xs text-[var(--text3)]">
-            Chargement…
-          </div>
-        </div>
-      </aside>
-
-      <!-- Conversation -->
-      <section class="flex min-w-0 flex-col">
-        <!-- active channel head -->
-        <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
-          <div class="min-w-0">
-            <div id="chatActiveChannelName" class="truncate text-sm font-semibold text-[var(--text1)]">
-              Sélectionnez un canal
-            </div>
-            <div id="chatActiveChannelMeta" class="text-[11px] text-[var(--text3)]">
-              —
-            </div>
-          </div>
-          <a
-            id="chatOpenFullPage"
-            href="#"
-            class="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:scale-[1.02] hover:text-[var(--text1)]"
-          >
-            Ouvrir
-          </a>
-        </div>
-
-        <!-- messages -->
-        <div id="chatMessages" class="flex-1 space-y-3 overflow-y-auto bg-[var(--bg2)] px-4 py-4">
-          <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
-            Choisissez un canal pour commencer à discuter.
-          </div>
-        </div>
-
-        <!-- typing / feedback -->
-        <div id="chatFeedback" class="min-h-[24px] px-4 pt-2 text-[11px] text-[var(--text3)]"></div>
-
-        <!-- input -->
-        <div class="border-t border-[var(--border)] bg-[var(--bg2)] px-4 py-3">
-          <form id="chatMessageForm" class="flex items-end gap-2">
-            {% csrf_token %}
-            <textarea
-              id="chatMessageInput"
-              rows="1"
-              placeholder="Écrire un message…"
-              disabled
-              class="min-h-[46px] max-h-[120px] flex-1 resize-none rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm text-[var(--text1)] outline-none transition focus:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
-            ></textarea>
-
-            <button
-              id="chatSendButton"
-              type="submit"
-              disabled
-              class="inline-flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-2xl bg-[var(--accent)] text-white shadow-[0_10px_24px_rgba(124,111,247,0.28)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-              title="Envoyer"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M22 2L11 13"/>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M22 2L15 22l-4-9-9-4 20-7z"/>
-              </svg>
-            </button>
-          </form>
-        </div>
-      </section>
-    </div>
-  </div>
-</div>
-
-<!-- Floating button -->
-<button
-  id="chatFloatingButton"
-  type="button"
-  onclick="openChatPanel()"
-  class="fixed bottom-8 right-6 z-[119] inline-flex h-16 w-16 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--accent),var(--accent2))] text-white shadow-[0_18px_40px_rgba(124,111,247,0.35)] transition hover:-translate-y-1 hover:scale-[1.02]"
-  title="Ouvrir le chat"
->
-  <div class="relative">
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 4v-4z"/>
-    </svg>
-    <span
-      id="chatUnreadBadge"
-      class="absolute -right-2 -top-2 hidden min-w-[20px] rounded-full bg-[var(--red)] px-1.5 py-0.5 text-center text-[10px] font-bold text-white"
+    {# ─── Bouton flottant ─── #}
+    <button
+        type="button"
+        @click="togglePanel()"
+        x-show="!isPanelOpen"
+        class="fixed bottom-8 right-6 z-[119] inline-flex h-14 w-14 items-center justify-center
+               rounded-full bg-[linear-gradient(135deg,var(--accent),var(--accent2))] text-white
+               shadow-[0_18px_40px_rgba(124,111,247,0.35)] transition
+               hover:-translate-y-1 hover:scale-[1.02]"
+        title="Ouvrir la messagerie"
     >
-      0
-    </span>
-  </div>
-</button>
+        <div class="relative">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6"
+                 fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9"
+                      d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+            </svg>
+            <span
+                x-show="totalChannels > 0"
+                x-text="totalChannels"
+                class="absolute -right-2 -top-2 min-w-[20px] rounded-full bg-devaccent2
+                       border-2 border-[var(--bg)] px-1 text-center text-[10px] font-bold text-white">
+            </span>
+        </div>
+    </button>
 
-<script>
-(function () {
-    let currentChannelId = null;
-    let currentChannelName = "";
-    let chatSocket = null;
-    let chatInitialized = false;
-    let reconnectTimer = null;
-    let reconnectAttempts = 0;
-    let isOpeningChannel = false;
+    {# ─── Panneau ─── #}
+    <div
+        x-show="isPanelOpen"
+        x-transition:enter="transition transform duration-200 ease-out"
+        x-transition:enter-start="translate-y-4 opacity-0 scale-95"
+        x-transition:enter-end="translate-y-0 opacity-100 scale-100"
+        x-transition:leave="transition opacity duration-150 ease-in"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed bottom-6 right-6 z-[120] w-[380px] max-w-[calc(100vw-24px)]
+               rounded-2xl border border-devborder bg-[var(--bg2)]
+               shadow-[0_24px_80px_rgba(15,23,42,0.28)]"
+        style="height: 560px; max-height: 75vh;"
+    >
+        <div class="flex h-full flex-col overflow-hidden rounded-2xl">
 
-    const panel = () => document.getElementById("chatPanel");
-    const floatingBtn = () => document.getElementById("chatFloatingButton");
-    const messagesBox = () => document.getElementById("chatMessages");
-    const channelsList = () => document.getElementById("chatChannelsList");
-    const input = () => document.getElementById("chatMessageInput");
-    const form = () => document.getElementById("chatMessageForm");
-    const unreadBadge = () => document.getElementById("chatUnreadBadge");
-    const sendButton = () => document.getElementById("chatSendButton");
-    const feedback = () => document.getElementById("chatFeedback");
-    const connectionStatus = () => document.getElementById("chatConnectionStatus");
-    const activeChannelName = () => document.getElementById("chatActiveChannelName");
-    const activeChannelMeta = () => document.getElementById("chatActiveChannelMeta");
-    const openFullPage = () => document.getElementById("chatOpenFullPage");
-
-    function getCsrfToken() {
-        const el = document.querySelector("[name=csrfmiddlewaretoken]");
-        return el ? el.value : "";
-    }
-
-    function escapeHtml(text) {
-        const div = document.createElement("div");
-        div.innerText = text || "";
-        return div.innerHTML;
-    }
-
-    function setConnectionState(state, label) {
-        const el = connectionStatus();
-        if (!el) return;
-
-        const dotClass =
-            state === "connected"
-                ? "bg-[var(--green)]"
-                : state === "connecting"
-                ? "bg-[var(--amber)] animate-pulse"
-                : "bg-[var(--red)]";
-
-        el.innerHTML = `
-            <span class="inline-flex h-2 w-2 rounded-full ${dotClass}"></span>
-            ${escapeHtml(label)}
-        `;
-    }
-
-    function setFeedback(message = "", isError = false) {
-        const el = feedback();
-        if (!el) return;
-        el.innerHTML = message
-            ? `<span class="${isError ? "text-[var(--red)]" : "text-[var(--text3)]"}">${escapeHtml(message)}</span>`
-            : "";
-    }
-
-    function setComposerEnabled(enabled) {
-        if (input()) input().disabled = !enabled;
-        if (sendButton()) sendButton().disabled = !enabled;
-    }
-
-    function renderMessage(message, mine = false, animate = false) {
-        return `
-            <div class="flex ${mine ? "justify-end" : "justify-start"} ${animate ? "chat-message-enter" : ""}">
-                <div class="max-w-[85%]">
-                    <div class="mb-1 text-[11px] ${mine ? "text-right" : ""} text-[var(--text3)]">
-                        ${escapeHtml(message.author || "Utilisateur")}
-                    </div>
-                    <div class="rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
-                        mine
-                            ? "bg-[var(--accent)] text-white"
-                            : "border border-[var(--border)] bg-[var(--bg3)] text-[var(--text1)]"
-                    }">
-                        ${escapeHtml(message.body || "")}
-                    </div>
-                    <div class="mt-1 text-[10px] ${mine ? "text-right" : ""} text-[var(--text3)]">
-                        ${escapeHtml(message.created_at || "")}
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    function scrollMessagesBottom(smooth = true) {
-        const box = messagesBox();
-        if (!box) return;
-        box.scrollTo({
-            top: box.scrollHeight,
-            behavior: smooth ? "smooth" : "auto"
-        });
-    }
-
-    function closeSocketSilently() {
-        if (reconnectTimer) {
-            clearTimeout(reconnectTimer);
-            reconnectTimer = null;
-        }
-        if (chatSocket) {
-            chatSocket.onclose = null;
-            chatSocket.close();
-            chatSocket = null;
-        }
-    }
-
-    function markActiveChannelButton(channelId) {
-        document.querySelectorAll(".chat-channel-btn").forEach(btn => {
-            if (btn.dataset.channelId === String(channelId)) {
-                btn.classList.add("bg-[var(--accent-bg)]", "ring-1", "ring-[var(--accent)]");
-            } else {
-                btn.classList.remove("bg-[var(--accent-bg)]", "ring-1", "ring-[var(--accent)]");
-            }
-        });
-    }
-
-    async function loadChannels() {
-        try {
-            const response = await fetch("/channels/panel/", {
-                headers: { "X-Requested-With": "XMLHttpRequest" }
-            });
-            const data = await response.json();
-
-            if (!data.success) {
-                channelsList().innerHTML = `
-                    <div class="rounded-2xl bg-[var(--bg2)] px-3 py-3 text-xs text-[var(--red)]">
-                        Impossible de charger les canaux.
-                    </div>
-                `;
-                return;
-            }
-
-            const items = data.channels || [];
-
-            if (!items.length) {
-                channelsList().innerHTML = `
-                    <div class="rounded-2xl bg-[var(--bg2)] px-3 py-3 text-xs text-[var(--text3)]">
-                        Aucun canal disponible.
-                    </div>
-                `;
-                return;
-            }
-
-            channelsList().innerHTML = items.map(channel => `
-                <button
-                    type="button"
-                    data-channel-id="${channel.id}"
-                    data-channel-name="${escapeHtml(channel.name)}"
-                    class="chat-channel-btn flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition hover:bg-[var(--bg2)]"
-                >
+            {# Header #}
+            <div class="flex items-center justify-between border-b border-devborder px-4 py-3
+                        bg-gradient-to-r from-devaccent/10 to-devaccent2/10">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-base">💬</span>
                     <div class="min-w-0">
-                        <div class="truncate text-sm font-semibold text-[var(--text1)]">${escapeHtml(channel.name)}</div>
-                        <div class="truncate text-[11px] text-[var(--text3)]">
-                            ${channel.is_private ? "Privé" : "Workspace"}
+                        <div class="truncate text-sm font-semibold text-devtext1">
+                            Messagerie DevFlow
+                        </div>
+                        <div class="text-[10px] text-devtext3"
+                             x-text="selectedChannel
+                                ? selectedChannel.display_subtitle
+                                : (totalChannels + ' discussion' + (totalChannels > 1 ? 's' : ''))">
                         </div>
                     </div>
-                    ${channel.unread_count ? `
-                        <span class="ml-2 inline-flex min-w-[20px] items-center justify-center rounded-full bg-[var(--red)] px-1.5 py-0.5 text-[10px] font-bold text-white">
-                            ${channel.unread_count}
-                        </span>
-                    ` : ""}
-                </button>
-            `).join("");
-
-            channelsList().querySelectorAll(".chat-channel-btn").forEach(btn => {
-                btn.addEventListener("click", () => openChannel(btn.dataset.channelId, btn.dataset.channelName));
-            });
-
-            updateGlobalUnread(items);
-
-            if (!currentChannelId && items[0]) {
-                openChannel(items[0].id, items[0].name);
-            }
-        } catch (error) {
-            console.error(error);
-            channelsList().innerHTML = `
-                <div class="rounded-2xl bg-[var(--bg2)] px-3 py-3 text-xs text-[var(--red)]">
-                    Erreur réseau.
                 </div>
-            `;
-        }
-    }
+                <div class="flex items-center gap-1 shrink-0">
+                    <a href="{% url 'chat' %}"
+                       class="rounded-md p-1 text-devtext3 hover:text-devaccent transition"
+                       title="Ouvrir le chat complet">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+                             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                        </svg>
+                    </a>
+                    <button type="button" @click="togglePanel()"
+                            class="rounded-md p-1 text-devtext3 hover:text-devtext1 transition"
+                            title="Fermer">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+                             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
 
-    function updateGlobalUnread(items) {
-        const total = (items || []).reduce((acc, c) => acc + (c.unread_count || 0), 0);
-        const badge = unreadBadge();
-        if (!badge) return;
+            {# Vue : liste canaux #}
+            <template x-if="!selectedChannel">
+                <div class="flex-1 overflow-y-auto">
+                    <template x-if="loadingChannels">
+                        <div class="p-4 text-center text-xs text-devtext3">Chargement…</div>
+                    </template>
+                    <template x-if="!loadingChannels && channels.length === 0">
+                        <div class="p-6 text-center text-sm text-devtext3">
+                            <div class="text-2xl mb-2">💬</div>
+                            Aucune discussion pour l'instant.<br>
+                            <a href="{% url 'chat' %}" class="text-devaccent hover:underline mt-2 inline-block">
+                                Démarrer une discussion →
+                            </a>
+                        </div>
+                    </template>
+                    <template x-for="channel in channels.slice(0, 12)" :key="channel.id">
+                        <button type="button"
+                                @click="openChannel(channel)"
+                                class="w-full text-left px-3 py-2.5 border-b border-devborder/40
+                                       hover:bg-devbg3/60 transition">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <span class="shrink-0 w-8 h-8 rounded-full bg-devbg4
+                                             flex items-center justify-center text-sm"
+                                      x-text="channel.is_dm ? '🗣' : '👥'"></span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="text-sm font-medium text-devtext1 truncate"
+                                             x-text="channel.display_name"></div>
+                                        <div class="text-[10px] text-devtext3 shrink-0"
+                                             x-text="formatTime(channel.last_message_at)"></div>
+                                    </div>
+                                    <div class="text-[11px] text-devtext3 truncate"
+                                         x-text="channel.last_message_preview || channel.display_subtitle"></div>
+                                </div>
+                            </div>
+                        </button>
+                    </template>
+                </div>
+            </template>
 
-        if (total > 0) {
-            badge.textContent = total;
-            badge.classList.remove("hidden");
-        } else {
-            badge.classList.add("hidden");
-        }
-    }
+            {# Vue : conversation active #}
+            <template x-if="selectedChannel">
+                <div class="flex-1 flex flex-col min-h-0">
 
-    async function openChannel(channelId, channelName = "") {
-        if (!channelId || isOpeningChannel) return;
-
-        isOpeningChannel = true;
-        currentChannelId = String(channelId);
-        currentChannelName = channelName || "";
-
-        markActiveChannelButton(currentChannelId);
-        activeChannelName().textContent = currentChannelName || "Chargement...";
-        activeChannelMeta().textContent = "Chargement des messages...";
-        setComposerEnabled(false);
-        setFeedback("Chargement des messages...");
-        setConnectionState("connecting", "Connexion…");
-
-        try {
-            const response = await fetch(`/channels/panel/${channelId}/`, {
-                headers: { "X-Requested-With": "XMLHttpRequest" }
-            });
-
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error("Chargement du canal impossible");
-            }
-
-            activeChannelName().textContent = data.channel.name;
-            activeChannelMeta().textContent = data.channel.is_private ? "Canal privé" : "Canal workspace";
-            openFullPage().href = `/channels/${channelId}/`;
-
-            const msgs = data.messages || [];
-            messagesBox().innerHTML = msgs.length
-                ? msgs.map(m => renderMessage(m, m.is_mine)).join("")
-                : `
-                    <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--text3)]">
-                        Aucun message pour le moment.
+                    {# Back + nom canal #}
+                    <div class="flex items-center gap-2 border-b border-devborder px-3 py-2">
+                        <button type="button" @click="closeChannel()"
+                                class="rounded-md p-1 text-devtext3 hover:text-devtext1"
+                                title="Retour aux discussions">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+                                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+                            </svg>
+                        </button>
+                        <span class="w-7 h-7 rounded-full bg-devbg4 flex items-center justify-center text-xs"
+                              x-text="selectedChannel.is_dm ? '🗣' : '👥'"></span>
+                        <div class="min-w-0 flex-1">
+                            <div class="text-sm font-semibold text-devtext1 truncate"
+                                 x-text="selectedChannel.display_name"></div>
+                            <div class="text-[10px] text-devtext3 truncate"
+                                 x-text="selectedChannel.display_subtitle"></div>
+                        </div>
                     </div>
-                `;
 
-            scrollMessagesBottom(false);
-            setComposerEnabled(true);
-            setFeedback("");
-            connectChannelSocket(channelId);
-        } catch (error) {
-            console.error(error);
-            messagesBox().innerHTML = `
-                <div class="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg3)] px-4 py-8 text-center text-sm text-[var(--red)]">
-                    Impossible de charger cette conversation.
+                    {# Messages #}
+                    <div x-ref="bubbleMessages"
+                         class="flex-1 overflow-y-auto px-3 py-2 space-y-2 bg-[var(--bg2)]">
+                        <template x-if="loadingMessages">
+                            <div class="text-center text-[11px] text-devtext3 py-3">Chargement…</div>
+                        </template>
+                        <template x-for="msg in messages" :key="msg.id">
+                            <div class="flex gap-2"
+                                 :class="msg.is_self ? 'flex-row-reverse' : ''">
+                                <div class="max-w-[80%]">
+                                    <div class="flex items-baseline gap-2 mb-0.5"
+                                         :class="msg.is_self ? 'justify-end' : ''">
+                                        <span class="text-[10px] font-semibold text-devtext2"
+                                              x-text="msg.is_self ? 'Vous' : msg.author_name"></span>
+                                        <span class="text-[9px] text-devtext3"
+                                              x-text="formatTime(msg.created_at)"></span>
+                                    </div>
+                                    <div class="rounded-2xl px-3 py-1.5 text-xs whitespace-pre-wrap break-words"
+                                         :class="msg.is_self
+                                                  ? 'bg-devaccent text-white'
+                                                  : 'bg-devbg3 text-devtext1 border border-devborder'"
+                                         x-text="msg.body"></div>
+                                </div>
+                            </div>
+                        </template>
+                        <template x-if="!loadingMessages && messages.length === 0">
+                            <div class="text-center text-[11px] text-devtext3 py-4">
+                                Aucun message — soyez le premier !
+                            </div>
+                        </template>
+                    </div>
+
+                    {# Composeur #}
+                    <form @submit.prevent="sendMessage()"
+                          class="border-t border-devborder p-2 flex items-end gap-2">
+                        <textarea
+                            x-model="composer"
+                            x-ref="bubbleComposer"
+                            @keydown.enter.prevent="$event.shiftKey ? (composer += '\n') : sendMessage()"
+                            placeholder="Écrire…"
+                            rows="1"
+                            class="flex-1 resize-none rounded-md border border-devborder bg-devbg3
+                                   px-2 py-1.5 text-xs text-devtext1 placeholder:text-devtext3
+                                   focus:outline-none focus:border-devaccent"
+                            :disabled="sending"
+                            style="max-height: 80px;"></textarea>
+                        <button type="submit"
+                                :disabled="sending || !composer.trim()"
+                                class="shrink-0 rounded-md bg-devaccent text-white px-3 py-1.5 text-xs font-medium
+                                       hover:opacity-90 transition disabled:opacity-50">
+                            <span x-show="!sending">Envoyer</span>
+                            <span x-show="sending">…</span>
+                        </button>
+                    </form>
                 </div>
-            `;
-            activeChannelMeta().textContent = "Erreur de chargement";
-            setFeedback("Impossible de charger le canal.", true);
-            setConnectionState("disconnected", "Indisponible");
-            setComposerEnabled(false);
-        } finally {
-            isOpeningChannel = false;
-        }
-    }
+            </template>
+        </div>
+    </div>
+</div>
 
-    function connectChannelSocket(channelId) {
-        closeSocketSilently();
+<script>
+    /* Bulle flottante Messagerie DevFlow — Alpine.js
+       Consomme /api/v1/me/chat/* via window.devflowApi (CSRF intégré). */
+    document.addEventListener("alpine:init", () => {
+        Alpine.data("devflowChatBubble", () => ({
+            isPanelOpen: false,
+            channels: [],
+            loadingChannels: false,
 
-        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        const url = `${protocol}://${window.location.host}/ws/channels/${channelId}/`;
+            selectedChannel: null,
+            messages: [],
+            loadingMessages: false,
+            composer: "",
+            sending: false,
 
-        setConnectionState("connecting", "Connexion…");
+            pollTimer: null,
+            lastMessageId: 0,
 
-        chatSocket = new WebSocket(url);
+            get totalChannels() {
+                return this.channels.length;
+            },
 
-        chatSocket.onopen = function () {
-            reconnectAttempts = 0;
-            setConnectionState("connected", "Connecté");
-            setFeedback("");
-        };
-
-        chatSocket.onmessage = function (e) {
-            const data = JSON.parse(e.data || "{}");
-
-            const isMine = false;
-            messagesBox().querySelector(".border-dashed")?.remove();
-            messagesBox().insertAdjacentHTML("beforeend", renderMessage(data, isMine, true));
-            scrollMessagesBottom(true);
-        };
-
-        chatSocket.onclose = function () {
-            setConnectionState("disconnected", "Déconnecté");
-            console.warn("Chat websocket fermé");
-
-            if (currentChannelId && reconnectAttempts < 5) {
-                reconnectAttempts += 1;
-                const delay = Math.min(1000 * reconnectAttempts, 5000);
-                setFeedback(`Reconnexion en cours… (${reconnectAttempts})`);
-                reconnectTimer = setTimeout(() => {
-                    if (currentChannelId) {
-                        connectChannelSocket(currentChannelId);
-                    }
-                }, delay);
-            } else {
-                setFeedback("Mode secours activé : envoi via HTTP.");
-            }
-        };
-
-        chatSocket.onerror = function (e) {
-            console.error("Erreur websocket chat", e);
-            setConnectionState("disconnected", "Erreur réseau");
-        };
-    }
-
-    async function sendMessage() {
-        const body = input()?.value.trim();
-        if (!body || !currentChannelId) return;
-
-        const optimisticMessage = {
-            author: "Moi",
-            body: body,
-            created_at: "Envoi…"
-        };
-
-        const clearInput = () => {
-            input().value = "";
-            input().style.height = "46px";
-            input().focus();
-        };
-
-        if (chatSocket && chatSocket.readyState === WebSocket.OPEN) {
-            messagesBox().querySelector(".border-dashed")?.remove();
-            messagesBox().insertAdjacentHTML("beforeend", renderMessage(optimisticMessage, true, true));
-            scrollMessagesBottom(true);
-
-            chatSocket.send(JSON.stringify({ body }));
-            clearInput();
-            return;
-        }
-
-        try {
-            sendButton().disabled = true;
-            setFeedback("Envoi en cours...");
-
-            const response = await fetch(`/channels/${currentChannelId}/send/`, {
-                method: "POST",
-                headers: {
-                    "X-CSRFToken": getCsrfToken(),
-                    "X-Requested-With": "XMLHttpRequest",
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ body })
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                messagesBox().querySelector(".border-dashed")?.remove();
-                messagesBox().insertAdjacentHTML("beforeend", renderMessage(data.message, true, true));
-                clearInput();
-                scrollMessagesBottom(true);
-                setFeedback("");
-            } else {
-                setFeedback(data.message || "Échec d’envoi.", true);
-            }
-        } catch (error) {
-            console.error(error);
-            setFeedback("Erreur lors de l’envoi du message.", true);
-        } finally {
-            sendButton().disabled = false;
-        }
-    }
-
-    window.openChatPanel = async function () {
-        const el = panel();
-        const btn = floatingBtn();
-
-        el.style.display = "block";
-        btn.style.display = "none";
-
-        requestAnimationFrame(() => {
-            el.classList.remove("translate-y-4", "scale-95", "opacity-0");
-            el.classList.add("translate-y-0", "scale-100", "opacity-100");
-        });
-
-        if (!chatInitialized) {
-            chatInitialized = true;
-            await loadChannels();
-        }
-    };
-
-    window.closeChatPanel = function () {
-        const el = panel();
-        const btn = floatingBtn();
-
-        el.classList.remove("translate-y-0", "scale-100", "opacity-100");
-        el.classList.add("translate-y-4", "scale-95", "opacity-0");
-
-        setTimeout(() => {
-            el.style.display = "none";
-            btn.style.display = "inline-flex";
-        }, 260);
-    };
-
-    window.minimizeChatPanel = function () {
-        closeChatPanel();
-    };
-
-    document.addEventListener("DOMContentLoaded", function () {
-        setComposerEnabled(false);
-
-        if (form()) {
-            form().addEventListener("submit", function (e) {
-                e.preventDefault();
-                sendMessage();
-            });
-        }
-
-        if (input()) {
-            input().addEventListener("input", function () {
-                this.style.height = "auto";
-                this.style.height = Math.min(this.scrollHeight, 120) + "px";
-            });
-
-            input().addEventListener("keydown", function (e) {
-                if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
+            init() {
+                // Persiste l'ouverture entre les pages via sessionStorage
+                this.isPanelOpen = sessionStorage.getItem("devflowChatBubbleOpen") === "1";
+                if (this.isPanelOpen) {
+                    this.loadChannels();
                 }
-            });
-        }
-    });
-})();
-</script>
+            },
 
-<style>
-#chatMessages::-webkit-scrollbar,
-#chatChannelsList::-webkit-scrollbar {
-    width: 8px;
-}
-#chatMessages::-webkit-scrollbar-thumb,
-#chatChannelsList::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.35);
-    border-radius: 999px;
-}
-.chat-message-enter {
-    animation: chatMessageIn 0.22s ease-out;
-}
-@keyframes chatMessageIn {
-    from {
-        opacity: 0;
-        transform: translateY(8px) scale(0.98);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-</style>
+            togglePanel() {
+                this.isPanelOpen = !this.isPanelOpen;
+                sessionStorage.setItem("devflowChatBubbleOpen", this.isPanelOpen ? "1" : "0");
+                if (this.isPanelOpen) {
+                    this.loadChannels();
+                } else {
+                    this.stopPolling();
+                    this.selectedChannel = null;
+                }
+            },
+
+            async loadChannels() {
+                this.loadingChannels = true;
+                try {
+                    const data = await window.devflowApi.get("/api/v1/me/chat/channels/");
+                    this.channels = (data && data.channels) || [];
+                } finally {
+                    this.loadingChannels = false;
+                }
+            },
+
+            formatTime(iso) {
+                if (!iso) return "";
+                const d = new Date(iso);
+                const now = new Date();
+                const sameDay = d.toDateString() === now.toDateString();
+                if (sameDay) {
+                    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                }
+                return d.toLocaleDateString([], { day: "2-digit", month: "2-digit" });
+            },
+
+            async openChannel(channel) {
+                this.selectedChannel = channel;
+                this.messages = [];
+                this.lastMessageId = 0;
+                this.loadingMessages = true;
+                try {
+                    const data = await window.devflowApi.get(
+                        `/api/v1/me/chat/channels/${channel.id}/messages/`
+                    );
+                    if (data) {
+                        this.messages = data.messages || [];
+                        if (this.messages.length) {
+                            this.lastMessageId = this.messages[this.messages.length - 1].id;
+                        }
+                        this.$nextTick(() => this.scrollToBottom());
+                    }
+                } finally {
+                    this.loadingMessages = false;
+                }
+                this.startPolling();
+            },
+
+            closeChannel() {
+                this.stopPolling();
+                this.selectedChannel = null;
+                this.messages = [];
+                this.loadChannels();
+            },
+
+            scrollToBottom() {
+                const el = this.$refs.bubbleMessages;
+                if (el) el.scrollTop = el.scrollHeight;
+            },
+
+            async sendMessage() {
+                const body = (this.composer || "").trim();
+                if (!body || !this.selectedChannel || this.sending) return;
+                this.sending = true;
+                try {
+                    const msg = await window.devflowApi.post(
+                        `/api/v1/me/chat/channels/${this.selectedChannel.id}/messages/`,
+                        { body }
+                    );
+                    if (msg && msg.id) {
+                        this.messages.push(msg);
+                        this.lastMessageId = msg.id;
+                        this.composer = "";
+                        this.$nextTick(() => this.scrollToBottom());
+                    }
+                } finally {
+                    this.sending = false;
+                    this.$refs.bubbleComposer && this.$refs.bubbleComposer.focus();
+                }
+            },
+
+            startPolling() {
+                this.stopPolling();
+                this.pollTimer = setInterval(async () => {
+                    if (!this.selectedChannel || !this.isPanelOpen || document.hidden) return;
+                    try {
+                        const data = await window.devflowApi.get(
+                            `/api/v1/me/chat/channels/${this.selectedChannel.id}/messages/?after=${this.lastMessageId}`
+                        );
+                        if (data && data.messages && data.messages.length) {
+                            this.messages.push(...data.messages);
+                            this.lastMessageId = data.messages[data.messages.length - 1].id;
+                            this.$nextTick(() => this.scrollToBottom());
+                        }
+                    } catch (e) { /* silent */ }
+                }, 6000);
+            },
+
+            stopPolling() {
+                if (this.pollTimer) {
+                    clearInterval(this.pollTimer);
+                    this.pollTimer = null;
+                }
+            },
+        }));
+    });
+</script>

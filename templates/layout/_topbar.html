@@ -1,14 +1,21 @@
-  {% load  static %}
+  {% load static %}
 <div class="topbar">
- {% if request.user.is_authenticated and request.user.profile.workspace.logo %}
-    <img src="{{ request.user.profile.workspace.logo.url }}" width="120">
-{% else %}
-    <img src="{% static 'img/logo_datarium-black.png' %}" width="120">
-{% endif %}
-    <div>
-      <div class="page-title">Tableau de bord</div>
-      <div class="breadcrumb">Vue d'ensemble · Q2 2026</div>
-    </div>
+
+  {% if current_workspace %}
+      {% with ws=current_workspace %}
+        {% include "layout/_topbar_branding.html" %}
+      {% endwith %}
+  {% elif rbac_workspace %}
+      {% with ws=rbac_workspace %}
+        {% include "layout/_topbar_branding.html" %}
+      {% endwith %}
+  {% elif request.user.is_authenticated and request.user.profile and request.user.profile.workspace_id %}
+      {% with ws=request.user.profile.workspace %}
+        {% include "layout/_topbar_branding.html" %}
+      {% endwith %}
+  {% else %}
+      {% include "layout/_topbar_branding.html" %}
+  {% endif %}
     <div class="search">
       <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="text" placeholder="Rechercher… ou ⌘K" onclick="openPalette()" readonly style="cursor:pointer">

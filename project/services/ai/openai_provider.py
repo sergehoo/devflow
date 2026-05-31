@@ -87,6 +87,47 @@ class OpenAIProvider(AIProvider):
             model=self.model,
         )
 
+    def generate_stream(
+        self,
+        messages: list[AIMessage],
+        *,
+        temperature: float = 0.2,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ):
+        """
+        Phase 4 (PR20) — Streaming OpenAI Chat Completions (delta).
+
+        Yield des chunks de texte. Le caller construit les events SSE.
+        """
+        client = self._get_client()
+        if client is None:
+            raise RuntimeError("OpenAI client not initialised")
+
+        oai_messages = [{"role": m.role, "content": m.content} for m in messages]
+        request: dict[str, Any] = {
+            "model": self.model,
+            "messages": oai_messages,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if max_tokens:
+            request["max_tokens"] = max_tokens
+
+        try:
+            stream = client.chat.completions.create(**request)
+            for chunk in stream:
+                try:
+                    delta = chunk.choices[0].delta
+                    content = getattr(delta, "content", None)
+                    if content:
+                        yield content
+                except Exception:
+                    continue
+        except Exception as exc:
+            logger.warning("OpenAI streaming failed: %s", exc)
+            raise
+
     @staticmethod
     def parse_json(response: AIResponse) -> dict:
         """Helper pour parser un AIResponse JSON sans planter sur des artefacts."""

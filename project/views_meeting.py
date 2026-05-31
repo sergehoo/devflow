@@ -20,6 +20,7 @@ from project.forms_meeting import MeetingActionItemForm, ProjectMeetingForm
 from project.services.ai.services.meeting_intelligence import (
     MeetingIntelligenceService,
 )
+from project.utils.workspaces import get_user_workspace_ids
 from project.views import (
     DevflowCreateView,
     DevflowDeleteView,
@@ -151,7 +152,13 @@ class ProjectMeetingDeleteView(DevflowDeleteView):
 # =========================================================================
 class MeetingActionItemCreateView(LoginRequiredMixin, View):
     def post(self, request, meeting_pk):
-        meeting = get_object_or_404(dm.ProjectMeeting, pk=meeting_pk)
+        # SECURITY (Phase 0): scoper la réunion aux workspaces du user.
+        user_workspace_ids = get_user_workspace_ids(request.user)
+        meeting = get_object_or_404(
+            dm.ProjectMeeting,
+            pk=meeting_pk,
+            workspace_id__in=user_workspace_ids,
+        )
         form = MeetingActionItemForm(request.POST)
         if not form.is_valid():
             messages.error(request, "Action invalide.")
@@ -170,9 +177,13 @@ class MeetingActionItemConvertToTaskView(LoginRequiredMixin, View):
     """
 
     def post(self, request, item_pk):
+        # SECURITY (Phase 0): scoper l'action item via le workspace de la
+        # réunion parente pour empêcher la conversion cross-tenant.
+        user_workspace_ids = get_user_workspace_ids(request.user)
         item = get_object_or_404(
             dm.MeetingActionItem.objects.select_related("meeting", "meeting__project", "owner"),
             pk=item_pk,
+            meeting__workspace_id__in=user_workspace_ids,
         )
         if item.converted_task_id:
             messages.info(request, "Cette action est déjà liée à une tâche.")
@@ -216,7 +227,15 @@ class MeetingAIProcessView(LoginRequiredMixin, View):
     """Lance le pipeline complet IA : résumé + décisions + actions + risques."""
 
     def post(self, request, meeting_pk):
-        meeting = get_object_or_404(dm.ProjectMeeting, pk=meeting_pk)
+        # SECURITY (Phase 0): scoper la réunion aux workspaces du user pour
+        # éviter qu'un utilisateur ne lance le pipeline IA (et n'expose son
+        # contenu) sur une réunion d'un autre tenant.
+        user_workspace_ids = get_user_workspace_ids(request.user)
+        meeting = get_object_or_404(
+            dm.ProjectMeeting,
+            pk=meeting_pk,
+            workspace_id__in=user_workspace_ids,
+        )
         try:
             result = MeetingIntelligenceService.full_process(meeting, actor=request.user)
         except Exception as exc:

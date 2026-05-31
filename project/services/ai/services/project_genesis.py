@@ -34,6 +34,9 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from project import models as dm
+from project.services.ai.services.methodology_postprocess import (
+    MethodologyPostProcessor,
+)
 from project.services.ai.services.project_structure import (
     ProjectAIStructureService,
 )
@@ -73,6 +76,7 @@ class ProjectGenesisService:
         start_date=None,
         target_date=None,
         budget=None,
+        methodology: str | None = None,
         use_ai: bool = True,
         auto_apply: bool = True,
     ) -> GenesisResult:
@@ -95,6 +99,17 @@ class ProjectGenesisService:
         start_date = start_date or timezone.localdate()
         target_date = target_date or (start_date + timedelta(days=120))
 
+        # Validation de la méthodologie (default AGILE = comportement legacy).
+        valid_methodologies = {
+            choice[0] for choice in dm.Project.Methodology.choices
+        }
+        if methodology and methodology not in valid_methodologies:
+            raise ValueError(
+                f"Méthodologie invalide '{methodology}'. "
+                f"Valeurs autorisées : {sorted(valid_methodologies)}"
+            )
+        effective_methodology = methodology or dm.Project.Methodology.AGILE
+
         # 1. Création du Project minimal
         project = dm.Project.objects.create(
             workspace=workspace,
@@ -108,6 +123,7 @@ class ProjectGenesisService:
             start_date=start_date,
             target_date=target_date,
             budget=budget,
+            methodology=effective_methodology,
         )
 
         # Le signal post_save Project peut auto-déclencher une proposition
@@ -166,6 +182,20 @@ class ProjectGenesisService:
                 )
             except Exception as exc:
                 logger.warning("Genesis budget refresh failed: %s", exc)
+
+            # 4bis. Post-processing par méthodologie (Phase 2 — PR13).
+            # Pour les modes non-logiciels (WATERFALL/FIELD/REAL_ESTATE/
+            # ADMINISTRATIVE), amorce les structures métier dédiées.
+            # No-op pour SCRUM/AGILE/KANBAN/MILESTONE.
+            try:
+                methodology_counts = MethodologyPostProcessor.run(project, actor=owner)
+                if methodology_counts:
+                    counts["methodology"] = methodology_counts
+            except Exception as exc:
+                logger.warning(
+                    "Methodology post-processing failed for project %s: %s",
+                    project.pk, exc,
+                )
 
             # 5. Log de l'action
             try:

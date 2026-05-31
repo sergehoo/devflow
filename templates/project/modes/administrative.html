@@ -1,0 +1,105 @@
+{# ─────────────────────────────────────────────────────────────────────
+   Partial Administratif — Phase 2 (PR11)
+
+   Contexte attendu :
+       project     : dm.Project
+       mode_cases  : queryset de AdminCase (avec assignee préchargé)
+       today       : date du jour (fourni par DevflowBaseMixin)
+   ───────────────────────────────────────────────────────────────────── #}
+
+<div class="card p-5">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <div class="card-title">Dossiers administratifs</div>
+            <div class="text-xs text-devtext3">
+                {{ mode_cases|length }} dossier{{ mode_cases|length|pluralize }} ·
+                instruction & SLA
+            </div>
+        </div>
+        <span class="badge b-cyan">Administratif</span>
+    </div>
+
+    {% if mode_cases %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="text-[11px] uppercase tracking-wide text-devtext3 border-b border-devborder">
+                <tr>
+                    <th class="text-left py-2 px-2 font-medium">Référence</th>
+                    <th class="text-left py-2 px-2 font-medium">Titre</th>
+                    <th class="text-left py-2 px-2 font-medium hidden md:table-cell">Type</th>
+                    <th class="text-left py-2 px-2 font-medium">Statut</th>
+                    <th class="text-left py-2 px-2 font-medium">Échéance</th>
+                    <th class="text-left py-2 px-2 font-medium hidden lg:table-cell">Affecté à</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-devborder/40">
+                {% for case in mode_cases %}
+                <tr class="hover:bg-devbg3/30 transition">
+                    <td class="py-2 px-2 font-semibold text-devtext1">
+                        {{ case.reference }}
+                    </td>
+                    <td class="py-2 px-2 text-devtext1">
+                        {{ case.title|truncatechars:60 }}
+                        {% if case.applicant %}
+                        <div class="text-[11px] text-devtext3">
+                            {{ case.applicant|truncatechars:50 }}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td class="py-2 px-2 text-devtext2 hidden md:table-cell">
+                        {{ case.document_type|default:"—" }}
+                    </td>
+                    <td class="py-2 px-2">
+                        <span class="badge
+                            {% if case.status == 'APPROVED' %}b-green
+                            {% elif case.status == 'REJECTED' %}b-red
+                            {% elif case.status == 'CLOSED' %}b-gray
+                            {% elif case.status == 'AWAITING_INFO' %}b-amber
+                            {% elif case.status == 'UNDER_REVIEW' %}b-cyan
+                            {% elif case.status == 'SUBMITTED' %}b-purple
+                            {% else %}b-gray{% endif %}">
+                            {{ case.get_status_display }}
+                        </span>
+                    </td>
+                    <td class="py-2 px-2 text-sm">
+                        {% if case.deadline %}
+                            {% if today and case.deadline < today and case.status != 'APPROVED' and case.status != 'CLOSED' and case.status != 'REJECTED' %}
+                                <span class="text-devred font-semibold">
+                                    ⚠ {{ case.deadline|date:"d M Y" }}
+                                </span>
+                                <div class="text-[10px] text-devred">Dépassée</div>
+                            {% else %}
+                                <span class="text-devtext2">
+                                    {{ case.deadline|date:"d M Y" }}
+                                </span>
+                            {% endif %}
+                            {% if case.sla_days %}
+                            <div class="text-[10px] text-devtext3">
+                                SLA {{ case.sla_days }}j
+                            </div>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-devtext3">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-2 px-2 text-devtext2 hidden lg:table-cell">
+                        {% if case.assignee %}{{ case.assignee }}{% else %}<span class="text-devtext3">Non affecté</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-8">
+        <div class="text-3xl mb-2">📄</div>
+        <div class="text-sm text-devtext2">
+            Aucun dossier en instruction pour ce projet.
+        </div>
+        <div class="text-xs text-devtext3 mt-1">
+            Création via
+            <code class="bg-devbg3 px-1.5 py-0.5 rounded">POST /api/v1/admin-cases/</code>
+        </div>
+    </div>
+    {% endif %}
+</div>
