@@ -2,7 +2,8 @@
 {# DevFlow AI — Panneau conversationnel branché sur le backend #}
 <div class="ai-panel" id="aiPanel"
      x-data="devflowAIPanel()"
-     x-init="init()">
+     x-init="init()"
+     :class="{ 'expanded': sizeMode === 'expanded', 'fullscreen': sizeMode === 'fullscreen' }">
 
   <div class="ai-panel-head">
     <div style="display:flex;align-items:center;gap:10px">
@@ -21,7 +22,38 @@
         </div>
       </div>
     </div>
-    <button class="btn-soft" style="font-size:11px" @click="closeAI()">✕ Fermer</button>
+    <div style="display:flex;align-items:center;gap:6px">
+      {# Bouton : largeur normale → agrandi → plein écran → normal #}
+      <button class="btn-soft ai-size-btn" type="button"
+              @click="cycleSize()"
+              style="font-size:11px;padding:4px 8px"
+              :title="sizeMode === 'normal' ? 'Agrandir le panel'
+                      : sizeMode === 'expanded' ? 'Passer en plein écran'
+                      : 'Revenir à la taille normale'">
+        <template x-if="sizeMode === 'normal'">
+          {# Maximize-2 icon #}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+            <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+          </svg>
+        </template>
+        <template x-if="sizeMode === 'expanded'">
+          {# Fullscreen icon #}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/>
+            <path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>
+          </svg>
+        </template>
+        <template x-if="sizeMode === 'fullscreen'">
+          {# Minimize icon #}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/>
+            <line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/>
+          </svg>
+        </template>
+      </button>
+      <button class="btn-soft" style="font-size:11px" @click="closeAI()">✕ Fermer</button>
+    </div>
   </div>
 
   <div class="ai-messages" id="aiMessages" x-ref="messages">
@@ -363,6 +395,9 @@ function devflowAIPanel() {
     csrfToken: null,
     nextLocalId: 1,
 
+    // Tailles : "normal" (380px) -> "expanded" (760px) -> "fullscreen" (100vw)
+    sizeMode: "normal",
+
     init() {
       this.csrfToken = this._readCookie("csrftoken")
         || document.querySelector('meta[name="csrf-token"]')?.content
@@ -370,6 +405,12 @@ function devflowAIPanel() {
       // Restaure une éventuelle session locale
       const stored = localStorage.getItem("devflow.ai.session_id");
       if (stored) this.sessionId = parseInt(stored, 10) || null;
+
+      // Restaure la dernière taille préférée
+      const storedSize = localStorage.getItem("devflow.ai.size_mode");
+      if (["normal", "expanded", "fullscreen"].includes(storedSize)) {
+        this.sizeMode = storedSize;
+      }
 
       this.fetchWelcome();
 
@@ -382,6 +423,43 @@ function devflowAIPanel() {
     closeAI() {
       const panel = document.getElementById("aiPanel");
       if (panel) panel.classList.remove("open");
+    },
+
+    cycleSize() {
+      const order = ["normal", "expanded", "fullscreen"];
+      const idx = order.indexOf(this.sizeMode);
+      this.sizeMode = order[(idx + 1) % order.length];
+      localStorage.setItem("devflow.ai.size_mode", this.sizeMode);
+    },
+
+    /**
+     * Auto-expand : si la dernière bulle bot contient un tableau de plus de
+     * 4 colonnes OU un bloc mermaid OU un <pre>, on passe automatiquement
+     * en "expanded" — l'utilisateur peut toujours revenir en normal.
+     * Ne touche pas si l'utilisateur a explicitement mis "fullscreen".
+     */
+    autoResizeIfWide() {
+      this.$nextTick(() => {
+        if (this.sizeMode === "fullscreen") return;
+        // Dernière bulle bot
+        const bubbles = document.querySelectorAll("#aiPanel .ai-msg.bot .ai-bubble");
+        const last = bubbles[bubbles.length - 1];
+        if (!last) return;
+        const tables = last.querySelectorAll("table");
+        let needsWide = false;
+        tables.forEach(t => {
+          const cols = t.querySelectorAll("thead th").length
+            || (t.querySelector("tr")?.children.length || 0);
+          if (cols >= 4) needsWide = true;
+        });
+        if (last.querySelector(".mermaid svg") || last.querySelector("pre")) {
+          needsWide = true;
+        }
+        if (needsWide && this.sizeMode === "normal") {
+          this.sizeMode = "expanded";
+          localStorage.setItem("devflow.ai.size_mode", "expanded");
+        }
+      });
     },
 
     async fetchWelcome() {
@@ -474,6 +552,10 @@ function devflowAIPanel() {
         time: "Maintenant",
       });
       this._scrollDown();
+      // Détection auto : tableaux larges, mermaid, code → bascule expanded
+      // Le rendu markdown s'exécute via x-init devflowAIRender, donc on
+      // attend 2 ticks pour que les <table>/.mermaid soient présents.
+      setTimeout(() => this.autoResizeIfWide(), 250);
     },
 
     _scrollDown() {

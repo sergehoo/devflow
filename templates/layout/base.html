@@ -1516,6 +1516,26 @@
             flex-shrink: 0;
         }
 
+        /* AI launcher (topbar) — sparkles avec dégradé + halo pulse */
+        .ico-btn.ai-launcher {
+            position: relative;
+            background: linear-gradient(135deg, rgba(124,111,247,0.18), rgba(56,189,248,0.12));
+            border: 1px solid rgba(124,111,247,0.30);
+        }
+        .ico-btn.ai-launcher:hover {
+            background: linear-gradient(135deg, rgba(124,111,247,0.28), rgba(56,189,248,0.20));
+            transform: translateY(-1px);
+        }
+        .ai-launcher-icon {
+            color: var(--accent, #7c6ff7);
+            filter: drop-shadow(0 0 4px rgba(124,111,247,0.35));
+            animation: aiSparklePulse 3.2s ease-in-out infinite;
+        }
+        @keyframes aiSparklePulse {
+            0%, 100% { opacity: .85; transform: scale(1) rotate(0deg); }
+            50%      { opacity: 1;   transform: scale(1.06) rotate(-2deg); }
+        }
+
         /* AI panel */
         .ai-panel {
             position: fixed;
@@ -1527,7 +1547,8 @@
             border-left: 1px solid var(--border);
             z-index: 300;
             transform: translateX(100%);
-            transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+            transition: transform .3s cubic-bezier(.4, 0, .2, 1),
+                        width .35s cubic-bezier(.4, 0, .2, 1);
             display: flex;
             flex-direction: column;
             box-shadow: var(--shadow-lg);
@@ -1535,6 +1556,26 @@
 
         .ai-panel.open {
             transform: none
+        }
+
+        /* État agrandi (bouton "Agrandir" ou auto-expand sur tableau large) */
+        .ai-panel.expanded {
+            width: min(100vw, 760px);
+        }
+        .ai-panel.expanded .ai-msg {
+            max-width: 95%;
+        }
+        /* Plein écran (window mode) */
+        .ai-panel.fullscreen {
+            width: 100vw;
+            height: 100vh;
+            border-left: 0;
+        }
+        .ai-panel.fullscreen .ai-msg {
+            max-width: min(900px, 95%);
+        }
+        .ai-panel.fullscreen .ai-messages {
+            padding: 24px max(24px, calc((100% - 980px) / 2));
         }
 
         .ai-panel-head {
