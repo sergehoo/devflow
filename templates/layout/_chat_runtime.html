@@ -1,38 +1,4 @@
-{# ----------------------------------------------------------------------------
-   _chat_runtime.html — Runtime JS partagé chat & présence DevFlow.
 
-   Inclus dans `base.html` après `_toast_container.html`. S'auto-initialise au
-   DOMContentLoaded si l'utilisateur est authentifié.
-
-   Expose globalement :
-     window.devflowPresence = {
-        // état local des statuts {userId: {status, inactive_minutes}}
-        statuses: {},
-        // Ping immédiat (utile après un clic / action)
-        heartbeat(),
-        // Demande batch ({user_ids}) → MAJ statuses
-        fetchFor(userIds),
-        // Helpers UI : pastille HTML + libellé
-        dotHtml(userId) → string,
-        labelFor(userId) → string,
-     }
-     window.devflowUnread = {
-        // état {total, by_channel: {id:count}}
-        state: {total: 0, by_channel: {}},
-        // Fetch unread, met à jour les badges DOM, déclenche événements
-        refresh(),
-        markRead(channelId),
-        // Listener : window.addEventListener("devflow:unread-changed", e => ...)
-     }
-     window.devflowChatNotif = {
-        requestPermission(),
-        notify({title, body, channelId}),
-        playSound(),
-        muted: bool,
-     }
-
-   Configuration : surchargeable via window.devflowChatConfig avant inclusion.
----------------------------------------------------------------------------- #}
 
 {% if request.user.is_authenticated %}
 <script>
