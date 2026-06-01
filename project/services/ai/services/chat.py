@@ -678,6 +678,7 @@ class AIChatService:
         session_id=None,
         workspace=None,
         project=None,
+        page_context: dict | None = None,
     ) -> ChatTurnResult:
         message = (message or "").strip()
 
@@ -732,6 +733,7 @@ class AIChatService:
             ctx=ctx,
             current_message=message,
             seed=deterministic,
+            page_context=page_context,
         )
 
         final_text = (
@@ -1010,7 +1012,8 @@ class AIChatService:
         return "<br>".join(lines)
 
     @classmethod
-    def _call_ai(cls, session, ctx: dict, current_message: str, seed: str = ""):
+    def _call_ai(cls, session, ctx: dict, current_message: str, seed: str = "",
+                 page_context: dict | None = None):
         provider = get_ai_provider()
 
         if not provider or not provider.is_available():
@@ -1030,6 +1033,42 @@ class AIChatService:
         messages = [
             AIMessage(role="system", content=cls.SYSTEM_PROMPT),
         ]
+
+        # ── Contexte de la page courante (facultatif, envoyé par le front) ──
+        if page_context and isinstance(page_context, dict):
+            pc_path = (page_context.get("path") or "").strip()
+            pc_title = (page_context.get("title") or "").strip()
+            pc_section = (page_context.get("section") or "").strip()
+            pc_object = page_context.get("object") or {}
+            pc_text_snippet = (page_context.get("text_snippet") or "").strip()
+
+            if pc_path or pc_title:
+                lines = [
+                    "L'utilisateur est actuellement sur une page de DevFlow. "
+                    "Adapte tes réponses à ce contexte. Si l'utilisateur dit "
+                    "« ici », « cette page », « ce projet », « cette tâche », "
+                    "réfère-toi à la page courante. Si tu peux pointer vers "
+                    "une action directe (lien, bouton), suggère-la.",
+                    f"• URL : {pc_path}" if pc_path else "",
+                    f"• Titre : {pc_title}" if pc_title else "",
+                    f"• Section : {pc_section}" if pc_section else "",
+                ]
+                if isinstance(pc_object, dict) and pc_object:
+                    # ex: {"type": "project", "id": 12, "name": "KAYDAN SHIELD"}
+                    pretty = ", ".join(
+                        f"{k}={v}" for k, v in pc_object.items() if v not in (None, "")
+                    )
+                    if pretty:
+                        lines.append(f"• Objet de la page : {pretty}")
+                if pc_text_snippet:
+                    lines.append(
+                        "• Extrait visible (max 600 c.) :\n"
+                        + pc_text_snippet[:600]
+                    )
+                messages.append(AIMessage(
+                    role="system",
+                    content="\n".join(l for l in lines if l),
+                ))
 
         if is_general:
             messages.append(AIMessage(

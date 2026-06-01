@@ -61,6 +61,10 @@ class AIChatSendView(LoginRequiredMixin, View):
 
         session_id = payload.get("session_id")
         project_id = payload.get("project_id")
+        # Contexte page courante (envoyé par _ai_panel.html) — facultatif
+        page_context = payload.get("page_context") or {}
+        if not isinstance(page_context, dict):
+            page_context = {}
 
         project = None
         if project_id:
@@ -72,6 +76,7 @@ class AIChatSendView(LoginRequiredMixin, View):
                 message=message,
                 session_id=session_id,
                 project=project,
+                page_context=page_context,
             )
         except ValueError as exc:
             return JsonResponse({"ok": False, "error": str(exc)}, status=400)

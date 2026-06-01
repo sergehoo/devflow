@@ -23,6 +23,16 @@
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:6px">
+      {# Bouton : nouvelle conversation (clear local + serveur) #}
+      <button class="btn-soft" type="button"
+              @click="newConversation()"
+              style="font-size:11px;padding:4px 8px"
+              title="Démarrer une nouvelle conversation">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+      </button>
       {# Bouton : largeur normale → agrandi → plein écran → normal #}
       <button class="btn-soft ai-size-btn" type="button"
               @click="cycleSize()"
@@ -412,12 +422,122 @@ function devflowAIPanel() {
         this.sizeMode = storedSize;
       }
 
-      this.fetchWelcome();
+      // Si on a un sessionId valide, on tente de recharger l'historique au
+      // lieu de juste afficher le message d'accueil.
+      if (this.sessionId) {
+        this.fetchHistory();
+      } else {
+        this.fetchWelcome();
+      }
 
       // Hook global pour boutons existants
       window.sendAI = (txt) => this.sendMessage(txt);
       window.sendAIMsg = () => this.submit();
       window.closeAI = () => this.closeAI();
+    },
+
+    /**
+     * Recharge tous les messages d'une session existante depuis la DB.
+     * Fallback sur fetchWelcome() si la session est introuvable ou vide.
+     */
+    async fetchHistory() {
+      try {
+        const url = `/ai/chat/sessions/${this.sessionId}/messages/`;
+        const resp = await fetch(url, {
+          credentials: "same-origin",
+          headers: { "Accept": "application/json" },
+        });
+        if (!resp.ok) throw new Error("history status " + resp.status);
+        const data = await resp.json();
+        if (!data.ok || !Array.isArray(data.messages) || !data.messages.length) {
+          // Session vide → on charge le welcome
+          await this.fetchWelcome();
+          return;
+        }
+        // Remplit la timeline
+        this.messages = [];
+        data.messages.forEach(m => {
+          const role = (m.role || "").toLowerCase() === "user" ? "user" : "assistant";
+          this.messages.push({
+            id: (role === "user" ? "u" : "b") + (this.nextLocalId++),
+            role,
+            html: role === "user" ? this._escape(m.content || "") : (m.content || ""),
+            time: this._fmtTime(m.created_at),
+          });
+        });
+        // Récupère aussi un context_summary minimal pour le header
+        try {
+          const welcomeResp = await fetch("{% url 'ai_chat_welcome' %}", {
+            credentials: "same-origin",
+            headers: { "Accept": "application/json" },
+          });
+          if (welcomeResp.ok) {
+            const w = await welcomeResp.json();
+            if (w.ok) {
+              this.contextSummary = w.context_summary;
+              if (w.suggestions?.length) this.suggestions = w.suggestions;
+            }
+          }
+        } catch { /* silent */ }
+        this._scrollDown();
+        // Auto-resize si l'historique contient des tableaux/Mermaid
+        setTimeout(() => this.autoResizeIfWide && this.autoResizeIfWide(), 400);
+      } catch (err) {
+        console.warn("AI history load failed:", err);
+        // Si l'historique n'est pas dispo, on enlève le session_id pour
+        // ne pas re-bloquer la prochaine fois et on revient au welcome.
+        this.sessionId = null;
+        localStorage.removeItem("devflow.ai.session_id");
+        this.fetchWelcome();
+      }
+    },
+
+    /**
+     * Capture le contexte de la page courante : URL, titre, et tout
+     * <meta name="devflow-ai-context-*"> ou <body data-ai-*> présent.
+     * Envoyé avec chaque message pour que l'IA sache où se trouve l'user.
+     */
+    _capturePageContext() {
+      const ctx = {
+        path: window.location.pathname || "",
+        title: (document.title || "").replace(/\s*[·|—]\s*DevFlow.*$/i, "").trim(),
+        section: "",
+        object: {},
+        text_snippet: "",
+      };
+      // Section : <meta name="devflow-ai-section" content="Projet · Détail">
+      const sectionMeta = document.querySelector('meta[name="devflow-ai-section"]');
+      if (sectionMeta) ctx.section = sectionMeta.content || "";
+
+      // Object meta : permet aux templates de signaler l'entité courante.
+      //   <meta name="devflow-ai-object-type" content="project">
+      //   <meta name="devflow-ai-object-id" content="42">
+      //   <meta name="devflow-ai-object-name" content="KAYDAN SHIELD">
+      ["type", "id", "name", "status"].forEach(k => {
+        const m = document.querySelector(`meta[name="devflow-ai-object-${k}"]`);
+        if (m && m.content) ctx.object[k] = m.content;
+      });
+
+      // Extrait textuel : si la page expose <article data-ai-snippet>, on
+      // prend les 600 premiers caractères. Sinon on prend les 600 premiers
+      // caractères de la zone principale <main>.
+      const snippetSrc = document.querySelector("[data-ai-snippet]")
+        || document.querySelector("main")
+        || document.querySelector(".dashboard, .page-content");
+      if (snippetSrc) {
+        ctx.text_snippet = (snippetSrc.innerText || "")
+          .replace(/\s+/g, " ").trim().slice(0, 600);
+      }
+      return ctx;
+    },
+
+    _fmtTime(iso) {
+      try {
+        if (!iso) return "Maintenant";
+        const d = new Date(iso);
+        return d.getHours().toString().padStart(2, "0") + ":"
+             + d.getMinutes().toString().padStart(2, "0");
+      } catch { return "Maintenant"; }
     },
 
     closeAI() {
@@ -430,6 +550,28 @@ function devflowAIPanel() {
       const idx = order.indexOf(this.sizeMode);
       this.sizeMode = order[(idx + 1) % order.length];
       localStorage.setItem("devflow.ai.size_mode", this.sizeMode);
+    },
+
+    /**
+     * Démarre une nouvelle session : ferme l'ancienne côté serveur si elle
+     * existe, vide la timeline locale, recharge le welcome.
+     */
+    async newConversation() {
+      const oldId = this.sessionId;
+      this.sessionId = null;
+      this.messages = [];
+      localStorage.removeItem("devflow.ai.session_id");
+      // Ferme l'ancienne en arrière-plan (best-effort)
+      if (oldId) {
+        try {
+          await fetch(`/ai/chat/sessions/${oldId}/close/`, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "X-CSRFToken": this.csrfToken },
+          });
+        } catch { /* silent */ }
+      }
+      this.fetchWelcome();
     },
 
     /**
@@ -510,6 +652,7 @@ function devflowAIPanel() {
           body: JSON.stringify({
             message: text,
             session_id: this.sessionId,
+            page_context: this._capturePageContext(),
           }),
         });
 
