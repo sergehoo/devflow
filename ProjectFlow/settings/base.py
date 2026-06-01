@@ -314,6 +314,11 @@ AI_LOCAL_BASE_URL = os.getenv("AI_LOCAL_BASE_URL", "http://localhost:11434/v1")
 AI_LOCAL_MODEL = os.getenv("AI_LOCAL_MODEL", "llama3.2:3b")
 AI_LOCAL_API_KEY = os.getenv("AI_LOCAL_API_KEY", "ollama")
 
+# Chaîne de fallback en mode AI_BACKEND="auto" — ordre de préférence.
+# Valeurs possibles, séparées par des virgules : deepseek, openai, local
+# Default : "deepseek,local" → DeepSeek principal, Ollama backup silencieux.
+AI_FALLBACK_CHAIN = os.getenv("AI_FALLBACK_CHAIN", "deepseek,local")
+
 # Cache court pour éviter de spammer le LLM (secondes)
 AI_CACHE_TTL = int(os.getenv("AI_CACHE_TTL", "300"))
 AI_WEB_SEARCH_ENABLED = os.getenv("AI_WEB_SEARCH_ENABLED", "False") == "True"

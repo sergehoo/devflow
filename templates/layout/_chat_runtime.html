@@ -1,0 +1,320 @@
+{# ----------------------------------------------------------------------------
+   _chat_runtime.html — Runtime JS partagé chat & présence DevFlow.
+
+   Inclus dans `base.html` après `_toast_container.html`. S'auto-initialise au
+   DOMContentLoaded si l'utilisateur est authentifié.
+
+   Expose globalement :
+     window.devflowPresence = {
+        // état local des statuts {userId: {status, inactive_minutes}}
+        statuses: {},
+        // Ping immédiat (utile après un clic / action)
+        heartbeat(),
+        // Demande batch ({user_ids}) → MAJ statuses
+        fetchFor(userIds),
+        // Helpers UI : pastille HTML + libellé
+        dotHtml(userId) → string,
+        labelFor(userId) → string,
+     }
+     window.devflowUnread = {
+        // état {total, by_channel: {id:count}}
+        state: {total: 0, by_channel: {}},
+        // Fetch unread, met à jour les badges DOM, déclenche événements
+        refresh(),
+        markRead(channelId),
+        // Listener : window.addEventListener("devflow:unread-changed", e => ...)
+     }
+     window.devflowChatNotif = {
+        requestPermission(),
+        notify({title, body, channelId}),
+        playSound(),
+        muted: bool,
+     }
+
+   Configuration : surchargeable via window.devflowChatConfig avant inclusion.
+---------------------------------------------------------------------------- #}
+
+{% if request.user.is_authenticated %}
+<script>
+  (function () {
+    "use strict";
+
+    // ─── Config par défaut ─────────────────────────────────────────────
+    const cfg = Object.assign({
+      heartbeatIntervalMs: 30_000,
+      unreadPollIntervalMs: 15_000,
+      presenceRefreshOnFocusMs: 0,  // 0 = pas de refresh forcé
+      enableSound: true,
+      enableBrowserNotif: true,
+      currentUserId: {{ request.user.id }},
+    }, window.devflowChatConfig || {});
+
+    // ─── PRÉSENCE ─────────────────────────────────────────────────────
+    const Presence = {
+      statuses: {},  // {userId: {status, inactive_minutes, last_seen_ts}}
+
+      async heartbeat() {
+        try {
+          if (!window.devflowApi) return;
+          await window.devflowApi.post("/api/v1/me/presence/heartbeat/", {});
+        } catch (e) { /* silencieux */ }
+      },
+
+      async fetchFor(userIds) {
+        if (!userIds || !userIds.length || !window.devflowApi) return;
+        const ids = [...new Set(userIds)].filter(Boolean).join(",");
+        try {
+          const data = await window.devflowApi.get(
+            "/api/v1/me/presence/?user_ids=" + encodeURIComponent(ids)
+          );
+          if (data && Array.isArray(data.statuses)) {
+            data.statuses.forEach(s => { Presence.statuses[s.user_id] = s; });
+            window.dispatchEvent(new CustomEvent("devflow:presence-updated", {
+              detail: { statuses: Presence.statuses },
+            }));
+          }
+        } catch (e) { /* silencieux */ }
+      },
+
+      statusOf(userId) {
+        const s = Presence.statuses[userId];
+        return s ? s.status : "offline";
+      },
+
+      labelFor(userId) {
+        const s = Presence.statuses[userId];
+        if (!s || s.status === "offline") {
+          if (s && s.inactive_minutes != null) {
+            return "Inactif depuis " + s.inactive_minutes + " min";
+          }
+          return "Hors ligne";
+        }
+        if (s.status === "online") return "En ligne";
+        if (s.status === "idle") {
+          return "Inactif depuis " + (s.inactive_minutes || 0) + " min";
+        }
+        return "Hors ligne";
+      },
+
+      dotHtml(userId) {
+        const status = Presence.statusOf(userId);
+        const colorMap = {
+          online: "#22c55e",   // vert
+          idle: "#facc15",     // jaune
+          offline: "#9ca3af",  // gris
+        };
+        const c = colorMap[status] || colorMap.offline;
+        return `<span class="dfp-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};box-shadow:0 0 0 2px var(--devbg2,#0c111d);" title="${Presence.labelFor(userId)}"></span>`;
+      },
+    };
+
+    // ─── UNREAD ───────────────────────────────────────────────────────
+    const Unread = {
+      state: { total: 0, by_channel: {} },
+      _previousTotal: 0,
+
+      async refresh() {
+        if (!window.devflowApi) return;
+        try {
+          const data = await window.devflowApi.get("/api/v1/me/chat/unread/");
+          if (data && typeof data.total === "number") {
+            const previous = Unread.state.total;
+            Unread.state = {
+              total: data.total,
+              by_channel: data.by_channel || {},
+            };
+            Unread._previousTotal = previous;
+            Unread._updateBadges();
+            window.dispatchEvent(new CustomEvent("devflow:unread-changed", {
+              detail: {
+                total: data.total,
+                by_channel: data.by_channel,
+                previous: previous,
+                delta: data.total - previous,
+              },
+            }));
+          }
+        } catch (e) { /* silencieux */ }
+      },
+
+      async markRead(channelId) {
+        if (!channelId || !window.devflowApi) return;
+        try {
+          await window.devflowApi.post(
+            `/api/v1/me/chat/channels/${channelId}/mark-read/`, {}
+          );
+          delete Unread.state.by_channel[channelId];
+          Unread.state.total = Object.values(Unread.state.by_channel)
+            .reduce((a, b) => a + b, 0);
+          Unread._updateBadges();
+          window.dispatchEvent(new CustomEvent("devflow:unread-changed", {
+            detail: { total: Unread.state.total, by_channel: Unread.state.by_channel },
+          }));
+        } catch (e) { /* silencieux */ }
+      },
+
+      _updateBadges() {
+        // Badge global (bulle chat + sidebar)
+        document.querySelectorAll("[data-chat-unread-badge]").forEach(el => {
+          const total = Unread.state.total;
+          if (total > 0) {
+            el.textContent = total > 99 ? "99+" : String(total);
+            el.style.display = "inline-flex";
+          } else {
+            el.textContent = "";
+            el.style.display = "none";
+          }
+        });
+        // Badges par canal
+        document.querySelectorAll("[data-chat-unread-channel]").forEach(el => {
+          const id = parseInt(el.getAttribute("data-chat-unread-channel"), 10);
+          const count = Unread.state.by_channel[id] || 0;
+          if (count > 0) {
+            el.textContent = count > 99 ? "99+" : String(count);
+            el.style.display = "inline-flex";
+            // Highlight le parent
+            const card = el.closest("[data-chat-channel-card]");
+            if (card) card.classList.add("has-unread");
+          } else {
+            el.textContent = "";
+            el.style.display = "none";
+            const card = el.closest("[data-chat-channel-card]");
+            if (card) card.classList.remove("has-unread");
+          }
+        });
+      },
+    };
+
+    // ─── NOTIFICATIONS (browser + son) ─────────────────────────────────
+    const Notif = {
+      muted: localStorage.getItem("devflow:chat-muted") === "1",
+      _audioCtx: null,
+      _permissionRequested: false,
+
+      setMuted(v) {
+        Notif.muted = !!v;
+        localStorage.setItem("devflow:chat-muted", v ? "1" : "0");
+      },
+
+      async requestPermission() {
+        if (!cfg.enableBrowserNotif) return false;
+        if (!("Notification" in window)) return false;
+        if (Notification.permission === "granted") return true;
+        if (Notification.permission === "denied") return false;
+        if (Notif._permissionRequested) return false;
+        Notif._permissionRequested = true;
+        try {
+          const result = await Notification.requestPermission();
+          return result === "granted";
+        } catch { return false; }
+      },
+
+      notify({ title, body, channelId }) {
+        if (Notif.muted) return;
+        // Pas de notif si le user est focus sur la page (sauf hors-onglet)
+        if (document.hasFocus() && document.visibilityState === "visible") {
+          // On joue juste le son discret
+          Notif.playSound();
+          return;
+        }
+        if (cfg.enableBrowserNotif && "Notification" in window
+            && Notification.permission === "granted") {
+          try {
+            const n = new Notification(title || "Nouveau message", {
+              body: body || "",
+              tag: channelId ? "devflow-chat-" + channelId : "devflow-chat",
+              silent: false,
+              icon: "/static/img/logo.png",
+            });
+            n.onclick = () => {
+              window.focus();
+              if (channelId) {
+                window.location.href = "/chat/?channel=" + channelId;
+              }
+              n.close();
+            };
+          } catch (e) { /* certains navigateurs refusent silencieusement */ }
+        }
+        Notif.playSound();
+      },
+
+      playSound() {
+        if (Notif.muted || !cfg.enableSound) return;
+        try {
+          if (!Notif._audioCtx) {
+            Notif._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          const ctx = Notif._audioCtx;
+          // Bip court : 2 tons descendants
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.frequency.setValueAtTime(880, now);
+          osc.frequency.exponentialRampToValueAtTime(540, now + 0.15);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.08, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+          osc.start(now);
+          osc.stop(now + 0.2);
+        } catch (e) { /* AudioContext bloqué = pas grave */ }
+      },
+    };
+
+    // ─── Listener : nouveau message → notif si pas focus ──────────────
+    window.addEventListener("devflow:unread-changed", (ev) => {
+      const detail = ev.detail || {};
+      if (detail.delta > 0 && detail.previous != null) {
+        // Trouve le 1er canal avec une nouvelle entrée
+        let newChannelId = null;
+        Object.entries(detail.by_channel || {}).forEach(([cid, cnt]) => {
+          if (cnt > 0) newChannelId = parseInt(cid, 10);
+        });
+        Notif.notify({
+          title: "Nouveau message DevFlow",
+          body: detail.delta === 1
+            ? "1 message non lu"
+            : detail.delta + " nouveaux messages",
+          channelId: newChannelId,
+        });
+      }
+    });
+
+    // ─── INIT ─────────────────────────────────────────────────────────
+    document.addEventListener("DOMContentLoaded", () => {
+      // Premier heartbeat + premier fetch unread
+      Presence.heartbeat();
+      Unread.refresh();
+      // Polls réguliers
+      setInterval(() => Presence.heartbeat(), cfg.heartbeatIntervalMs);
+      setInterval(() => Unread.refresh(), cfg.unreadPollIntervalMs);
+
+      // Heartbeat de sortie / retour de focus
+      window.addEventListener("focus", () => {
+        Presence.heartbeat();
+        Unread.refresh();
+      });
+      window.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          Presence.heartbeat();
+        }
+      });
+
+      // Demande permission notif au premier interaction utilisateur
+      let permissionAsked = false;
+      const askOnFirstClick = () => {
+        if (permissionAsked) return;
+        permissionAsked = true;
+        Notif.requestPermission();
+        document.removeEventListener("click", askOnFirstClick);
+      };
+      document.addEventListener("click", askOnFirstClick);
+    });
+
+    window.devflowPresence = Presence;
+    window.devflowUnread = Unread;
+    window.devflowChatNotif = Notif;
+  })();
+</script>
+{% endif %}

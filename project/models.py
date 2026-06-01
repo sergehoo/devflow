@@ -1811,9 +1811,18 @@ class ChannelMembership(TimeStampedModel):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="channel_memberships")
     joined_at = models.DateTimeField(default=timezone.now)
     is_muted = models.BooleanField(default=False)
+    # PR-CHAT-2 : timestamp du dernier message lu (pour calcul unread_count).
+    # NULL = jamais lu, tous les messages du canal comptent comme non lus.
+    last_read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = [("channel", "user")]
+        indexes = [
+            models.Index(
+                fields=["user", "channel", "last_read_at"],
+                name="chan_memb_unread_idx",
+            ),
+        ]
 
 
 class Message(TimeStampedModel):

@@ -236,3 +236,69 @@ class ChatContactsView(APIView):
 
         contacts = ChatService.contacts_for(request.user, query=query, limit=limit)
         return Response({"contacts": contacts})
+
+
+# ---------------------------------------------------------------------------
+# GET /unread/  (PR-CHAT-2)
+# ---------------------------------------------------------------------------
+class ChatUnreadCountView(APIView):
+    """
+    Retourne le nombre de messages non lus par canal + total global.
+
+    Utilisé par la bulle chat flottante (badge) et la liste des canaux
+    (highlight de chaque canal non lu).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        counts = ChatService.unread_counts_for(request.user)
+        return Response(counts)
+
+
+# ---------------------------------------------------------------------------
+# POST /channels/{id}/mark-read/  (PR-CHAT-2)
+# ---------------------------------------------------------------------------
+class ChatMarkReadView(APIView):
+    """
+    Marque tous les messages du canal comme lus jusqu'à maintenant.
+
+    Idempotent. Appelé par le front au focus/scroll du canal.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        channel = ChatService.get_channel_for(request.user, pk)
+        if channel is None:
+            return Response({"detail": "Canal introuvable."}, status=404)
+        result = ChatService.mark_read(user=request.user, channel=channel)
+        return Response(result)
+
+
+# ---------------------------------------------------------------------------
+# GET /channels/{id}/members/  (PR-CHAT-3)
+# ---------------------------------------------------------------------------
+class ChatChannelMembersView(APIView):
+    """
+    Liste les membres d'un canal (groupe ou DM) avec leur présence.
+
+    Sécurité : le caller doit être membre du canal (ou le canal public dans
+    son workspace).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        channel = ChatService.get_channel_for(request.user, pk)
+        if channel is None:
+            return Response({"detail": "Canal introuvable."}, status=404)
+        try:
+            members = ChatService.members_for_channel(
+                user=request.user, channel=channel,
+            )
+        except PermissionError as exc:
+            return Response({"detail": str(exc)}, status=403)
+        return Response({
+            "channel_id": channel.pk,
+            "name": channel.name,
+            "member_count": len(members),
+            "members": members,
+        })

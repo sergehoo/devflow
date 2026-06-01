@@ -27,6 +27,7 @@ from typing import Iterable
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Max, Q
+from django.utils import timezone
 
 from project import models as dm
 
@@ -54,6 +55,11 @@ def _channel_to_dict(channel: dm.DirectChannel, *, current_user) -> dict:
       * display_name : pour les DM, le nom de l'autre membre ; pour les
         groupes, le `name` du canal
       * last_message_preview, last_message_at
+      * unread_count : nombre de messages postés par d'AUTRES après le
+        last_read_at de la membership du current_user (0 si NULL=jamais lu
+        ET aucun message ; sinon nb messages d'autres)
+      * other_user_id : pour les DM, l'ID de l'autre membre (utile pour
+        regarder sa présence côté front)
     """
     members = list(channel.members.all())
     member_dicts = [
@@ -77,6 +83,27 @@ def _channel_to_dict(channel: dm.DirectChannel, *, current_user) -> dict:
         last_preview = (last_msg.body or "")[:140]
         last_at = last_msg.created_at.isoformat()
 
+    # ── unread_count : messages d'AUTRES posté après mon last_read_at ──
+    unread_count = 0
+    if current_user is not None:
+        membership = (
+            channel.memberships
+            .filter(user_id=current_user.pk)
+            .only("last_read_at")
+            .first()
+        )
+        if membership:
+            qs = channel.messages.exclude(author_id=current_user.pk)
+            if membership.last_read_at:
+                qs = qs.filter(created_at__gt=membership.last_read_at)
+            unread_count = qs.count()
+        else:
+            # Pas de membership directe (canal public) → tous les messages
+            # d'autres sont "non lus" pour l'UI.
+            unread_count = channel.messages.exclude(
+                author_id=current_user.pk,
+            ).count()
+
     return {
         "id": channel.pk,
         "name": channel.name,
@@ -93,6 +120,8 @@ def _channel_to_dict(channel: dm.DirectChannel, *, current_user) -> dict:
         "last_message_preview": last_preview,
         "last_message_at": last_at,
         "workspace_id": channel.workspace_id,
+        "unread_count": unread_count,
+        "other_user_id": (other.pk if (is_dm and other) else None),
     }
 
 
@@ -319,6 +348,9 @@ class ChatService:
         """
         Liste les utilisateurs assignables comme contact (mêmes workspaces que
         l'utilisateur courant). Filtrable par nom/username.
+
+        Enrichit chaque contact avec son statut de présence (online/idle/offline)
+        et son ``inactive_minutes`` — calculés via ``PresenceService`` (cache Redis).
         """
         from project.utils.workspaces import get_user_workspace_ids
         workspace_ids = get_user_workspace_ids(user)
@@ -345,14 +377,116 @@ class ChatService:
             )
 
         contacts_qs = contacts_qs.order_by("first_name", "username")[:limit]
+        users = list(contacts_qs)
+
+        # Lookup batch de la présence (1 round-trip Redis).
+        from project.services.presence import PresenceService
+        presence = PresenceService.get_many([u.pk for u in users])
+
         return [
             {
                 "id": u.pk,
                 "username": u.get_username(),
                 "display_name": _user_display(u),
                 "email": u.email or "",
+                "presence": (
+                    presence.get(u.pk).to_dict()
+                    if presence.get(u.pk) else
+                    {"status": "offline", "inactive_minutes": None}
+                ),
             }
-            for u in contacts_qs
+            for u in users
+        ]
+
+    # ─── Mark-as-read ───────────────────────────────────────────────────
+    @classmethod
+    def mark_read(cls, *, user, channel: dm.DirectChannel) -> dict:
+        """
+        Met à jour ``ChannelMembership.last_read_at`` à maintenant pour ce
+        user sur ce canal. Idempotent.
+
+        Retourne dict avec le nouvel unread_count (0 après mark-read).
+
+        Si pas de membership (canal public), on en crée une — l'user
+        a "rejoint" implicitement le canal en y entrant.
+        """
+        now = timezone.now()
+        membership, _created = dm.ChannelMembership.objects.get_or_create(
+            channel=channel, user=user,
+            defaults={"last_read_at": now},
+        )
+        membership.last_read_at = now
+        membership.save(update_fields=["last_read_at", "updated_at"])
+        return {
+            "channel_id": channel.pk,
+            "last_read_at": now.isoformat(),
+            "unread_count": 0,
+        }
+
+    # ─── Unread counts ──────────────────────────────────────────────────
+    @classmethod
+    def unread_counts_for(cls, user) -> dict:
+        """
+        Retourne ``{"total": int, "by_channel": {channel_id: count}}``.
+
+        Performant : 1 requête par canal accessible (peut être optimisé
+        en un SQL annoté si volume important, mais lisibilité avant
+        optim prématurée).
+        """
+        channels = cls.channels_qs_for(user)
+        by_channel: dict[int, int] = {}
+        total = 0
+        for c in channels:
+            membership = (
+                c.memberships.filter(user_id=user.pk).only("last_read_at").first()
+            )
+            qs = c.messages.exclude(author_id=user.pk)
+            if membership and membership.last_read_at:
+                qs = qs.filter(created_at__gt=membership.last_read_at)
+            cnt = qs.count()
+            if cnt:
+                by_channel[c.pk] = cnt
+                total += cnt
+        return {"total": total, "by_channel": by_channel}
+
+    # ─── Membres canal (avec présence) ──────────────────────────────────
+    @classmethod
+    def members_for_channel(
+        cls, *, user, channel: dm.DirectChannel,
+    ) -> list[dict]:
+        """
+        Liste les membres d'un canal, enrichis de leur présence.
+
+        Vérifie l'accès du caller au canal (sinon PermissionError).
+        """
+        if not cls.channels_qs_for(user).filter(pk=channel.pk).exists():
+            raise PermissionError("Canal inaccessible.")
+
+        memberships = (
+            channel.memberships
+            .select_related("user")
+            .order_by("user__first_name", "user__username")
+        )
+        members = [m for m in memberships if m.user_id]
+
+        from project.services.presence import PresenceService
+        presence = PresenceService.get_many([m.user_id for m in members])
+
+        return [
+            {
+                "user_id": m.user_id,
+                "username": m.user.get_username(),
+                "display_name": _user_display(m.user),
+                "email": m.user.email or "",
+                "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+                "is_self": m.user_id == user.pk,
+                "presence": (
+                    presence.get(m.user_id).to_dict()
+                    if presence.get(m.user_id) else
+                    {"status": "offline", "inactive_minutes": None}
+                ),
+            }
+            for m in members
         ]
 
 

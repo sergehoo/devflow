@@ -22,11 +22,12 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9"
                       d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
             </svg>
+            {# PR-CHAT-5 : badge messages non lus, MAJ par window.devflowUnread #}
             <span
-                x-show="totalChannels > 0"
-                x-text="totalChannels"
-                class="absolute -right-2 -top-2 min-w-[20px] rounded-full bg-devaccent2
-                       border-2 border-[var(--bg)] px-1 text-center text-[10px] font-bold text-white">
+                data-chat-unread-badge
+                style="display:none;"
+                class="absolute -right-2 -top-2 min-w-[20px] rounded-full bg-devred
+                       border-2 border-[var(--bg)] px-1 text-center text-[10px] font-bold text-white items-center justify-center">
             </span>
         </div>
     </button>
@@ -109,11 +110,12 @@
                     </template>
                     <template x-for="channel in channels.slice(0, 12)" :key="channel.id">
                         <button type="button"
+                                :data-chat-channel-card="channel.id"
                                 @click="openChannel(channel)"
-                                class="w-full text-left px-3 py-2.5 border-b border-devborder/40
+                                class="chat-channel-row w-full text-left px-3 py-2.5 border-b border-devborder/40
                                        hover:bg-devbg3/60 transition">
                             <div class="flex items-center gap-2 min-w-0">
-                                <span class="shrink-0 w-8 h-8 rounded-full bg-devbg4
+                                <span class="relative shrink-0 w-8 h-8 rounded-full bg-devbg4
                                              flex items-center justify-center text-devtext2">
                                     {# Icône DM (user) ou groupe (users) #}
                                     <svg x-show="channel.is_dm" class="w-4 h-4" fill="none"
@@ -126,16 +128,30 @@
                                         <path stroke-linecap="round" stroke-linejoin="round"
                                               d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 3a3 3 0 11-6 0 3 3 0 016 0z"/>
                                     </svg>
+                                    {# PR-CHAT-1 : pastille présence pour DM uniquement #}
+                                    <span x-show="channel.is_dm && channel.other_user_id"
+                                          x-html="dotForUser(channel.other_user_id)"
+                                          class="absolute -bottom-0.5 -right-0.5"></span>
                                 </span>
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-center justify-between gap-2">
-                                        <div class="text-sm font-medium text-devtext1 truncate"
+                                        <div class="text-sm font-medium truncate"
+                                             :class="hasUnread(channel.id) ? 'text-devtext1 font-bold' : 'text-devtext1'"
                                              x-text="channel.display_name"></div>
                                         <div class="text-[10px] text-devtext3 shrink-0"
                                              x-text="formatTime(channel.last_message_at)"></div>
                                     </div>
-                                    <div class="text-[11px] text-devtext3 truncate"
-                                         x-text="channel.last_message_preview || channel.display_subtitle"></div>
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="text-[11px] text-devtext3 truncate"
+                                             x-text="channel.is_dm
+                                                ? (presenceLabel(channel.other_user_id) || channel.last_message_preview || channel.display_subtitle)
+                                                : (channel.last_message_preview || channel.display_subtitle)"></div>
+                                        {# PR-CHAT-2 : badge unread par canal #}
+                                        <span :data-chat-unread-channel="channel.id"
+                                              style="display:none;"
+                                              class="ml-2 shrink-0 min-w-[18px] rounded-full bg-devred
+                                                     px-1.5 text-center text-[10px] font-bold text-white"></span>
+                                    </div>
                                 </div>
                             </div>
                         </button>
@@ -170,11 +186,28 @@
                             </svg>
                         </span>
                         <div class="min-w-0 flex-1">
-                            <div class="text-sm font-semibold text-devtext1 truncate"
-                                 x-text="selectedChannel.display_name"></div>
+                            <div class="flex items-center gap-1.5">
+                                <span x-show="selectedChannel.is_dm && selectedChannel.other_user_id"
+                                      x-html="dotForUser(selectedChannel.other_user_id)"></span>
+                                <div class="text-sm font-semibold text-devtext1 truncate"
+                                     x-text="selectedChannel.display_name"></div>
+                            </div>
                             <div class="text-[10px] text-devtext3 truncate"
-                                 x-text="selectedChannel.display_subtitle"></div>
+                                 x-text="selectedChannel.is_dm
+                                    ? (presenceLabel(selectedChannel.other_user_id) || selectedChannel.display_subtitle)
+                                    : selectedChannel.display_subtitle"></div>
                         </div>
+                        {# PR-CHAT-3 : bouton membres pour les groupes #}
+                        <button x-show="!selectedChannel.is_dm"
+                                type="button" @click="showMembers = true; loadMembers()"
+                                class="shrink-0 rounded-md p-1 text-devtext3 hover:text-devaccent transition"
+                                title="Voir les membres">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+                                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                      d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 3a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                        </button>
                     </div>
 
                     {# Messages #}
@@ -209,6 +242,58 @@
                         </template>
                     </div>
 
+                    {# PR-CHAT-4 : indicateur typing #}
+                    <div x-show="typingUsers.length > 0"
+                         class="px-3 py-1 text-[11px] text-devtext3 italic flex items-center gap-1.5
+                                bg-[var(--bg2)] border-t border-devborder/40">
+                        <span class="inline-flex gap-0.5">
+                            <span class="w-1 h-1 rounded-full bg-devaccent animate-pulse"></span>
+                            <span class="w-1 h-1 rounded-full bg-devaccent animate-pulse" style="animation-delay:.15s"></span>
+                            <span class="w-1 h-1 rounded-full bg-devaccent animate-pulse" style="animation-delay:.3s"></span>
+                        </span>
+                        <span x-text="typingLabel()"></span>
+                    </div>
+
+                    {# PR-CHAT-3 : Modal membres du groupe (overlay) #}
+                    <div x-show="showMembers"
+                         x-cloak
+                         class="absolute inset-0 z-10 bg-[var(--bg2)]/95 backdrop-blur-sm
+                                rounded-2xl flex flex-col">
+                        <div class="flex items-center justify-between border-b border-devborder px-4 py-3">
+                            <div class="text-sm font-semibold text-devtext1">Membres du groupe</div>
+                            <button type="button" @click="showMembers = false"
+                                    class="rounded-md p-1 text-devtext3 hover:text-devtext1"
+                                    title="Fermer">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+                                     fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-2">
+                            <template x-if="loadingMembers">
+                                <div class="text-center text-xs text-devtext3 py-3">Chargement…</div>
+                            </template>
+                            <template x-for="m in channelMembers" :key="m.user_id">
+                                <div class="flex items-center gap-2 px-2 py-2 rounded-md hover:bg-devbg3/50">
+                                    <span class="relative w-7 h-7 rounded-full bg-devbg4 flex items-center justify-center text-[10px] font-semibold text-devtext2">
+                                        <span x-text="(m.display_name||'?').slice(0,2).toUpperCase()"></span>
+                                        <span x-html="dotForUser(m.user_id)"
+                                              class="absolute -bottom-0.5 -right-0.5"></span>
+                                    </span>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="text-xs font-medium text-devtext1 truncate">
+                                            <span x-text="m.display_name"></span>
+                                            <span x-show="m.is_self" class="text-devtext3">(vous)</span>
+                                        </div>
+                                        <div class="text-[10px] text-devtext3 truncate"
+                                             x-text="presenceLabel(m.user_id)"></div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
                     {# Composeur #}
                     <form @submit.prevent="sendMessage()"
                           class="border-t border-devborder p-2 flex items-end gap-2">
@@ -216,6 +301,7 @@
                             x-model="composer"
                             x-ref="bubbleComposer"
                             @keydown.enter.prevent="$event.shiftKey ? (composer += '\n') : sendMessage()"
+                            @input="emitTyping()"
                             placeholder="Écrire…"
                             rows="1"
                             class="flex-1 resize-none rounded-md border border-devborder bg-devbg3
@@ -237,9 +323,13 @@
     </div>
 </div>
 
+<style>
+  .chat-channel-row.has-unread .text-devtext3 { color: var(--devaccent); }
+</style>
 <script>
     /* Bulle flottante Messagerie DevFlow — Alpine.js
-       Consomme /api/v1/me/chat/* via window.devflowApi (CSRF intégré). */
+       Consomme /api/v1/me/chat/* via window.devflowApi.
+       Branche window.devflowPresence + window.devflowUnread + WS typing. */
     document.addEventListener("alpine:init", () => {
         Alpine.data("devflowChatBubble", () => ({
             isPanelOpen: false,
@@ -255,16 +345,28 @@
             pollTimer: null,
             lastMessageId: 0,
 
-            get totalChannels() {
-                return this.channels.length;
-            },
+            // PR-CHAT-3 : modal membres
+            showMembers: false,
+            channelMembers: [],
+            loadingMembers: false,
+
+            // PR-CHAT-4 : WebSocket + typing
+            ws: null,
+            typingUsers: [],          // [{user_id, display_name, expires_ts}]
+            typingPurgeTimer: null,
+            typingSentAt: 0,
+            typingStopTimer: null,
 
             init() {
-                // Persiste l'ouverture entre les pages via sessionStorage
                 this.isPanelOpen = sessionStorage.getItem("devflowChatBubbleOpen") === "1";
-                if (this.isPanelOpen) {
-                    this.loadChannels();
-                }
+                if (this.isPanelOpen) this.loadChannels();
+                // Re-fetch présence pour les DM affichés quand l'événement
+                // devflow:presence-updated tombe.
+                window.addEventListener("devflow:unread-changed", () => {
+                    // Trigger refresh visuel si Alpine perd la trace
+                    this.$nextTick(() => {});
+                });
+                this.typingPurgeTimer = setInterval(() => this.purgeStaleTyping(), 1500);
             },
 
             togglePanel() {
@@ -274,6 +376,7 @@
                     this.loadChannels();
                 } else {
                     this.stopPolling();
+                    this.closeWebSocket();
                     this.selectedChannel = null;
                 }
             },
@@ -283,9 +386,31 @@
                 try {
                     const data = await window.devflowApi.get("/api/v1/me/chat/channels/");
                     this.channels = (data && data.channels) || [];
+                    // Préchauffe la présence des DM (autre membre)
+                    const dmUserIds = this.channels
+                        .filter(c => c.is_dm && c.other_user_id)
+                        .map(c => c.other_user_id);
+                    if (dmUserIds.length && window.devflowPresence) {
+                        window.devflowPresence.fetchFor(dmUserIds);
+                    }
                 } finally {
                     this.loadingChannels = false;
                 }
+            },
+
+            hasUnread(channelId) {
+                if (!window.devflowUnread) return false;
+                return (window.devflowUnread.state.by_channel || {})[channelId] > 0;
+            },
+
+            dotForUser(userId) {
+                if (!userId || !window.devflowPresence) return "";
+                return window.devflowPresence.dotHtml(userId);
+            },
+
+            presenceLabel(userId) {
+                if (!userId || !window.devflowPresence) return "";
+                return window.devflowPresence.labelFor(userId);
             },
 
             formatTime(iso) {
@@ -304,6 +429,7 @@
                 this.messages = [];
                 this.lastMessageId = 0;
                 this.loadingMessages = true;
+                this.typingUsers = [];
                 try {
                     const data = await window.devflowApi.get(
                         `/api/v1/me/chat/channels/${channel.id}/messages/`
@@ -318,14 +444,23 @@
                 } finally {
                     this.loadingMessages = false;
                 }
+                // Mark-as-read au focus du canal
+                if (window.devflowUnread) {
+                    window.devflowUnread.markRead(channel.id);
+                }
                 this.startPolling();
+                this.openWebSocket();
             },
 
             closeChannel() {
                 this.stopPolling();
+                this.closeWebSocket();
                 this.selectedChannel = null;
                 this.messages = [];
+                this.typingUsers = [];
+                this.showMembers = false;
                 this.loadChannels();
+                if (window.devflowUnread) window.devflowUnread.refresh();
             },
 
             scrollToBottom() {
@@ -347,6 +482,7 @@
                         this.lastMessageId = msg.id;
                         this.composer = "";
                         this.$nextTick(() => this.scrollToBottom());
+                        this.sendTypingStop();
                     }
                 } finally {
                     this.sending = false;
@@ -366,6 +502,10 @@
                             this.messages.push(...data.messages);
                             this.lastMessageId = data.messages[data.messages.length - 1].id;
                             this.$nextTick(() => this.scrollToBottom());
+                            // Auto mark-read si on est dans le canal
+                            if (window.devflowUnread) {
+                                window.devflowUnread.markRead(this.selectedChannel.id);
+                            }
                         }
                     } catch (e) { /* silent */ }
                 }, 6000);
@@ -375,6 +515,123 @@
                 if (this.pollTimer) {
                     clearInterval(this.pollTimer);
                     this.pollTimer = null;
+                }
+            },
+
+            // ── WebSocket : typing indicator + push messages temps réel ──
+            openWebSocket() {
+                this.closeWebSocket();
+                if (!this.selectedChannel) return;
+                try {
+                    const proto = window.location.protocol === "https:" ? "wss" : "ws";
+                    const url = `${proto}://${window.location.host}/ws/chat/${this.selectedChannel.id}/`;
+                    const ws = new WebSocket(url);
+                    ws.onmessage = (ev) => this.onWsMessage(ev);
+                    ws.onerror = () => { /* silencieux */ };
+                    ws.onclose = () => { this.ws = null; };
+                    this.ws = ws;
+                } catch (e) { this.ws = null; }
+            },
+
+            closeWebSocket() {
+                if (this.ws) {
+                    try { this.ws.close(); } catch {}
+                    this.ws = null;
+                }
+            },
+
+            onWsMessage(ev) {
+                let payload;
+                try { payload = JSON.parse(ev.data || "{}"); } catch { return; }
+                if (payload.type === "typing") {
+                    const uid = payload.user_id;
+                    const name = payload.display_name || payload.username || "Quelqu'un";
+                    const existing = this.typingUsers.find(t => t.user_id === uid);
+                    if (payload.is_typing) {
+                        const entry = { user_id: uid, display_name: name, expires_ts: Date.now() + 5000 };
+                        if (existing) Object.assign(existing, entry);
+                        else this.typingUsers.push(entry);
+                    } else {
+                        this.typingUsers = this.typingUsers.filter(t => t.user_id !== uid);
+                    }
+                } else if (payload.type === "chat_message" && payload.message) {
+                    // Évite les doublons avec le polling : compare l'ID
+                    if (this.messages.some(m => m.id === payload.message.id)) return;
+                    if (payload.message.id > this.lastMessageId) {
+                        this.messages.push({
+                            id: payload.message.id,
+                            body: payload.message.body,
+                            author_name: payload.message.author,
+                            author_id: payload.message.author_id,
+                            is_self: payload.message.is_mine,
+                            created_at: payload.message.created_at,
+                            parent_id: payload.message.parent_id,
+                        });
+                        this.lastMessageId = payload.message.id;
+                        this.$nextTick(() => this.scrollToBottom());
+                        if (window.devflowUnread) {
+                            window.devflowUnread.markRead(this.selectedChannel.id);
+                        }
+                    }
+                }
+            },
+
+            purgeStaleTyping() {
+                const now = Date.now();
+                const before = this.typingUsers.length;
+                this.typingUsers = this.typingUsers.filter(t => t.expires_ts > now);
+                if (this.typingUsers.length !== before) { /* trigger reactivity */ }
+            },
+
+            typingLabel() {
+                if (!this.typingUsers.length) return "";
+                if (this.typingUsers.length === 1) {
+                    return `${this.typingUsers[0].display_name} est en train d'écrire…`;
+                }
+                const names = this.typingUsers.slice(0, 2).map(t => t.display_name).join(", ");
+                return this.typingUsers.length > 2
+                    ? `${names} et d'autres écrivent…`
+                    : `${names} sont en train d'écrire…`;
+            },
+
+            emitTyping() {
+                if (!this.ws || this.ws.readyState !== 1) return;
+                const now = Date.now();
+                // throttle : 1 typing.start max toutes les 2.5s
+                if (now - this.typingSentAt < 2500) return;
+                this.typingSentAt = now;
+                try { this.ws.send(JSON.stringify({ type: "typing.start" })); } catch {}
+                // Programme un typing.stop si l'user arrête de taper
+                if (this.typingStopTimer) clearTimeout(this.typingStopTimer);
+                this.typingStopTimer = setTimeout(() => this.sendTypingStop(), 3500);
+            },
+
+            sendTypingStop() {
+                if (this.typingStopTimer) {
+                    clearTimeout(this.typingStopTimer);
+                    this.typingStopTimer = null;
+                }
+                if (this.ws && this.ws.readyState === 1) {
+                    try { this.ws.send(JSON.stringify({ type: "typing.stop" })); } catch {}
+                }
+                this.typingSentAt = 0;
+            },
+
+            // ── PR-CHAT-3 : Membres du groupe ───────────────────────────
+            async loadMembers() {
+                if (!this.selectedChannel) return;
+                this.loadingMembers = true;
+                try {
+                    const data = await window.devflowApi.get(
+                        `/api/v1/me/chat/channels/${this.selectedChannel.id}/members/`
+                    );
+                    this.channelMembers = (data && data.members) || [];
+                    // Force refresh présence pour les membres
+                    if (window.devflowPresence) {
+                        window.devflowPresence.fetchFor(this.channelMembers.map(m => m.user_id));
+                    }
+                } finally {
+                    this.loadingMembers = false;
                 }
             },
         }));

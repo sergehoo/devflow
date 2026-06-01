@@ -14,11 +14,18 @@ from drf_spectacular.views import (
 from rest_framework.routers import DefaultRouter
 
 from project.api.views_chat import (
+    ChatChannelMembersView,
     ChatChannelMessagesView,
     ChatChannelsListView,
     ChatContactsView,
     ChatDirectCreateView,
     ChatGroupCreateView,
+    ChatMarkReadView,
+    ChatUnreadCountView,
+)
+from project.api.views_presence import (
+    PresenceBatchView,
+    PresenceHeartbeatView,
 )
 from project.api.views_quick import (
     AIChatStreamView,
@@ -131,6 +138,23 @@ urlpatterns = [
     path("me/chat/contacts/",
          ChatContactsView.as_view(),
          name="api-chat-contacts"),
+    path("me/chat/unread/",
+         ChatUnreadCountView.as_view(),
+         name="api-chat-unread"),
+    path("me/chat/channels/<int:pk>/mark-read/",
+         ChatMarkReadView.as_view(),
+         name="api-chat-mark-read"),
+    path("me/chat/channels/<int:pk>/members/",
+         ChatChannelMembersView.as_view(),
+         name="api-chat-channel-members"),
+
+    # ────── Présence en ligne / inactif (PR-CHAT-1) ──────
+    path("me/presence/heartbeat/",
+         PresenceHeartbeatView.as_view(),
+         name="api-presence-heartbeat"),
+    path("me/presence/",
+         PresenceBatchView.as_view(),
+         name="api-presence-batch"),
 
     # Schema OpenAPI
     path("schema/", SpectacularAPIView.as_view(), name="api-schema"),
