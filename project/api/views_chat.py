@@ -85,7 +85,7 @@ class ChatDirectCreateView(APIView):
             .filter(
                 # via profile, team membership ou owner
                 Q(profile__workspace_id__in=accessible_workspace_ids)
-                | Q(team_memberships__workspace_id__in=accessible_workspace_ids)
+                | Q(devflow_memberships__workspace_id__in=accessible_workspace_ids)
                 | Q(owned_workspaces__id__in=accessible_workspace_ids)
             )
             .distinct()
@@ -138,7 +138,7 @@ class ChatGroupCreateView(APIView):
             User.objects.filter(pk__in=member_ids, is_active=True)
             .filter(
                 Q(profile__workspace_id__in=accessible_workspace_ids)
-                | Q(team_memberships__workspace_id__in=accessible_workspace_ids)
+                | Q(devflow_memberships__workspace_id__in=accessible_workspace_ids)
                 | Q(owned_workspaces__id__in=accessible_workspace_ids)
             )
             .distinct()

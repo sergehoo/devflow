@@ -327,7 +327,7 @@ class ChatService:
             User.objects
             .filter(
                 Q(profile__workspace_id__in=workspace_ids)
-                | Q(team_memberships__workspace_id__in=workspace_ids)
+                | Q(devflow_memberships__workspace_id__in=workspace_ids)
                 | Q(owned_workspaces__id__in=workspace_ids)
             )
             .exclude(pk=user.pk)

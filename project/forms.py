@@ -1103,10 +1103,9 @@ class TaskForm(BaseStyledModelForm):
                 )
 
                 # SECURITY — Utilise le helper centralisé qui couvre
-                # team_memberships + profile.workspace + owned_workspaces.
-                # Avant : seul devflow_memberships était considéré (fuite
-                # potentielle inverse : un user du workspace sans
-                # TeamMembership n'apparaissait pas).
+                # devflow_memberships (TeamMembership) + profile.workspace
+                # + owned_workspaces. Évite la fuite inverse où un user du
+                # workspace sans TeamMembership n'apparaîtrait pas.
                 from project.utils.workspaces import users_in_workspaces
                 assignee_qs = users_in_workspaces([workspace.pk])
 
