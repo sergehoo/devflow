@@ -22,7 +22,11 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("project", "0033_merge_20260601_1038"),
+        # Avant : dépendait directement de 0033_merge_20260601_1038, mais
+        # un merge intermédiaire 0034_merge_20260601_1049 a été généré
+        # côté repo (par makemigrations --merge). On enchaîne dessus pour
+        # ne laisser qu'un seul leaf migration.
+        ("project", "0034_merge_20260601_1049"),
     ]
 
     operations = [
