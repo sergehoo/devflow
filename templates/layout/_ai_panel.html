@@ -27,7 +27,8 @@
   <div class="ai-messages" id="aiMessages" x-ref="messages">
     <template x-for="msg in messages" :key="msg.id">
       <div class="ai-msg" :class="msg.role === 'user' ? 'user' : 'bot'">
-        <div class="ai-bubble" x-html="msg.html"></div>
+        <div class="ai-bubble ai-markdown" x-html="msg.html"
+             x-init="$nextTick(() => devflowAIRender($el))"></div>
         <div class="ai-time" x-text="msg.time"></div>
       </div>
     </template>
@@ -74,7 +75,275 @@
     0%, 60%, 100% { opacity:.25; transform: translateY(0); }
     30%           { opacity:1;   transform: translateY(-3px); }
   }
+
+  /* ── Markdown styling pour les réponses IA ───────────────────── */
+  .ai-markdown { line-height: 1.55; font-size: 13px; }
+  .ai-markdown > *:first-child { margin-top: 0; }
+  .ai-markdown > *:last-child  { margin-bottom: 0; }
+  .ai-markdown h1, .ai-markdown h2, .ai-markdown h3, .ai-markdown h4 {
+    margin: 14px 0 6px; font-weight: 700; color: var(--text1);
+    line-height: 1.25;
+  }
+  .ai-markdown h1 { font-size: 17px; }
+  .ai-markdown h2 { font-size: 15px; }
+  .ai-markdown h3 { font-size: 14px; color: var(--accent); }
+  .ai-markdown h4 { font-size: 13px; }
+  .ai-markdown p { margin: 6px 0; }
+  .ai-markdown strong { font-weight: 700; color: var(--text1); }
+  .ai-markdown em { font-style: italic; }
+  .ai-markdown del { color: var(--text3); }
+  .ai-markdown a { color: var(--accent); text-decoration: underline; }
+  .ai-markdown a:hover { color: var(--accent2); }
+  .ai-markdown ul, .ai-markdown ol {
+    margin: 6px 0 6px 0; padding-left: 22px;
+  }
+  .ai-markdown ul li { list-style: disc; margin: 2px 0; }
+  .ai-markdown ol li { list-style: decimal; margin: 2px 0; }
+  .ai-markdown ul ul, .ai-markdown ol ul { list-style: circle; }
+  .ai-markdown blockquote {
+    margin: 8px 0; padding: 6px 10px;
+    border-left: 3px solid var(--accent);
+    background: rgba(124,111,247,0.06);
+    color: var(--text2); font-style: italic;
+    border-radius: 0 6px 6px 0;
+  }
+  .ai-markdown code {
+    font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+    font-size: 12px;
+    background: rgba(0,0,0,0.18);
+    padding: 1px 5px; border-radius: 4px;
+    color: var(--text1);
+  }
+  .ai-markdown pre {
+    margin: 8px 0; padding: 10px 12px;
+    background: rgba(0,0,0,0.28);
+    border: 1px solid var(--border, rgba(255,255,255,0.06));
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .ai-markdown pre code {
+    background: none; padding: 0; color: inherit;
+  }
+  .ai-markdown hr {
+    border: 0; border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+    margin: 12px 0;
+  }
+  /* Tableaux */
+  .ai-markdown table {
+    width: 100%; border-collapse: collapse; margin: 10px 0;
+    font-size: 12px;
+    border: 1px solid var(--border, rgba(255,255,255,0.10));
+    border-radius: 8px; overflow: hidden;
+  }
+  .ai-markdown thead {
+    background: linear-gradient(135deg, rgba(124,111,247,0.15), rgba(56,189,248,0.10));
+  }
+  .ai-markdown th, .ai-markdown td {
+    padding: 7px 10px; text-align: left;
+    border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+    border-right: 1px solid var(--border, rgba(255,255,255,0.06));
+  }
+  .ai-markdown th { font-weight: 700; color: var(--text1); }
+  .ai-markdown th:last-child, .ai-markdown td:last-child { border-right: 0; }
+  .ai-markdown tbody tr:last-child td { border-bottom: 0; }
+  .ai-markdown tbody tr:hover { background: rgba(255,255,255,0.025); }
+  /* Cellules numériques alignées au centre — heuristique */
+  .ai-markdown td:nth-child(n+2):not(:last-child) { /* numérique probable */ }
+  /* Badges "critique/élevé/moyen/faible" automatiques sur cellules */
+  .ai-markdown td .badge-pill {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 700;
+  }
+  /* Mermaid container */
+  .ai-markdown .mermaid {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border, rgba(255,255,255,0.06));
+    border-radius: 8px; padding: 8px;
+    margin: 10px 0;
+    overflow-x: auto;
+    text-align: center;
+  }
+  .ai-markdown .mermaid svg { max-width: 100%; height: auto; }
+  /* Tag de carte / KPI inline */
+  .ai-markdown .ai-kpi-card {
+    display: inline-flex; flex-direction: column;
+    gap: 2px; padding: 8px 12px;
+    background: linear-gradient(135deg, rgba(124,111,247,0.10), rgba(56,189,248,0.06));
+    border: 1px solid var(--border, rgba(255,255,255,0.08));
+    border-radius: 10px;
+    margin: 4px 6px 4px 0;
+  }
+  .ai-markdown .ai-kpi-card .label {
+    font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .ai-markdown .ai-kpi-card .value {
+    font-size: 18px; font-weight: 800; color: var(--text1);
+  }
 </style>
+
+{# Bibliothèques de rendu — chargées une seule fois par page #}
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.min.js"></script>
+<script>
+  /* ----------------------------------------------------------------
+     Rendu enrichi des réponses IA — Markdown + Mermaid + sanitization.
+
+     Exposé via window.devflowAIRender(el) :
+       1. Si `el.dataset.rendered === "1"`, on ne refait rien.
+       2. Sinon on parse le `innerHTML` brut (qui peut être Markdown OU
+          HTML simple type <strong>) avec marked, on sanitise avec
+          DOMPurify, on remplace innerHTML.
+       3. On rend les fences mermaid en SVG via mermaid.run().
+       4. On annote les cellules de tableau "Priorité/Statut" avec
+          des badges colorés (Critique = rouge, Élevé = orange, etc.).
+  ---------------------------------------------------------------- */
+  (function () {
+    if (window.devflowAIRender) return;
+
+    // Init mermaid (theme dark cohérent avec DevFlow)
+    let mermaidReady = false;
+    function ensureMermaid() {
+      if (mermaidReady || typeof mermaid === "undefined") return;
+      try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "dark",
+          themeVariables: {
+            primaryColor: "#7c6ff7",
+            primaryTextColor: "#fff",
+            primaryBorderColor: "#7c6ff7",
+            lineColor: "#94a3b8",
+            secondaryColor: "#38bdf8",
+            tertiaryColor: "#1e293b",
+          },
+          securityLevel: "strict",
+          fontFamily: "ui-sans-serif, system-ui, sans-serif",
+        });
+        mermaidReady = true;
+      } catch (e) { /* ignore */ }
+    }
+
+    // Configure marked : GFM, tables, breaks, smart lists
+    function ensureMarked() {
+      if (typeof marked === "undefined") return false;
+      marked.setOptions({
+        gfm: true,
+        breaks: true,
+        smartLists: true,
+        headerIds: false,
+        mangle: false,
+      });
+      return true;
+    }
+
+    function badgeForPriority(text) {
+      const t = (text || "").trim().toLowerCase();
+      const map = {
+        "critique":   { bg: "#ef4444", fg: "#fff" },
+        "critical":   { bg: "#ef4444", fg: "#fff" },
+        "élevée":     { bg: "#f97316", fg: "#fff" },
+        "elevee":     { bg: "#f97316", fg: "#fff" },
+        "high":       { bg: "#f97316", fg: "#fff" },
+        "haute":      { bg: "#f97316", fg: "#fff" },
+        "moyenne":    { bg: "#facc15", fg: "#1f2937" },
+        "medium":     { bg: "#facc15", fg: "#1f2937" },
+        "faible":     { bg: "#22c55e", fg: "#fff" },
+        "low":        { bg: "#22c55e", fg: "#fff" },
+        "en cours":   { bg: "#38bdf8", fg: "#fff" },
+        "planifié":   { bg: "#94a3b8", fg: "#1f2937" },
+        "planifie":   { bg: "#94a3b8", fg: "#1f2937" },
+        "terminé":    { bg: "#10b981", fg: "#fff" },
+        "termine":    { bg: "#10b981", fg: "#fff" },
+        "bloqué":     { bg: "#dc2626", fg: "#fff" },
+        "bloque":     { bg: "#dc2626", fg: "#fff" },
+      };
+      const m = map[t];
+      if (!m) return null;
+      return `<span class="badge-pill" style="background:${m.bg};color:${m.fg}">${text}</span>`;
+    }
+
+    function decorateTables(root) {
+      root.querySelectorAll("table").forEach(table => {
+        // Repère les colonnes Priorité / Statut depuis les headers
+        const headers = [...table.querySelectorAll("thead th")].map(th =>
+          th.textContent.trim().toLowerCase()
+        );
+        if (!headers.length) return;
+        const colIdx = headers.findIndex(h =>
+          h.includes("priorité") || h.includes("priorite") || h === "priority" ||
+          h.includes("statut") || h === "status" || h.includes("niveau")
+        );
+        if (colIdx < 0) return;
+        table.querySelectorAll("tbody tr").forEach(tr => {
+          const td = tr.children[colIdx];
+          if (!td) return;
+          // Si la cellule contient juste du texte simple, remplace par un badge
+          const txt = td.textContent.trim();
+          const badge = badgeForPriority(txt);
+          if (badge && !td.querySelector(".badge-pill")) {
+            td.innerHTML = badge;
+          }
+        });
+      });
+    }
+
+    function renderMermaid(root) {
+      ensureMermaid();
+      if (!mermaidReady || typeof mermaid === "undefined") return;
+      // marked rend ```mermaid ... ``` en <pre><code class="language-mermaid">
+      // On les convertit en <div class="mermaid">code</div>
+      const blocks = root.querySelectorAll("pre > code.language-mermaid, pre > code.lang-mermaid");
+      blocks.forEach((codeEl, idx) => {
+        const pre = codeEl.parentElement;
+        const wrap = document.createElement("div");
+        wrap.className = "mermaid";
+        wrap.textContent = codeEl.textContent;
+        pre.replaceWith(wrap);
+      });
+      // Render
+      const targets = root.querySelectorAll(".mermaid:not([data-processed])");
+      if (targets.length) {
+        try {
+          mermaid.run({ nodes: targets });
+        } catch (e) { /* silencieux */ }
+      }
+    }
+
+    window.devflowAIRender = function (el) {
+      if (!el || el.dataset.rendered === "1") return;
+      const raw = el.innerHTML;
+      if (!ensureMarked()) {
+        // marked pas (encore) chargée — réessaye dans 200ms
+        setTimeout(() => window.devflowAIRender(el), 200);
+        return;
+      }
+      try {
+        // marked accepte aussi du HTML mélangé — il préserve les tags inline
+        const html = marked.parse(raw, { async: false });
+        const safe = (typeof DOMPurify !== "undefined")
+          ? DOMPurify.sanitize(html, {
+              ADD_TAGS: ["foreignObject", "g", "path", "rect", "circle", "line", "polyline", "polygon", "text"],
+              ADD_ATTR: ["target", "rel"],
+            })
+          : html;
+        el.innerHTML = safe;
+        // Liens externes → nouveau tab
+        el.querySelectorAll("a[href^='http']").forEach(a => {
+          a.setAttribute("target", "_blank");
+          a.setAttribute("rel", "noopener noreferrer");
+        });
+        decorateTables(el);
+        renderMermaid(el);
+        el.dataset.rendered = "1";
+      } catch (e) {
+        console.warn("AI render failed:", e);
+      }
+    };
+  })();
+</script>
 
 <script>
 function devflowAIPanel() {
