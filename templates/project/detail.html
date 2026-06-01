@@ -6,11 +6,7 @@
 {% block breadcrumb %}Projet · Détail{% endblock %}
 
 {% block content %}
-
-{# ─── Phase 2 (PR11) — Section méthodologie ────────────────────────────
-   N'affiche un bloc additionnel que pour les projets WATERFALL / FIELD /
-   REAL_ESTATE / ADMINISTRATIVE (autres méthodologies = comportement
-   strictement identique à avant). #}
+    
 {% if methodology_partial %}
 <div class="mb-6">
     {% include methodology_partial %}
