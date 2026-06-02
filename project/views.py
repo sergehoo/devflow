@@ -8567,7 +8567,7 @@ class InvoiceClientDeleteView(DevflowDeleteView):
 # le logo, la raison sociale, les mentions légales et les coordonnées
 # qui apparaissent sur les factures PDF. Pas besoin de Django admin.
 # ─────────────────────────────────────────────────────────────────────
-class WorkspaceBrandingView(DevflowBaseMixin, View):
+class WorkspaceBrandingView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
     """
     Édite UNIQUEMENT le workspace courant du user (impossible de viser
     un autre workspace via URL). Champs strictement branding/papier
