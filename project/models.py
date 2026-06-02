@@ -3527,7 +3527,13 @@ class Invoice(TimeStampedModel, SoftDeleteModel):
         Workspace, on_delete=models.CASCADE, related_name="invoices"
     )
     project = models.ForeignKey(
-        Project, on_delete=models.PROTECT, related_name="invoices"
+        Project, on_delete=models.PROTECT, related_name="invoices",
+        null=True, blank=True,
+        help_text=(
+            "Projet associé. Facultatif : une facture peut être émise "
+            "librement (consulting flat-fee, licence, frais divers...). "
+            "La facture reste toujours rattachée à un workspace."
+        ),
     )
     client = models.ForeignKey(
         InvoiceClient, on_delete=models.PROTECT,
@@ -3594,7 +3600,15 @@ class Invoice(TimeStampedModel, SoftDeleteModel):
         ]
 
     def __str__(self):
-        return f"{self.number or 'Brouillon'} · {self.project.name}"
+        # Project peut être null (facture libre) — on tombe alors sur le
+        # client, ou à défaut sur "Hors projet".
+        if self.project_id:
+            ref = self.project.name
+        elif self.client_id:
+            ref = self.client.name
+        else:
+            ref = "Hors projet"
+        return f"{self.number or 'Brouillon'} · {ref}"
 
     # ────────────────────────────────────────────────────────────────────
     # Numérotation

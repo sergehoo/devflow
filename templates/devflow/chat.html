@@ -4,6 +4,11 @@
 {% block page_title %}Discussions{% endblock %}
 {% block breadcrumb %}Collaboration · Messages{% endblock %}
 
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Collaboration · Chat collaborateurs">
+  <meta name="devflow-ai-object-type" content="chat">
+{% endblock %}
+
 {% block content %}
 <div
     x-data="devflowChat()"

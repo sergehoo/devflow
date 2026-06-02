@@ -4,6 +4,12 @@
 {% block page_title %}{{ greeting }}{% if request.user.first_name %}, {{ request.user.first_name }}{% else %}, {{ request.user.username }}{% endif %}{% endblock %}
 {% block breadcrumb %}Aujourd'hui · {{ today|date:"l j F Y" }}{% endblock %}
 
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Ma journée · Tâches du jour">
+  <meta name="devflow-ai-object-type" content="my_day">
+  <meta name="devflow-ai-object-name" content="{{ today|date:'l j F Y' }}">
+{% endblock %}
+
 {% block content %}
 <div class="space-y-6">
 

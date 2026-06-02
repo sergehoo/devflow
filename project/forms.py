@@ -2144,20 +2144,65 @@ class InvoiceForm(BaseStyledModelForm):
         ws = self.current_workspace
         if ws:
             if "project" in self.fields:
+                # SECURITY — limite les projets sélectionnables au workspace
+                # du caller. Permet aussi facture libre (pas de project).
                 self.fields["project"].queryset = Project.objects.filter(
                     workspace=ws, is_archived=False
                 ).order_by("name")
+                self.fields["project"].required = False
+                self.fields["project"].empty_label = "— Aucun (facture libre) —"
+                self.fields["project"].help_text = (
+                    "Facultatif. Laissez vide pour une facture libre "
+                    "(consulting, licence, frais divers…)."
+                )
             if "client" in self.fields:
+                # SECURITY — clients aussi scopés au workspace
                 self.fields["client"].queryset = InvoiceClient.objects.filter(
                     workspace=ws, is_archived=False
                 ).order_by("name")
                 self.fields["client"].required = False
+            if "workspace" in self.fields:
+                # SECURITY — le workspace est figé sur celui du caller.
+                # On le pré-remplit et le rend hidden pour éviter qu'un
+                # client n'envoie un workspace_id étranger via POST.
+                from project.models import Workspace
+                self.fields["workspace"].queryset = Workspace.objects.filter(pk=ws.pk)
+                self.fields["workspace"].initial = ws
+                self.fields["workspace"].widget = forms.HiddenInput()
         for date_field in ("issue_date", "due_date", "period_start", "period_end"):
             if date_field in self.fields:
                 self.fields[date_field].input_formats = ["%Y-%m-%d"]
 
     def clean(self):
         cleaned = super().clean()
+        ws = self.current_workspace
+
+        # SECURITY — force le workspace au caller, ignore tout input.
+        if ws:
+            cleaned["workspace"] = ws
+
+        # Cohérence project / client : au moins l'un des deux doit être
+        # défini pour qu'on sache qui est facturé ou pour quoi.
+        project = cleaned.get("project")
+        client = cleaned.get("client")
+        if not project and not client:
+            self.add_error(
+                "client",
+                "Renseignez au moins un projet OU un client (facture libre).",
+            )
+
+        # Cross-check sécurité : si project fourni, doit appartenir au ws
+        if project and ws and project.workspace_id != ws.pk:
+            self.add_error(
+                "project",
+                "Projet inaccessible dans cet espace de travail.",
+            )
+        if client and ws and client.workspace_id != ws.pk:
+            self.add_error(
+                "client",
+                "Client inaccessible dans cet espace de travail.",
+            )
+
         issue = cleaned.get("issue_date")
         due = cleaned.get("due_date")
         if issue and due and due < issue:

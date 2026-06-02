@@ -2176,6 +2176,24 @@
     </style>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+    {# ══════════════════════════════════════════════════════════════════
+       Contexte IA — meta tags lus par _ai_panel.html (_capturePageContext).
+       Chaque template peut surcharger {% block ai_context %} pour fournir
+       à l'IA l'entité courante et la zone fonctionnelle.
+
+       Conventions :
+         <meta name="devflow-ai-section"     content="Projets · Liste">
+         <meta name="devflow-ai-object-type" content="project">
+         <meta name="devflow-ai-object-id"   content="42">
+         <meta name="devflow-ai-object-name" content="KAYDAN SHIELD">
+         <meta name="devflow-ai-object-status" content="En cours">
+
+       Le block est aussi exploitable pour <article data-ai-snippet>...</article>
+       côté contenu de page si besoin d'un extrait textuel ciblé.
+    ══════════════════════════════════════════════════════════════════ #}
+    {% block ai_context %}{% endblock %}
+
     {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-[var(--bg)] text-[var(--text1)]">

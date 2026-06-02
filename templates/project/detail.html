@@ -5,6 +5,14 @@
 {% block page_title %}{{ project_obj.name }}{% endblock %}
 {% block breadcrumb %}Projet · Détail{% endblock %}
 
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Projet · Détail">
+  <meta name="devflow-ai-object-type" content="project">
+  <meta name="devflow-ai-object-id" content="{{ project_obj.id }}">
+  <meta name="devflow-ai-object-name" content="{{ project_obj.name }}">
+  <meta name="devflow-ai-object-status" content="{{ project_obj.get_status_display|default:project_obj.status }}">
+{% endblock %}
+
 {% block content %}
     
 {% if methodology_partial %}

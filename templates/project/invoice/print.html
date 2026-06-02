@@ -41,8 +41,13 @@
     </div>
 
     <div class="mt-4 text-sm">
-        <p class="text-xs uppercase text-gray-500">Projet</p>
-        <p class="font-semibold">{{ invoice.project.name }}</p>
+        {% if invoice.project %}
+            <p class="text-xs uppercase text-gray-500">Projet</p>
+            <p class="font-semibold">{{ invoice.project.name }}</p>
+        {% else %}
+            <p class="text-xs uppercase text-gray-500">Référence</p>
+            <p class="font-semibold">{{ invoice.title|default:"Facture libre" }}</p>
+        {% endif %}
         {% if invoice.period_start or invoice.period_end %}
             <p class="text-xs text-gray-600">Période : {{ invoice.period_start|date:"d/m/Y"|default:"—" }} → {{ invoice.period_end|date:"d/m/Y"|default:"—" }}</p>
         {% endif %}

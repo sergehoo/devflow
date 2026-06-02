@@ -8655,11 +8655,31 @@ class InvoiceCreateView(DevflowCreateView):
     def form_valid(self, form):
         invoice = form.save(commit=False)
         invoice.issued_by = self.request.user
-        if not invoice.workspace_id and invoice.project_id:
+        # SECURITY — workspace forcé sur celui du caller, jamais d'inférence
+        # depuis le project (qui peut être null en mode facture libre).
+        ws = self.get_current_workspace()
+        if ws:
+            invoice.workspace = ws
+        elif invoice.project_id:
+            # Fallback ultime : si pas de current_workspace (cas SuperAdmin
+            # sans contexte), on prend celui du project si fourni.
             invoice.workspace = invoice.project.workspace
+        if not invoice.workspace_id:
+            messages.error(
+                self.request,
+                "Impossible de créer la facture : aucun workspace de rattachement.",
+            )
+            return redirect("invoice_list")
         invoice.save()
         invoice.recompute_totals()
-        messages.success(self.request, f"Facture {invoice.number or 'brouillon'} créée.")
+        scope = (
+            f"projet {invoice.project.name}" if invoice.project_id
+            else "(facture libre)"
+        )
+        messages.success(
+            self.request,
+            f"Facture {invoice.number or 'brouillon'} créée — {scope}.",
+        )
         return redirect("invoice_detail", pk=invoice.pk)
 
 

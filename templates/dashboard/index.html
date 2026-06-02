@@ -4,6 +4,14 @@
 {% block page_title %}Tableau de bord{% endblock %}
 {% block breadcrumb %}Vue d'ensemble · {{ current_workspace.quarter_label|default:'Période active' }}{% endblock %}
 
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Tableau de bord · Vue d'ensemble">
+  <meta name="devflow-ai-object-type" content="dashboard">
+  {% if current_workspace %}
+    <meta name="devflow-ai-object-name" content="{{ current_workspace.name }}">
+  {% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="space-y-6">
 

@@ -4,6 +4,11 @@
 {% block page_title %}Analytics{% endblock %}
 {% block breadcrumb %}Pilotage · Indicateurs{% endblock %}
 
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Analytics · Indicateurs">
+  <meta name="devflow-ai-object-type" content="analytics">
+{% endblock %}
+
 {% block content %}
 <div class="stat-grid">
     {% include 'devflow/partials/_stats_cards.html' %}

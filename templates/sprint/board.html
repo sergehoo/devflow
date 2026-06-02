@@ -4,6 +4,16 @@
 {% block page_title %}Board Sprint{% endblock %}
 {% block breadcrumb %}Sprint · Kanban interactif{% endblock %}
 
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Sprint · Kanban">
+  <meta name="devflow-ai-object-type" content="sprint_board">
+  {% if active_sprint %}
+    <meta name="devflow-ai-object-id" content="{{ active_sprint.id }}">
+    <meta name="devflow-ai-object-name" content="{{ active_sprint.name }}">
+    <meta name="devflow-ai-object-status" content="{{ active_sprint.get_status_display|default:active_sprint.status }}">
+  {% endif %}
+{% endblock %}
+
 {% block content %}
     {% include 'devflow/partials/_sprint_banner.html' %}
     {% include 'devflow/partials/_kanban_board.html' %}

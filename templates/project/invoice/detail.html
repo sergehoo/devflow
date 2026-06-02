@@ -9,12 +9,19 @@
             <div>
                 <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--accent)]">DevFlow · Facturation</p>
                 <h1 class="mt-2 font-serif text-3xl text-[var(--text1)]">
-                    {{ invoice.title|default:invoice.project.name }}
+                    {% if invoice.title %}{{ invoice.title }}
+                    {% elif invoice.project %}{{ invoice.project.name }}
+                    {% elif invoice.client %}{{ invoice.client.name }}
+                    {% else %}Facture libre{% endif %}
                 </h1>
                 <p class="mt-2 text-sm text-[var(--text2)]">
                     {% if invoice.number %}<strong class="text-[var(--text1)]">{{ invoice.number }}</strong> · {% endif %}
-                    {{ invoice.get_billing_mode_display }} ·
-                    Projet <a href="#" class="text-[var(--accent)]">{{ invoice.project.name }}</a>
+                    {{ invoice.get_billing_mode_display }}
+                    {% if invoice.project %}·
+                        Projet <a href="{% url 'project_detail' invoice.project.pk %}" class="text-[var(--accent)]">{{ invoice.project.name }}</a>
+                    {% else %}·
+                        <span class="text-[var(--text3)]">Facture libre</span>
+                    {% endif %}
                     {% if invoice.client %}— Client {{ invoice.client.name }}{% endif %}
                 </p>
             </div>

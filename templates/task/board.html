@@ -19,6 +19,11 @@
 {% block page_title %}Kanban tâches{% endblock %}
 {% block breadcrumb %}Exécution · Vue kanban{% endblock %}
 
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Tâches · Vue kanban">
+  <meta name="devflow-ai-object-type" content="task_board">
+{% endblock %}
+
 {% block content %}
 <div
     x-data="devflowKanban({

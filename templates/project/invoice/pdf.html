@@ -283,8 +283,13 @@
             <span class="value">{{ invoice.due_date|date:"d/m/Y"|default:"—" }}</span>
         </td>
         <td>
-            <div class="label">Projet</div>
-            <span class="value">{{ project.name|default:"—" }}</span>
+            <div class="label">{% if project %}Projet{% else %}Référence{% endif %}</div>
+            <span class="value">
+                {% if project %}{{ project.name }}
+                {% elif invoice.title %}{{ invoice.title }}
+                {% else %}Facture libre
+                {% endif %}
+            </span>
         </td>
         <td>
             <div class="label">Devise</div>
