@@ -1,0 +1,207 @@
+{% extends "layout/base.html" %}
+
+{% block title %}DevFlow — Identité & papier en-tête{% endblock %}
+{% block page_title %}Identité & papier en-tête{% endblock %}
+{% block breadcrumb %}Facturation · Identité émetteur{% endblock %}
+
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Facturation · Identité émetteur">
+  <meta name="devflow-ai-object-type" content="workspace_branding">
+  <meta name="devflow-ai-object-id" content="{{ workspace.id }}">
+  <meta name="devflow-ai-object-name" content="{{ workspace.name }}">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl space-y-6">
+
+  {# ─── Bandeau explicatif ─── #}
+  <div class="rounded-2xl border border-devborder bg-devbg2 p-5">
+    <div class="flex items-start gap-3">
+      <div class="shrink-0 w-10 h-10 rounded-xl bg-devaccent/15 flex items-center justify-center text-devaccent">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+      </div>
+      <div class="flex-1 min-w-0">
+        <h2 class="text-base font-semibold text-devtext1">
+          Données qui apparaissent sur les factures PDF
+        </h2>
+        <p class="mt-1 text-sm text-devtext2">
+          Ces informations sont utilisées pour le papier en-tête, le pied de page
+          légal et les mentions de TVA de toutes les factures émises depuis
+          <strong>{{ workspace.name }}</strong>. Plus elles sont complètes,
+          plus les factures sont conformes.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {# ─── Alerte si infos critiques manquantes ─── #}
+  {% with missing="" %}
+    {% if not workspace.legal_name %}{% with missing=missing|add:"Raison sociale, " %}{% endwith %}{% endif %}
+  {% endwith %}
+  {% if not workspace.legal_name or not workspace.address_line1 or not workspace.legal_rccm %}
+    <div class="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">
+      <div class="font-semibold mb-1">⚠️ Workspace incomplet</div>
+      <p>
+        Pour que vos factures PDF soient complètes et conformes, complétez au minimum :
+        <strong>Raison sociale</strong>, <strong>Adresse</strong>, <strong>RCCM</strong>,
+        <strong>Téléphone</strong>. Les champs vides ne s'affichent simplement pas sur le PDF.
+      </p>
+    </div>
+  {% endif %}
+
+  {# ─── Formulaire ─── #}
+  <form method="post" enctype="multipart/form-data" class="space-y-6">
+    {% csrf_token %}
+
+    {# ─ Logo & identité visuelle ─ #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6 space-y-4">
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-devtext3">
+        Logo & identité visuelle
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="md:col-span-1">
+          <div class="rounded-xl border border-devborder bg-devbg3 p-4 text-center">
+            {% if workspace.logo %}
+              <img src="{{ workspace.logo.url }}" alt="Logo"
+                   class="mx-auto max-h-32 object-contain">
+              <div class="mt-2 text-[11px] text-devtext3">Logo actuel</div>
+            {% else %}
+              <div class="h-32 flex items-center justify-center text-devtext3 text-xs italic">
+                Pas de logo
+              </div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <label class="block text-xs font-medium text-devtext2 mb-1">Logo (PNG/JPG, transparent recommandé)</label>
+            {{ form.logo }}
+            {% if form.logo.errors %}<div class="text-xs text-devred mt-1">{{ form.logo.errors|join:" " }}</div>{% endif %}
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-devtext2 mb-1">Couleur d'accent</label>
+            {{ form.accent_color }}
+            <div class="text-[11px] text-devtext3 mt-1">Utilisée pour la barre orange du papier en-tête et le total TTC.</div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-devtext2 mb-1">Tagline (pied de page)</label>
+            {{ form.tagline }}
+            <div class="text-[11px] text-devtext3 mt-1">Ex : "DIGITAL &amp; TECHNOLOGIES". Affichée tout en bas du PDF.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {# ─ Identité légale ─ #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6 space-y-4">
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-devtext3">
+        Identité légale
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="md:col-span-2">
+          <label class="block text-xs font-medium text-devtext2 mb-1">Raison sociale <span class="text-devred">*</span></label>
+          {{ form.legal_name }}
+          {% if form.legal_name.errors %}<div class="text-xs text-devred mt-1">{{ form.legal_name.errors|join:" " }}</div>{% endif %}
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-devtext2 mb-1">RCCM <span class="text-devred">*</span></label>
+          {{ form.legal_rccm }}
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-devtext2 mb-1">Compte Contribuable (CC)</label>
+          {{ form.legal_cc }}
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-devtext2 mb-1">NIF / Identifiant fiscal</label>
+          {{ form.legal_tax_id }}
+        </div>
+      </div>
+    </section>
+
+    {# ─ Adresse postale ─ #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6 space-y-4">
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-devtext3">
+        Adresse postale
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="md:col-span-2">
+          <label class="block text-xs font-medium text-devtext2 mb-1">Adresse (ligne 1) <span class="text-devred">*</span></label>
+          {{ form.address_line1 }}
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-xs font-medium text-devtext2 mb-1">Adresse (ligne 2)</label>
+          {{ form.address_line2 }}
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-devtext2 mb-1">Code postal</label>
+          {{ form.postal_code }}
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-devtext2 mb-1">Ville <span class="text-devred">*</span></label>
+          {{ form.city }}
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-xs font-medium text-devtext2 mb-1">Pays</label>
+          {{ form.country }}
+        </div>
+      </div>
+    </section>
+
+    {# ─ Contact ─ #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6 space-y-4">
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-devtext3">
+        Contact (affiché en pied de page)
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-devtext2 mb-1">Téléphone <span class="text-devred">*</span></label>
+          {{ form.phone }}
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-devtext2 mb-1">Email</label>
+          {{ form.email }}
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-devtext2 mb-1">Site web</label>
+          {{ form.website }}
+        </div>
+      </div>
+    </section>
+
+    {# ─ Bancaire & mentions ─ #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6 space-y-4">
+      <h3 class="text-sm font-semibold uppercase tracking-wider text-devtext3">
+        Coordonnées bancaires & mentions
+      </h3>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-devtext2 mb-1">Coordonnées bancaires (IBAN / RIB)</label>
+          {{ form.bank_details }}
+          <div class="text-[11px] text-devtext3 mt-1">Affiché sur la facture, sous les totaux.</div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-devtext2 mb-1">Mentions légales additionnelles</label>
+          {{ form.invoice_footer_text }}
+          <div class="text-[11px] text-devtext3 mt-1">Ex : « TVA non applicable, art. 293 B du CGI » — affichées en bas du PDF.</div>
+        </div>
+      </div>
+    </section>
+
+    {# ─ Actions ─ #}
+    <div class="flex items-center justify-end gap-2 pt-2">
+      <a href="{% url 'invoice_list' %}"
+         class="rounded-xl border border-devborder bg-devbg3 px-4 py-2 text-xs font-medium text-devtext2 hover:bg-devbg4">
+        Annuler
+      </a>
+      <button type="submit"
+              class="rounded-xl bg-devaccent px-4 py-2 text-xs font-medium text-white hover:opacity-90">
+        Enregistrer
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

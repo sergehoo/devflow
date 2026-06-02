@@ -9,7 +9,7 @@ import project
 from project import routing
 from project.channel_chat_views import channel_send_message, channel_panel_detail, channel_panel_data, channel_chat_page
 from project.views import HomeView, DashboardView, WorkspaceListView, WorkspaceCreateView, WorkspaceDetailView, \
-    WorkspaceUpdateView, KeyResultDetailView, KeyResultDeleteView, KeyResultUpdateView, KeyResultCreateView, \
+    WorkspaceUpdateView, WorkspaceBrandingView, KeyResultDetailView, KeyResultDeleteView, KeyResultUpdateView, KeyResultCreateView, \
     KeyResultListView, ObjectiveArchiveView, ObjectiveDeleteView, ObjectiveUpdateView, ObjectiveDetailView, \
     ObjectiveCreateView, ObjectiveListView, WorkspaceSettingsDeleteView, WorkspaceSettingsUpdateView, \
     WorkspaceSettingsDetailView, WorkspaceSettingsCreateView, WorkspaceSettingsListView, APIKeyDeleteView, \
@@ -652,6 +652,7 @@ urlpatterns += [
     path("billing/clients/<int:pk>/update/", InvoiceClientUpdateView.as_view(), name="invoice_client_update"),
     path("billing/clients/<int:pk>/delete/", InvoiceClientDeleteView.as_view(), name="invoice_client_delete"),
 
+    path("billing/branding/", WorkspaceBrandingView.as_view(), name="workspace_branding"),
     path("billing/invoices/", InvoiceListView.as_view(), name="invoice_list"),
     path("billing/invoices/create/", InvoiceCreateView.as_view(), name="invoice_create"),
     path("billing/invoices/<int:pk>/", InvoiceDetailView.as_view(), name="invoice_detail"),

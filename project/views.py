@@ -8560,6 +8560,107 @@ class InvoiceClientDeleteView(DevflowDeleteView):
     success_list_url_name = "invoice_client_list"
 
 
+# ─────────────────────────────────────────────────────────────────────
+# PR-WS-SETTINGS — Branding & papier en-tête du workspace.
+#
+# Permet à n'importe quel WORKSPACE_OWNER (et au SUPER_ADMIN) d'éditer
+# le logo, la raison sociale, les mentions légales et les coordonnées
+# qui apparaissent sur les factures PDF. Pas besoin de Django admin.
+# ─────────────────────────────────────────────────────────────────────
+class WorkspaceBrandingView(DevflowBaseMixin, View):
+    """
+    Édite UNIQUEMENT le workspace courant du user (impossible de viser
+    un autre workspace via URL). Champs strictement branding/papier
+    en-tête : logo, legal_name, RCCM, CC, NIF, adresse, contact, IBAN,
+    mentions de pied de page, couleur d'accent, tagline.
+    """
+    template_name = "project/workspace/branding.html"
+    section = "billing"
+    page_title = "Identité & papier en-tête"
+
+    FIELDS = (
+        "logo", "legal_name", "tagline", "accent_color",
+        "legal_rccm", "legal_cc", "legal_tax_id",
+        "address_line1", "address_line2", "postal_code", "city", "country",
+        "phone", "email", "website",
+        "bank_details", "invoice_footer_text",
+    )
+
+    def _get_workspace(self):
+        ws = self.get_current_workspace()
+        if ws is None:
+            return None
+        # SECURITY : seuls SUPER_ADMIN ou WORKSPACE_OWNER peuvent éditer
+        user = self.request.user
+        if user.is_superuser:
+            return ws
+        try:
+            from project.services.rbac import RBACService
+            role = RBACService.get_role_for(user, ws)
+            if role in ("SUPER_ADMIN", "WORKSPACE_OWNER"):
+                return ws
+        except Exception:
+            pass
+        # Fallback : si user est le owner direct du workspace
+        if ws.owner_id == user.pk:
+            return ws
+        return None
+
+    def _build_form(self, workspace, data=None, files=None):
+        from project.forms import WorkspaceForm
+        form = WorkspaceForm(
+            data=data, files=files, instance=workspace,
+            current_workspace=workspace,
+        )
+        # Affiche UNIQUEMENT les champs branding (le WorkspaceForm contient
+        # aussi name/owner/timezone/etc. qu'on ne veut pas exposer ici).
+        keep = set(self.FIELDS)
+        for name in list(form.fields.keys()):
+            if name not in keep:
+                form.fields.pop(name, None)
+        return form
+
+    def get(self, request, *args, **kwargs):
+        workspace = self._get_workspace()
+        if workspace is None:
+            messages.error(request, "Vous n'avez pas le droit de modifier l'identité du workspace.")
+            return redirect("invoice_list")
+        form = self._build_form(workspace)
+        return render(request, self.template_name, {
+            "workspace": workspace,
+            "form": form,
+            "section": self.section,
+            "page_title": self.page_title,
+            "breadcrumb": "Facturation · Identité émetteur",
+            "fields_required_for_pdf": [
+                "legal_name", "address_line1", "city",
+                "legal_rccm", "phone",
+            ],
+        })
+
+    def post(self, request, *args, **kwargs):
+        workspace = self._get_workspace()
+        if workspace is None:
+            messages.error(request, "Action non autorisée.")
+            return redirect("invoice_list")
+        form = self._build_form(workspace, data=request.POST, files=request.FILES)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Paramètres du workspace mis à jour.")
+            return redirect("workspace_branding")
+        return render(request, self.template_name, {
+            "workspace": workspace,
+            "form": form,
+            "section": self.section,
+            "page_title": self.page_title,
+            "breadcrumb": "Facturation · Identité émetteur",
+            "fields_required_for_pdf": [
+                "legal_name", "address_line1", "city",
+                "legal_rccm", "phone",
+            ],
+        })
+
+
 class InvoiceListView(DevflowListView):
     model = dm.Invoice
     template_name = "project/invoice/list.html"
