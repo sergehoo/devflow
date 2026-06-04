@@ -1,0 +1,84 @@
+{% extends "layout/base.html" %}
+
+{% block title %}DevFlow — Enregistrements · {{ meeting.title }}{% endblock %}
+{% block page_title %}Enregistrements{% endblock %}
+{% block breadcrumb %}Collaboration · Réunions · {{ meeting.title }} · Enregistrements{% endblock %}
+
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Réunions · Enregistrements">
+  <meta name="devflow-ai-object-type" content="meeting_recordings_list">
+  <meta name="devflow-ai-object-id" content="{{ meeting.id }}">
+  <meta name="devflow-ai-object-name" content="{{ meeting.title }}">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-4">
+
+  <div class="flex items-center justify-between">
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-devaccent">{{ meeting.title }}</p>
+      <h1 class="mt-1 text-2xl font-semibold text-devtext1">Enregistrements</h1>
+    </div>
+    <a href="{% url 'meeting_detail' meeting.pk %}" class="btn-soft text-xs">← Retour</a>
+  </div>
+
+  {% if recordings %}
+    <div class="overflow-x-auto rounded-2xl border border-devborder bg-devbg2">
+      <table class="min-w-full text-sm">
+        <thead class="text-[11px] uppercase tracking-wider text-devtext3 border-b border-devborder">
+          <tr>
+            <th class="text-left px-4 py-3">Date</th>
+            <th class="text-left px-4 py-3">Auteur</th>
+            <th class="text-left px-4 py-3">Durée</th>
+            <th class="text-left px-4 py-3">Statut</th>
+            <th class="text-left px-4 py-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rec in recordings %}
+          <tr class="border-b border-devborder/40 hover:bg-devbg3/40">
+            <td class="px-4 py-3 text-xs text-devtext1">{{ rec.created_at|date:"d/m/Y H:i" }}</td>
+            <td class="px-4 py-3 text-xs text-devtext2">{{ rec.recorded_by|default:"—" }}</td>
+            <td class="px-4 py-3 text-xs text-devtext2">{{ rec.duration_seconds|floatformat:0 }} s</td>
+            <td class="px-4 py-3">
+              {% if rec.status == "completed" %}
+                <span class="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-500">{{ rec.get_status_display }}</span>
+              {% elif rec.status == "failed" %}
+                <span class="inline-flex rounded-full bg-devred/15 px-2 py-0.5 text-[11px] font-semibold text-devred">{{ rec.get_status_display }}</span>
+              {% elif rec.status == "waiting_speaker_mapping" %}
+                <span class="inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-500">{{ rec.get_status_display }}</span>
+              {% else %}
+                <span class="inline-flex rounded-full bg-devbg4 px-2 py-0.5 text-[11px] font-semibold text-devtext3">{{ rec.get_status_display }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-xs">
+              <div class="flex flex-wrap gap-2">
+                {% if rec.status == "waiting_speaker_mapping" %}
+                  <a href="{% url 'recording_speakers' meeting_pk=meeting.pk recording_pk=rec.pk %}" class="text-devaccent hover:underline">Identifier voix</a>
+                {% endif %}
+                {% if rec.summary_markdown or rec.status == "completed" %}
+                  <a href="{% url 'recording_summary' meeting_pk=meeting.pk recording_pk=rec.pk %}" class="text-devaccent hover:underline">CR</a>
+                {% endif %}
+                <form method="post" action="{% url 'recording_delete' rec.pk %}"
+                      onsubmit="return confirm('Supprimer définitivement cet enregistrement ?');"
+                      class="inline">
+                  {% csrf_token %}
+                  <button type="submit" class="text-devred hover:underline">Supprimer</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="rounded-2xl border border-devborder bg-devbg2 p-10 text-center">
+      <p class="text-sm text-devtext3 mb-3">Aucun enregistrement pour cette réunion.</p>
+      <a href="{% url 'meeting_detail' meeting.pk %}" class="btn-main text-xs">
+        ← Démarrer un enregistrement
+      </a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

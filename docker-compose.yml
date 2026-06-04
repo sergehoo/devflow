@@ -123,7 +123,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: devflowcelery
-    command: celery -A ProjectFlow.celery:app worker -l info --concurrency=4
+    # PR-REC : ajout de la queue 'recordings' pour la transcription audio
+    command: celery -A ProjectFlow.celery:app worker -Q default,celery,notifications,recordings -l info --concurrency=4
     volumes:
       - .:/app
       - static_volume:/app/staticfiles

@@ -225,6 +225,20 @@ class CreateActionPlansView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
     """POST : transforme les RecordingAIExtraction (action) cochées en
     vrais MeetingActionItem."""
 
+    # Mapping des hints de priorité IA vers les choices valides du modèle.
+    # MeetingActionItem.Priority a 4 valeurs : LOW, MEDIUM, HIGH, CRITICAL.
+    _PRIORITY_MAP = {
+        "low": "LOW", "faible": "LOW", "basse": "LOW",
+        "medium": "MEDIUM", "moyenne": "MEDIUM", "moyen": "MEDIUM", "normal": "MEDIUM", "normale": "MEDIUM",
+        "high": "HIGH", "haute": "HIGH", "élevée": "HIGH", "elevee": "HIGH",
+        "critical": "CRITICAL", "critique": "CRITICAL", "urgent": "CRITICAL", "urgente": "CRITICAL",
+    }
+
+    @classmethod
+    def _normalize_priority(cls, hint: str) -> str:
+        key = (hint or "").strip().lower()
+        return cls._PRIORITY_MAP.get(key, "MEDIUM")
+
     @method_decorator(csrf_protect)
     def post(self, request, recording_pk):
         ws_ids = get_user_workspace_ids(request.user)
@@ -242,7 +256,7 @@ class CreateActionPlansView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
                     meeting=recording.meeting,
                     title=ext.title[:240],
                     description=ext.description or "",
-                    priority=(ext.priority_hint or "MEDIUM").upper()[:15],
+                    priority=self._normalize_priority(ext.priority_hint),
                 )
                 ext.is_accepted = True
                 ext.accepted_at = timezone.now()
@@ -389,6 +403,95 @@ def api_recording_status(request, recording_pk):
 # ─────────────────────────────────────────────────────────────────────
 # Stream audio (HMAC token)
 # ─────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
+# Actions : régénérer / supprimer / liste recordings d'un meeting
+# ─────────────────────────────────────────────────────────────────────
+class RecordingRegenerateSummaryView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """POST : relance generate_summary + generate_extractions sur un recording
+    déjà transcrit. Utile si l'IA a fait un mauvais CR ou si on a changé
+    le mapping speakers."""
+
+    @method_decorator(csrf_protect)
+    def post(self, request, recording_pk):
+        ws_ids = get_user_workspace_ids(request.user)
+        recording = get_object_or_404(
+            dm.MeetingRecording, pk=recording_pk, workspace_id__in=ws_ids,
+        )
+        if recording.status not in (
+            dm.MeetingRecording.Status.COMPLETED,
+            dm.MeetingRecording.Status.FAILED,
+            dm.MeetingRecording.Status.WAITING_SPEAKER_MAPPING,
+        ):
+            messages.warning(request, "Le pipeline est encore en cours — patientez.")
+            return redirect("recording_summary",
+                            meeting_pk=recording.meeting_id, recording_pk=recording.pk)
+        # Supprime les anciennes extractions non acceptées
+        recording.ai_extractions.filter(is_accepted=False).delete()
+        try:
+            from project.tasks import finalize_recording_task
+            finalize_recording_task.delay(recording.pk)
+            messages.info(request, "Régénération du compte-rendu lancée.")
+        except Exception:
+            from project.services.recording.pipeline import finalize_recording
+            try:
+                finalize_recording(recording.pk)
+                messages.success(request, "Compte-rendu régénéré.")
+            except Exception as exc:
+                messages.error(request, f"Régénération échouée : {exc}")
+        return redirect("recording_summary",
+                        meeting_pk=recording.meeting_id, recording_pk=recording.pk)
+
+
+class RecordingDeleteView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """POST : supprime un enregistrement (audio + segments + samples)."""
+
+    @method_decorator(csrf_protect)
+    def post(self, request, recording_pk):
+        ws_ids = get_user_workspace_ids(request.user)
+        recording = get_object_or_404(
+            dm.MeetingRecording, pk=recording_pk, workspace_id__in=ws_ids,
+        )
+        meeting_pk = recording.meeting_id
+        # Nettoyage des fichiers (audio + samples)
+        try:
+            if recording.audio_file:
+                recording.audio_file.delete(save=False)
+        except Exception:
+            pass
+        for sp in recording.speakers.all():
+            try:
+                if sp.sample_audio:
+                    sp.sample_audio.delete(save=False)
+            except Exception:
+                continue
+        recording.delete()  # cascade segments / speakers / mappings / extractions
+        messages.success(request, "Enregistrement supprimé.")
+        return redirect("meeting_detail", pk=meeting_pk)
+
+
+class MeetingRecordingsListView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """Liste tous les recordings d'un meeting."""
+    template_name = "project/meeting/recordings_list.html"
+
+    def get(self, request, meeting_pk):
+        ws_ids = get_user_workspace_ids(request.user)
+        meeting = get_object_or_404(
+            dm.ProjectMeeting, pk=meeting_pk, workspace_id__in=ws_ids,
+        )
+        recordings = (
+            meeting.recordings
+            .select_related("recorded_by")
+            .order_by("-created_at")
+        )
+        return render(request, self.template_name, {
+            "meeting": meeting,
+            "recordings": recordings,
+            "section": "meetings",
+            "page_title": "Enregistrements de la réunion",
+            "breadcrumb": "Collaboration · Réunions · Enregistrements",
+        })
+
+
 @require_GET
 def stream_speaker_sample(request, meeting_pk, recording_pk, speaker_label):
     """

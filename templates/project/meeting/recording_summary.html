@@ -24,7 +24,25 @@
         {% if recording.transcription_provider %}· transcription {{ recording.transcription_provider }}{% endif %}
       </p>
     </div>
-    <a href="{% url 'meeting_detail' meeting.pk %}" class="btn-soft text-xs">← Retour à la réunion</a>
+    <div class="flex flex-wrap gap-2">
+      <a href="{% url 'meeting_recordings_list' meeting.pk %}" class="btn-soft text-xs">
+        <i class="fa-solid fa-list"></i> Tous les enregistrements
+      </a>
+      <form method="post" action="{% url 'recording_regenerate_summary' recording.pk %}" class="inline">
+        {% csrf_token %}
+        <button type="submit" class="btn-soft text-xs" title="Régénérer le compte-rendu IA">
+          <i class="fa-solid fa-arrows-rotate"></i> Régénérer CR
+        </button>
+      </form>
+      <form method="post" action="{% url 'recording_delete' recording.pk %}" class="inline"
+            onsubmit="return confirm('Supprimer définitivement cet enregistrement (audio + CR + extractions) ?');">
+        {% csrf_token %}
+        <button type="submit" class="btn-soft text-xs text-devred">
+          <i class="fa-solid fa-trash"></i> Supprimer
+        </button>
+      </form>
+      <a href="{% url 'meeting_detail' meeting.pk %}" class="btn-soft text-xs">← Retour</a>
+    </div>
   </div>
 
   {# Résumé IA #}

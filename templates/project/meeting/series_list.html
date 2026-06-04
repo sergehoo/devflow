@@ -1,0 +1,92 @@
+{% extends "layout/base.html" %}
+
+{% block title %}DevFlow — Séries de réunions{% endblock %}
+{% block page_title %}Séries de réunions{% endblock %}
+{% block breadcrumb %}Collaboration · Réunions récurrentes{% endblock %}
+
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Réunions · Séries récurrentes">
+  <meta name="devflow-ai-object-type" content="meeting_series_list">
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-7xl mx-auto">
+
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold text-devtext1">Séries de réunions</h1>
+      <p class="text-sm text-devtext3 mt-1">
+        Planifiez vos comités, dailys, sprint reviews et autres rendez-vous
+        récurrents. Les occurrences sont générées automatiquement chaque nuit
+        sur 60 jours glissants.
+      </p>
+    </div>
+    <div class="flex gap-2">
+      <a href="{% url 'meeting_list' %}"
+         class="rounded-xl border border-devborder bg-devbg3 px-4 py-2 text-xs font-medium text-devtext2 hover:bg-devbg4">
+        ← Toutes les réunions
+      </a>
+      <a href="{% url 'meeting_series_create' %}"
+         class="rounded-xl bg-devaccent px-4 py-2 text-xs font-medium text-white hover:opacity-90">
+        + Nouvelle série
+      </a>
+    </div>
+  </div>
+
+  {% if items %}
+    <div class="overflow-x-auto rounded-2xl border border-devborder bg-devbg2">
+      <table class="min-w-full text-sm">
+        <thead class="text-[11px] uppercase tracking-wider text-devtext3 border-b border-devborder">
+          <tr>
+            <th class="text-left px-4 py-3">Nom</th>
+            <th class="text-left px-4 py-3">Type</th>
+            <th class="text-left px-4 py-3">Récurrence</th>
+            <th class="text-left px-4 py-3">Projets par défaut</th>
+            <th class="text-left px-4 py-3">Statut</th>
+            <th class="text-left px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for series in items %}
+          <tr class="border-b border-devborder/40 hover:bg-devbg3/40">
+            <td class="px-4 py-3 align-top">
+              <a href="{% url 'meeting_series_detail' series.pk %}"
+                 class="font-medium text-devtext1 hover:text-devaccent">
+                {{ series.name }}
+              </a>
+              {% if series.description %}
+                <div class="text-[11px] text-devtext3 mt-0.5">{{ series.description|truncatechars:80 }}</div>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-xs text-devtext2 align-top">{{ series.get_meeting_type_display }}</td>
+            <td class="px-4 py-3 text-xs text-devtext2 align-top">{{ series.recurrence_label }}</td>
+            <td class="px-4 py-3 text-xs text-devtext2 align-top">
+              {{ series.default_projects.count }} projet(s)
+            </td>
+            <td class="px-4 py-3 align-top">
+              {% if series.is_active %}
+                <span class="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-500">Active</span>
+              {% else %}
+                <span class="inline-flex items-center rounded-full bg-devbg4 px-2 py-0.5 text-[11px] font-semibold text-devtext3">Pause</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-right">
+              <a href="{% url 'meeting_series_detail' series.pk %}"
+                 class="text-xs text-devaccent hover:underline">Voir →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="rounded-2xl border border-devborder bg-devbg2 p-10 text-center">
+      <p class="text-sm text-devtext2 mb-3">Aucune série récurrente.</p>
+      <a href="{% url 'meeting_series_create' %}"
+         class="inline-block rounded-xl bg-devaccent px-4 py-2 text-xs font-medium text-white">
+        Créer ma 1ère série
+      </a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

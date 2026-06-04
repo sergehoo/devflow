@@ -1,0 +1,131 @@
+{% extends "layout/base.html" %}
+
+{% block title %}DevFlow — {{ page_title|default:"Série de réunions" }}{% endblock %}
+{% block page_title %}{{ page_title|default:"Série de réunions" }}{% endblock %}
+{% block breadcrumb %}Collaboration · Réunions · Série récurrente{% endblock %}
+
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Réunions · Édition série">
+  <meta name="devflow-ai-object-type" content="meeting_series_form">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl space-y-6">
+  <div class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <p class="text-xs text-devtext3 mb-4">
+      Définissez la cadence (hebdomadaire, mensuelle…) et les projets/participants
+      par défaut. Le système générera automatiquement les occurrences à venir
+      sur 60 jours et copiera les valeurs ci-dessous à chaque occurrence.
+    </p>
+
+    <form method="post" class="space-y-5">
+      {% csrf_token %}
+
+      {# Bloc identité #}
+      <fieldset class="space-y-3">
+        <legend class="text-[11px] font-semibold uppercase tracking-wider text-devtext3 mb-2">Identité</legend>
+        <div>
+          <label class="block text-xs text-devtext2 mb-1">Nom <span class="text-devred">*</span></label>
+          {{ form.name }}
+          {% if form.name.errors %}<div class="text-xs text-devred mt-1">{{ form.name.errors|join:" " }}</div>{% endif %}
+        </div>
+        <div>
+          <label class="block text-xs text-devtext2 mb-1">Description</label>
+          {{ form.description }}
+        </div>
+        <div>
+          <label class="block text-xs text-devtext2 mb-1">Type</label>
+          {{ form.meeting_type }}
+        </div>
+      </fieldset>
+
+      {# Bloc récurrence #}
+      <fieldset class="space-y-3">
+        <legend class="text-[11px] font-semibold uppercase tracking-wider text-devtext3 mb-2">Récurrence</legend>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs text-devtext2 mb-1">Cadence <span class="text-devred">*</span></label>
+            {{ form.recurrence }}
+          </div>
+          <div>
+            <label class="block text-xs text-devtext2 mb-1">Jour de semaine</label>
+            {{ form.weekday }}
+            <p class="text-[10px] text-devtext3 mt-0.5">Pour hebdo / bi-hebdo.</p>
+          </div>
+          <div>
+            <label class="block text-xs text-devtext2 mb-1">Jour du mois</label>
+            {{ form.month_day }}
+            <p class="text-[10px] text-devtext3 mt-0.5">1-31 ou 0 (dernier).</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs text-devtext2 mb-1">Heure <span class="text-devred">*</span></label>
+            {{ form.time_local }}
+          </div>
+          <div>
+            <label class="block text-xs text-devtext2 mb-1">Durée (min)</label>
+            {{ form.duration_minutes }}
+          </div>
+          <div>
+            <label class="block text-xs text-devtext2 mb-1">Actif</label>
+            <div class="flex items-center gap-2 pt-2">
+              {{ form.is_active }}
+              <span class="text-xs text-devtext2">Génère les occurrences automatiquement</span>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-devtext2 mb-1">Date de début <span class="text-devred">*</span></label>
+            {{ form.start_date }}
+          </div>
+          <div>
+            <label class="block text-xs text-devtext2 mb-1">Date de fin (facultatif)</label>
+            {{ form.end_date }}
+          </div>
+        </div>
+      </fieldset>
+
+      {# Bloc participants / projets #}
+      <fieldset class="space-y-3">
+        <legend class="text-[11px] font-semibold uppercase tracking-wider text-devtext3 mb-2">Valeurs par défaut</legend>
+        <div>
+          <label class="block text-xs text-devtext2 mb-1">Organisateur</label>
+          {{ form.organizer }}
+        </div>
+        <div>
+          <label class="block text-xs text-devtext2 mb-1">Participants par défaut</label>
+          {{ form.default_participants }}
+        </div>
+        <div>
+          <label class="block text-xs text-devtext2 mb-1">Projets passés en revue (par défaut)</label>
+          {{ form.default_projects }}
+          <p class="text-[10px] text-devtext3 mt-0.5">Chaque occurrence aura un slot de revue pour chacun de ces projets.</p>
+        </div>
+        <div>
+          <label class="block text-xs text-devtext2 mb-1">Lien visio</label>
+          {{ form.meeting_link }}
+        </div>
+        <div>
+          <label class="block text-xs text-devtext2 mb-1">Lieu</label>
+          {{ form.location }}
+        </div>
+        <div>
+          <label class="block text-xs text-devtext2 mb-1">Ordre du jour par défaut</label>
+          {{ form.default_agenda }}
+        </div>
+      </fieldset>
+
+      <div class="flex items-center justify-end gap-2 pt-3">
+        <a href="{% url 'meeting_series_list' %}"
+           class="rounded-xl border border-devborder bg-devbg3 px-4 py-2 text-xs font-medium text-devtext2 hover:bg-devbg4">Annuler</a>
+        <button type="submit"
+                class="rounded-xl bg-devaccent px-4 py-2 text-xs font-medium text-white hover:opacity-90">
+          Enregistrer
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

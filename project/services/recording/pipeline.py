@@ -129,5 +129,45 @@ def _notify(recording: dm.MeetingRecording, kind: str) -> None:
                 )
             except Exception:
                 continue
+
+        # Email aux participants ayant un email valide
+        _send_recording_email(recording, kind, title, body, target_url, recipients)
     except Exception as exc:
         logger.warning("recording notify failed: %s", exc)
+
+
+def _send_recording_email(recording, kind, title, body, target_url, recipients):
+    """Envoie un email d'information aux participants. Best-effort."""
+    try:
+        from django.conf import settings as dj_settings
+        from django.core.mail import EmailMessage
+
+        # Construit l'URL absolue si possible
+        base = getattr(dj_settings, "SITE_URL", None) or getattr(
+            dj_settings, "DEVFLOW_BASE_URL", None,
+        ) or ""
+        absolute_url = f"{base.rstrip('/')}{target_url}" if base else target_url
+
+        from_email = getattr(dj_settings, "DEFAULT_FROM_EMAIL", None) \
+            or getattr(dj_settings, "EMAIL_HOST_USER", None) \
+            or "noreply@devflow.local"
+
+        emails = [u.email for u in recipients if u and u.email]
+        if not emails:
+            return
+
+        text_body = (
+            f"{body}\n\n"
+            f"→ {absolute_url}\n\n"
+            f"— DevFlow"
+        )
+        msg = EmailMessage(
+            subject=f"[DevFlow] {title}",
+            body=text_body,
+            from_email=from_email,
+            to=[],
+            bcc=emails,
+        )
+        msg.send(fail_silently=True)
+    except Exception as exc:
+        logger.warning("recording email send failed: %s", exc)

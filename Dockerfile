@@ -25,6 +25,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     shared-mime-info \
     fonts-dejavu-core \
+    # PR-REC : audio recording + transcription
+    ffmpeg \
+    libsndfile1 \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
