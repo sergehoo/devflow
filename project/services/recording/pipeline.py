@@ -81,6 +81,13 @@ def finalize_recording(recording_id: int) -> None:
         ai_summary.generate_summary(recording)
         ai_summary.generate_extractions(recording)
 
+        # PR-MEET-6 : détection automatique projets/sprints/milestones
+        try:
+            from project.services.recording import entity_detection
+            entity_detection.detect_and_suggest(recording)
+        except Exception as exc:
+            logger.warning("entity_detection failed: %s", exc)
+
         recording.status = dm.MeetingRecording.Status.COMPLETED
         recording.completed_at = timezone.now()
         recording.save(update_fields=["status", "completed_at", "updated_at"])

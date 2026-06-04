@@ -723,6 +723,130 @@ def generate_meeting_occurrences_sweep(self, horizon_days: int = 60):
 # =============================================================================
 # Enregistrement audio + transcription IA (PR-REC-2) — queue 'recordings'
 # =============================================================================
+# =============================================================================
+# Rappels réunion : 24h avant + 2h après (PR-MEET-8)
+# =============================================================================
+@shared_task(bind=True, max_retries=1)
+def send_meeting_reminders_sweep(self):
+    """
+    Balayage quotidien :
+      * Réunions à venir dans 22-26h → rappel "À demain" aux participants
+      * Réunions tenues il y a 1-3h → relance "Pensez au compte-rendu"
+
+    Idempotent grâce à MeetingFollowUp(kind=reminder_before/after) :
+    si déjà envoyé pour cette réunion, on skippe.
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    from django.core.mail import EmailMessage
+    from django.conf import settings as dj_settings
+    from project import models as dm
+
+    now = timezone.now()
+    sent_before, sent_after = 0, 0
+
+    # ─── Rappel 24h avant ────────────────────────────────────────────
+    window_start = now + timedelta(hours=22)
+    window_end = now + timedelta(hours=26)
+    upcoming = dm.ProjectMeeting.objects.filter(
+        scheduled_at__gte=window_start, scheduled_at__lte=window_end,
+        status=dm.ProjectMeeting.Status.PLANNED,
+    ).select_related("workspace").prefetch_related("internal_participants")
+
+    for meeting in upcoming:
+        # Idempotence
+        if dm.MeetingFollowUp.objects.filter(
+            meeting=meeting,
+            kind=dm.MeetingFollowUp.Kind.REMINDER_BEFORE,
+        ).exists():
+            continue
+        emails = [u.email for u in meeting.internal_participants.all() if u.email]
+        if not emails:
+            dm.MeetingFollowUp.objects.create(
+                meeting=meeting,
+                kind=dm.MeetingFollowUp.Kind.REMINDER_BEFORE,
+                note="Aucun email — skip",
+            )
+            continue
+        try:
+            msg = EmailMessage(
+                subject=f"[DevFlow] Rappel : {meeting.title} demain",
+                body=(
+                    f"Rappel : la réunion '{meeting.title}' est prévue le "
+                    f"{meeting.scheduled_at.strftime('%d/%m/%Y à %H:%M')}.\n\n"
+                    f"Lieu : {meeting.location or '—'}\n"
+                    f"Lien : {meeting.meeting_link or '—'}\n\n"
+                    f"— DevFlow"
+                ),
+                from_email=getattr(dj_settings, "DEFAULT_FROM_EMAIL", "noreply@devflow.local"),
+                bcc=emails,
+                to=[],
+            )
+            msg.send(fail_silently=True)
+            dm.MeetingFollowUp.objects.create(
+                meeting=meeting,
+                kind=dm.MeetingFollowUp.Kind.REMINDER_BEFORE,
+                target_email=", ".join(emails)[:254],
+                payload={"recipients": len(emails)},
+            )
+            sent_before += 1
+        except Exception as exc:
+            logger.warning("reminder_before failed for meeting %s: %s", meeting.pk, exc)
+
+    # ─── Relance 2h après ────────────────────────────────────────────
+    window_after_start = now - timedelta(hours=3)
+    window_after_end = now - timedelta(hours=1)
+    finished = dm.ProjectMeeting.objects.filter(
+        scheduled_at__gte=window_after_start, scheduled_at__lte=window_after_end,
+        status__in=[
+            dm.ProjectMeeting.Status.HELD,
+            dm.ProjectMeeting.Status.PLANNED,
+        ],
+    ).select_related("workspace", "organizer")
+
+    for meeting in finished:
+        if dm.MeetingFollowUp.objects.filter(
+            meeting=meeting,
+            kind=dm.MeetingFollowUp.Kind.REMINDER_AFTER,
+        ).exists():
+            continue
+        target = meeting.organizer or meeting.created_by
+        if not target or not target.email:
+            dm.MeetingFollowUp.objects.create(
+                meeting=meeting,
+                kind=dm.MeetingFollowUp.Kind.REMINDER_AFTER,
+                note="Pas d'organizer avec email — skip",
+            )
+            continue
+        try:
+            msg = EmailMessage(
+                subject=f"[DevFlow] Compte-rendu de '{meeting.title}' ?",
+                body=(
+                    f"Bonjour,\n\nLa réunion '{meeting.title}' s'est terminée. "
+                    f"Pensez à finaliser et envoyer le compte-rendu aux participants.\n\n"
+                    f"— DevFlow"
+                ),
+                from_email=getattr(dj_settings, "DEFAULT_FROM_EMAIL", "noreply@devflow.local"),
+                to=[target.email],
+            )
+            msg.send(fail_silently=True)
+            dm.MeetingFollowUp.objects.create(
+                meeting=meeting,
+                kind=dm.MeetingFollowUp.Kind.REMINDER_AFTER,
+                target_user=target,
+                target_email=target.email,
+            )
+            sent_after += 1
+        except Exception as exc:
+            logger.warning("reminder_after failed for meeting %s: %s", meeting.pk, exc)
+
+    return {
+        "ok": True,
+        "sent_before": sent_before,
+        "sent_after": sent_after,
+    }
+
+
 @shared_task(
     bind=True, max_retries=2, default_retry_delay=300,
     queue="recordings",

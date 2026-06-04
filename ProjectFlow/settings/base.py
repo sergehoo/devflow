@@ -227,6 +227,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "project.tasks.generate_meeting_occurrences_sweep",
         "schedule": crontab(hour=4, minute=0),
     },
+    # PR-MEET-8 : rappels réunion (toutes les heures)
+    "send-meeting-reminders-sweep": {
+        "task": "project.tasks.send_meeting_reminders_sweep",
+        "schedule": crontab(minute=15),  # à chaque h+15
+    },
     # Phase 5 — PR22 : Rapports IA hebdomadaires
     # Lundi 6h : génère le rapport semaine N-1 pour chaque projet actif
     "generate-project-weekly-reports": {

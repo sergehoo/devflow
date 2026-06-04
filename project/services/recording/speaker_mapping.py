@@ -74,6 +74,32 @@ def map_speaker_to_participant(
         confirmed_at=timezone.now(),
         display_name=(participant.get_full_name() or participant.get_username()),
     )
+
+    # PR-MEET-5 : créer / MAJ la WorkspaceVoicePrint pour ce user
+    # → permet la diarisation automatique sur les futures réunions.
+    try:
+        detected = dm.DetectedSpeaker.objects.filter(
+            recording=recording, speaker_label=speaker_label,
+        ).first()
+        voiceprint, created = dm.WorkspaceVoicePrint.objects.get_or_create(
+            workspace=recording.workspace, user=participant,
+            defaults={
+                "last_detected_speaker": detected,
+                "mappings_count": 1,
+                "last_seen_at": timezone.now(),
+            },
+        )
+        if not created:
+            voiceprint.last_detected_speaker = detected
+            voiceprint.mappings_count = (voiceprint.mappings_count or 0) + 1
+            voiceprint.last_seen_at = timezone.now()
+            voiceprint.save(update_fields=[
+                "last_detected_speaker", "mappings_count", "last_seen_at",
+                "updated_at",
+            ])
+    except Exception as exc:
+        logger.warning("voiceprint update failed: %s", exc)
+
     return mapping
 
 

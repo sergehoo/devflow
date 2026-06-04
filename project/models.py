@@ -3584,6 +3584,14 @@ class RecordingAIExtraction(TimeStampedModel):
         ACTION = "action", "Action"
         RISK = "risk", "Risque"
         NOTE = "note", "Note"
+        # PR-MEET-6 : suggestions IA de création d'objets DevFlow
+        PROJECT_SUGGESTION = "project_suggestion", "Suggestion : nouveau projet"
+        SPRINT_SUGGESTION = "sprint_suggestion", "Suggestion : nouveau sprint"
+        MILESTONE_SUGGESTION = "milestone_suggestion", "Suggestion : nouveau jalon"
+        # PR-MEET-6 : références à des entités EXISTANTES mentionnées
+        PROJECT_MENTION = "project_mention", "Projet mentionné"
+        SPRINT_MENTION = "sprint_mention", "Sprint mentionné"
+        MILESTONE_MENTION = "milestone_mention", "Jalon mentionné"
 
     recording = models.ForeignKey(
         MeetingRecording, on_delete=models.CASCADE,
@@ -3751,6 +3759,217 @@ class MeetingSeries(TimeStampedModel, SoftDeleteModel):
             d = "dernier" if self.month_day == 0 else f"{self.month_day}"
             return f"Le {d} jour de chaque mois à {time_str}"
         return self.get_recurrence_display()
+
+
+class MeetingDecision(TimeStampedModel, SoftDeleteModel):
+    """
+    Registre transversal des décisions prises en réunion (PR-MEET-5).
+
+    Plus structuré que le champ texte ``ProjectMeeting.decisions`` : permet
+    de filtrer/rechercher toutes les décisions du workspace, de tracker
+    leur exécution et de les lier à plusieurs projets.
+
+    Une RecordingAIExtraction acceptée peut créer un MeetingDecision réel
+    (via ``source_extraction`` FK ajoutée plus tard si besoin).
+    """
+
+    class Status(models.TextChoices):
+        VALIDATED = "VALIDATED", "Validée"
+        PENDING = "PENDING", "En attente"
+        EXECUTED = "EXECUTED", "Exécutée"
+        REVERSED = "REVERSED", "Annulée"
+
+    class Category(models.TextChoices):
+        STRATEGIC = "STRATEGIC", "Stratégique"
+        BUDGETARY = "BUDGETARY", "Budgétaire"
+        OPERATIONAL = "OPERATIONAL", "Opérationnelle"
+        TECHNICAL = "TECHNICAL", "Technique"
+        HR = "HR", "RH"
+        OTHER = "OTHER", "Autre"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="meeting_decisions",
+    )
+    meeting = models.ForeignKey(
+        ProjectMeeting, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="structured_decisions",
+        help_text="Réunion à l'origine de la décision (peut être null si décision hors réunion).",
+    )
+    projects = models.ManyToManyField(
+        "Project", related_name="meeting_decisions", blank=True,
+        help_text="Projets impactés par cette décision.",
+    )
+
+    title = models.CharField(max_length=250)
+    description = models.TextField(blank=True)
+    category = models.CharField(
+        max_length=15, choices=Category.choices, default=Category.OPERATIONAL,
+        db_index=True,
+    )
+    status = models.CharField(
+        max_length=15, choices=Status.choices, default=Status.VALIDATED,
+        db_index=True,
+    )
+    decided_at = models.DateTimeField(default=timezone.now)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="decisions_made",
+    )
+    executed_at = models.DateTimeField(null=True, blank=True)
+    executed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="decisions_executed",
+    )
+    impact_summary = models.TextField(blank=True)
+    cost_impact = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+    )
+
+    class Meta:
+        ordering = ["-decided_at", "-id"]
+        verbose_name = "Décision de réunion"
+        verbose_name_plural = "Décisions de réunion"
+        indexes = [
+            models.Index(fields=["workspace", "status"]),
+            models.Index(fields=["workspace", "-decided_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.title[:60]} ({self.get_status_display()})"
+
+
+class MeetingFollowUp(TimeStampedModel):
+    """
+    Suivi post-réunion (PR-MEET-5).
+
+    Permet de tracker les relances, les relectures du compte-rendu, les
+    réponses des participants externes, etc. Un follow-up = un point
+    de contact lié à une réunion.
+    """
+
+    class Kind(models.TextChoices):
+        REMINDER_BEFORE = "reminder_before", "Rappel avant"
+        REMINDER_AFTER = "reminder_after", "Relance après"
+        MINUTES_SENT = "minutes_sent", "Compte-rendu envoyé"
+        ACK = "ack", "Accusé de réception"
+        NOTE = "note", "Note libre"
+
+    meeting = models.ForeignKey(
+        ProjectMeeting, on_delete=models.CASCADE, related_name="follow_ups",
+    )
+    kind = models.CharField(max_length=20, choices=Kind.choices, db_index=True)
+    sent_at = models.DateTimeField(default=timezone.now)
+    sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="sent_follow_ups",
+    )
+    target_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="received_follow_ups",
+    )
+    target_email = models.EmailField(blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-sent_at", "-id"]
+        indexes = [
+            models.Index(fields=["meeting", "kind"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} · {self.meeting.title}"
+
+
+class MeetingMinutesVersion(TimeStampedModel):
+    """
+    Snapshot historique d'un compte-rendu de réunion (PR-MEET-7).
+    Chaque édition ou régénération IA produit une nouvelle version.
+    Permet rollback et audit.
+    """
+    meeting = models.ForeignKey(
+        ProjectMeeting, on_delete=models.CASCADE,
+        related_name="minutes_versions",
+    )
+    recording = models.ForeignKey(
+        "MeetingRecording", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="minutes_versions",
+    )
+    version_number = models.PositiveIntegerField(default=1)
+    content_markdown = models.TextField(blank=True)
+    saved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="saved_minutes_versions",
+    )
+    is_current = models.BooleanField(default=False)
+    source = models.CharField(
+        max_length=20, default="manual",
+        help_text="manual | ai_regenerate | ai_initial",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["meeting", "-version_number"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["meeting", "version_number"],
+                name="uniq_meeting_minutes_version",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.meeting.title} · v{self.version_number}"
+
+
+class WorkspaceVoicePrint(TimeStampedModel):
+    """
+    Empreinte vocale persistante d'un utilisateur dans un workspace
+    (PR-MEET-5). Permet la diarisation automatique sur les réunions
+    suivantes.
+
+    Une voiceprint est créée/mise à jour quand un SpeakerParticipantMapping
+    est confirmé : on garde une référence vers le ``DetectedSpeaker``
+    représentatif et son ``sample_audio`` pour matcher les futures voix.
+
+    NB : la reconnaissance vocale automatique (matching cosinus sur les
+    embeddings) sera l'objet d'une PR ultérieure. Pour l'instant on
+    stocke juste les métadonnées + le pointeur vers le dernier sample.
+    """
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="voice_prints",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="voice_prints",
+    )
+    # Dernière voix détectée mappée → ce user dans ce workspace
+    last_detected_speaker = models.ForeignKey(
+        "DetectedSpeaker", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="voice_prints_anchored",
+    )
+    # Total cumulé de mappings confirmés (mesure la confiance)
+    mappings_count = models.PositiveIntegerField(default=0)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    # Optionnel : embedding vocal pour matching auto (futur)
+    # On stocke en JSONField pour rester portable (vector DB plus tard)
+    embedding = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workspace", "user"],
+                name="uniq_voiceprint_per_user_workspace",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["workspace", "-last_seen_at"]),
+        ]
+
+    def __str__(self):
+        return f"VoicePrint {self.user} · {self.workspace}"
 
 
 class MeetingProjectReview(TimeStampedModel):
