@@ -177,7 +177,9 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"
 
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# NOTE — STATICFILES_STORAGE est désormais déclaré dans STORAGES["staticfiles"]
+# plus bas. Django 4.2+ refuse d'avoir les deux paramètres simultanément
+# (cf. ImproperlyConfigured: "STATICFILES_STORAGE/STORAGES are mutually exclusive").
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
@@ -360,33 +362,38 @@ MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
 MINIO_REGION = os.getenv("S3_REGION", "eu-west-1")
 MINIO_RECORDINGS_BUCKET = os.getenv("RECORDING_S3_BUCKET", "")
 
+# Django 4.2+ : configuration unifiée via STORAGES (remplace
+# STATICFILES_STORAGE + DEFAULT_FILE_STORAGE). On garde whitenoise
+# pour les statics et on ajoute un storage 'recordings' si MinIO/S3
+# est configuré ; sinon le default storage Django local est utilisé
+# pour les FileField audio (cf. project/models._recording_storage).
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
 if MINIO_RECORDINGS_BUCKET and MINIO_ENDPOINT:
-    # Configuration multi-storages (Django 4.2+)
-    STORAGES = {
-        "default": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-        },
-        "recordings": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-                "bucket_name": MINIO_RECORDINGS_BUCKET,
-                "endpoint_url": MINIO_ENDPOINT,
-                "access_key": MINIO_ACCESS_KEY,
-                "secret_key": MINIO_SECRET_KEY,
-                "region_name": MINIO_REGION,
-                "addressing_style": "path",  # critique pour MinIO
-                "signature_version": "s3v4",
-                "default_acl": None,        # MinIO ne supporte pas les ACLs
-                "file_overwrite": False,
-                "querystring_auth": True,
-                "object_parameters": {},     # PAS de ServerSideEncryption sur MinIO standalone
-            },
+    STORAGES["recordings"] = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": MINIO_RECORDINGS_BUCKET,
+            "endpoint_url": MINIO_ENDPOINT,
+            "access_key": MINIO_ACCESS_KEY,
+            "secret_key": MINIO_SECRET_KEY,
+            "region_name": MINIO_REGION,
+            "addressing_style": "path",  # critique pour MinIO
+            "signature_version": "s3v4",
+            "default_acl": None,         # MinIO ne supporte pas les ACLs
+            "file_overwrite": False,
+            "querystring_auth": True,
+            "object_parameters": {},     # PAS de ServerSideEncryption sur MinIO standalone
         },
     }
-# Sinon : Django utilise sa config default_storage classique.
+# Sinon : _recording_storage() retombera sur le default storage.
 
 # Cache court pour éviter de spammer le LLM (secondes)
 AI_CACHE_TTL = int(os.getenv("AI_CACHE_TTL", "300"))
