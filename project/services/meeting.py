@@ -500,6 +500,45 @@ class MeetingService:
         doc.save(out)
         return out.getvalue()
 
+    # ─── Compte-rendu PDF (branding workspace via WeasyPrint) ──────────
+    @classmethod
+    def render_minutes_pdf(cls, meeting: dm.ProjectMeeting) -> bytes:
+        """
+        Génère un PDF du compte-rendu avec le papier en-tête du workspace,
+        en réutilisant le pattern de la facture (PR-INV) — logo, tagline,
+        coordonnées légales en pied de page.
+        """
+        import io
+        from weasyprint import HTML
+        from django.template.loader import render_to_string
+        from project.services.invoice_pdf import _resolve_logo_uri
+
+        workspace = meeting.workspace
+        logo_uri = _resolve_logo_uri(workspace, request=None)
+
+        reviews = list(
+            meeting.project_reviews.select_related("project", "presented_by")
+            .order_by("position", "id")
+        )
+
+        ctx = {
+            "meeting": meeting,
+            "workspace": workspace,
+            "logo_uri": logo_uri,
+            "reviews": reviews,
+            "internal_participants": list(meeting.internal_participants.all()),
+            "structured_decisions": (
+                list(meeting.structured_decisions.all()[:50])
+                if hasattr(meeting, "structured_decisions") else []
+            ),
+            "action_items": list(meeting.action_items.all()[:50])
+            if hasattr(meeting, "action_items") else [],
+        }
+        html_str = render_to_string("project/meeting/minutes_pdf.html", ctx)
+        out = io.BytesIO()
+        HTML(string=html_str).write_pdf(target=out)
+        return out.getvalue()
+
     # ─── Envoi email du compte-rendu ───────────────────────────────────
     @classmethod
     def send_minutes_email(cls, meeting: dm.ProjectMeeting,

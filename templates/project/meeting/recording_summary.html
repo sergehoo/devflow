@@ -121,6 +121,77 @@
   </section>
   {% endif %}
 
+  {# PR-MEET-10 : Suggestions IA de création (projets/sprints/jalons) #}
+  {% if project_suggestions or sprint_suggestions or milestone_suggestions %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-lightbulb"></i> Suggestions IA — Nouveaux objets à créer
+    </h2>
+    <p class="text-xs text-devtext3 mb-3">
+      L'IA propose de créer ces nouveaux éléments suite aux échanges. Sélectionnez ce que vous souhaitez créer.
+    </p>
+    <form method="post" action="{% url 'recording_convert_suggestion' recording.pk %}" class="space-y-2">
+      {% csrf_token %}
+      {% for s in project_suggestions %}
+      <label class="flex items-start gap-3 rounded-xl border border-devaccent/30 bg-devaccent/5 p-3 cursor-pointer hover:bg-devaccent/10">
+        <input type="checkbox" name="accept_suggestion" value="{{ s.pk }}" class="mt-1" {% if s.is_accepted %}checked disabled{% endif %}>
+        <div class="flex-1">
+          <div class="text-sm font-medium text-devtext1">📁 Nouveau projet : {{ s.title }}</div>
+          {% if s.description %}<div class="text-xs text-devtext3 mt-1">{{ s.description|truncatechars:200 }}</div>{% endif %}
+          {% if s.confidence %}<div class="text-[10px] text-devtext3 mt-1">Confiance IA : {{ s.confidence|floatformat:0 }}%</div>{% endif %}
+          {% if s.is_accepted %}<div class="text-[10px] text-emerald-500 mt-1">✓ Créé</div>{% endif %}
+        </div>
+      </label>
+      {% endfor %}
+      {% for s in sprint_suggestions %}
+      <label class="flex items-start gap-3 rounded-xl border border-devborder/40 bg-devbg3/40 p-3 cursor-pointer hover:bg-devbg3/60">
+        <input type="checkbox" name="accept_suggestion" value="{{ s.pk }}" class="mt-1" {% if s.is_accepted %}checked disabled{% endif %}>
+        <div class="flex-1">
+          <div class="text-sm font-medium text-devtext1">🏃 Sprint : {{ s.title }}</div>
+          {% if s.description %}<div class="text-xs text-devtext3 mt-1">{{ s.description|truncatechars:200 }}</div>{% endif %}
+          <div class="text-[10px] text-devtext3 mt-1 italic">Sprint nécessite un projet — création manuelle à finaliser ensuite.</div>
+        </div>
+      </label>
+      {% endfor %}
+      {% for s in milestone_suggestions %}
+      <label class="flex items-start gap-3 rounded-xl border border-devborder/40 bg-devbg3/40 p-3 cursor-pointer hover:bg-devbg3/60">
+        <input type="checkbox" name="accept_suggestion" value="{{ s.pk }}" class="mt-1" {% if s.is_accepted %}checked disabled{% endif %}>
+        <div class="flex-1">
+          <div class="text-sm font-medium text-devtext1">🎯 Jalon : {{ s.title }}</div>
+          {% if s.due_date_hint %}<div class="text-[11px] text-devtext3 mt-1">📅 {{ s.due_date_hint }}</div>{% endif %}
+          {% if s.description %}<div class="text-xs text-devtext3 mt-1">{{ s.description|truncatechars:200 }}</div>{% endif %}
+        </div>
+      </label>
+      {% endfor %}
+      <div class="flex justify-end pt-2">
+        <button type="submit" class="btn-main text-xs">
+          <i class="fa-solid fa-check"></i> Créer les éléments cochés
+        </button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+
+  {# PR-MEET-10 : Entités existantes mentionnées (référence seule) #}
+  {% if mentions %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-link"></i> Entités DevFlow mentionnées
+    </h2>
+    <ul class="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {% for m in mentions %}
+      <li class="rounded-xl border border-devborder/40 bg-devbg3/40 px-3 py-2 text-sm">
+        <div class="text-devtext1">{{ m.title }}</div>
+        <div class="text-[10px] text-devtext3 mt-0.5">
+          {{ m.get_kind_display }}{% if m.confidence %} · confiance {{ m.confidence|floatformat:0 }}%{% endif %}
+        </div>
+        {% if m.description %}<div class="text-[11px] text-devtext3 mt-1 italic">« {{ m.description|truncatechars:120 }} »</div>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {# Risques (consultation seule) #}
   {% if risks %}
   <section class="rounded-2xl border border-devborder bg-devbg2 p-6">

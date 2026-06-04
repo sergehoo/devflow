@@ -1,0 +1,104 @@
+{% extends "layout/base.html" %}
+
+{% block title %}DevFlow — Registre des décisions{% endblock %}
+{% block page_title %}Registre des décisions{% endblock %}
+{% block breadcrumb %}Collaboration · Réunions · Décisions{% endblock %}
+
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Réunions · Registre décisions">
+  <meta name="devflow-ai-object-type" content="meeting_decisions_list">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-4">
+
+  <div class="flex items-center justify-between">
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-devaccent">Workspace</p>
+      <h1 class="mt-1 text-2xl font-semibold text-devtext1">Registre des décisions</h1>
+      <p class="text-sm text-devtext3 mt-1">
+        Toutes les décisions prises en réunion, classées par statut et catégorie.
+      </p>
+    </div>
+    <a href="{% url 'meeting_dashboard' %}" class="btn-soft text-xs">← Dashboard</a>
+  </div>
+
+  <form method="get" class="flex flex-wrap gap-2 items-end">
+    <div>
+      <label class="block text-[11px] text-devtext3 mb-1">Statut</label>
+      <select name="status" class="rounded-lg border border-devborder bg-devbg3 px-3 py-1.5 text-sm text-devtext1">
+        <option value="">— Tous —</option>
+        {% for v, l in status_choices %}
+        <option value="{{ v }}" {% if v == current_status %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-[11px] text-devtext3 mb-1">Catégorie</label>
+      <select name="category" class="rounded-lg border border-devborder bg-devbg3 px-3 py-1.5 text-sm text-devtext1">
+        <option value="">— Toutes —</option>
+        {% for v, l in category_choices %}
+        <option value="{{ v }}" {% if v == current_category %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn-soft text-xs">Filtrer</button>
+    {% if current_status or current_category %}
+      <a href="{% url 'meeting_decisions_list' %}" class="text-xs text-devtext3 underline">Réinitialiser</a>
+    {% endif %}
+  </form>
+
+  {% if decisions %}
+    <div class="overflow-x-auto rounded-2xl border border-devborder bg-devbg2">
+      <table class="min-w-full text-sm">
+        <thead class="text-[11px] uppercase tracking-wider text-devtext3 border-b border-devborder">
+          <tr>
+            <th class="text-left px-4 py-3">Décision</th>
+            <th class="text-left px-4 py-3">Catégorie</th>
+            <th class="text-left px-4 py-3">Statut</th>
+            <th class="text-left px-4 py-3">Décidé par</th>
+            <th class="text-left px-4 py-3">Réunion</th>
+            <th class="text-left px-4 py-3">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in decisions %}
+          <tr class="border-b border-devborder/40 hover:bg-devbg3/40">
+            <td class="px-4 py-3 align-top">
+              <div class="text-sm font-medium text-devtext1">{{ d.title }}</div>
+              {% if d.description %}<div class="text-[11px] text-devtext3 mt-0.5">{{ d.description|truncatechars:120 }}</div>{% endif %}
+            </td>
+            <td class="px-4 py-3 text-xs text-devtext2 align-top">{{ d.get_category_display }}</td>
+            <td class="px-4 py-3 align-top">
+              {% if d.status == "VALIDATED" %}
+                <span class="inline-flex rounded-full bg-devaccent/15 px-2 py-0.5 text-[11px] font-semibold text-devaccent">{{ d.get_status_display }}</span>
+              {% elif d.status == "EXECUTED" %}
+                <span class="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-500">{{ d.get_status_display }}</span>
+              {% elif d.status == "PENDING" %}
+                <span class="inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-500">{{ d.get_status_display }}</span>
+              {% else %}
+                <span class="inline-flex rounded-full bg-devred/15 px-2 py-0.5 text-[11px] font-semibold text-devred">{{ d.get_status_display }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-xs text-devtext2 align-top">{{ d.decided_by|default:"—" }}</td>
+            <td class="px-4 py-3 text-xs text-devtext2 align-top">
+              {% if d.meeting %}
+                <a href="{% url 'meeting_detail' d.meeting.pk %}" class="text-devaccent hover:underline">
+                  {{ d.meeting.title|truncatechars:30 }}
+                </a>
+              {% else %}—{% endif %}
+            </td>
+            <td class="px-4 py-3 text-xs text-devtext3 align-top">{{ d.decided_at|date:"d/m/Y" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-[11px] text-devtext3 text-right">{{ decisions|length }} décision(s) affichée(s) (max 200)</p>
+  {% else %}
+    <div class="rounded-2xl border border-devborder bg-devbg2 p-10 text-center">
+      <p class="text-sm text-devtext3">Aucune décision enregistrée{% if current_status or current_category %} pour ce filtre{% endif %}.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

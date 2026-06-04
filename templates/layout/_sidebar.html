@@ -338,6 +338,7 @@
         <a class="nav-subitem {% if current_url == 'meeting_dashboard' %}lenk-active{% endif %}" href="{% url 'meeting_dashboard' %}">📅 Tableau de bord réunions</a>
         <a class="nav-subitem {% if current_url == 'meeting_list' or current_url == 'meeting_detail' or current_url == 'meeting_create' or current_url == 'meeting_update' %}lenk-active{% endif %}" href="{% url 'meeting_list' %}">Toutes les réunions</a>
         <a class="nav-subitem {% if current_url == 'meeting_series_list' or current_url == 'meeting_series_detail' or current_url == 'meeting_series_create' or current_url == 'meeting_series_update' %}lenk-active{% endif %}" href="{% url 'meeting_series_list' %}">Séries récurrentes</a>
+        <a class="nav-subitem {% if current_url == 'meeting_decisions_list' %}lenk-active{% endif %}" href="{% url 'meeting_decisions_list' %}">📋 Registre des décisions</a>
       </div>
     </details>
 

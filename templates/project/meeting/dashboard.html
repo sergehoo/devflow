@@ -189,6 +189,68 @@
     </section>
   </div>
 
+  {# ─── PR-MEET-10 : Analyses IA qualitatives ─── #}
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    {# Temps de parole #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+      <h2 class="text-base font-semibold text-devtext1 mb-4">
+        <i class="fa-solid fa-microphone"></i> Temps de parole (année)
+      </h2>
+      {% if speaking_rows %}
+        <ul class="space-y-2">
+          {% for row in speaking_rows %}
+          <li class="flex items-center justify-between text-sm">
+            <span class="text-devtext1 truncate">{{ row.name }}</span>
+            <span class="ml-2 inline-flex items-center rounded-full bg-devaccent/15 px-2 py-0.5 text-[11px] font-semibold text-devaccent">
+              {{ row.minutes }} min
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-devtext3 italic">Pas encore de transcription avec voix mappées.</p>
+      {% endif %}
+    </section>
+
+    {# Taux d'exécution décisions #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6 flex flex-col">
+      <h2 class="text-base font-semibold text-devtext1 mb-4">
+        <i class="fa-solid fa-gavel"></i> Décisions (année)
+      </h2>
+      <div class="flex-1 flex flex-col items-center justify-center">
+        <div class="text-5xl font-bold text-devaccent">{{ execution_rate }}<span class="text-2xl">%</span></div>
+        <div class="text-xs text-devtext3 mt-1">d'exécution</div>
+        <div class="text-[11px] text-devtext3 mt-3">
+          {{ executed_decisions_year }} exécutées sur {{ total_decisions_year }}
+        </div>
+        <a href="{% url 'meeting_decisions_list' %}" class="text-xs text-devaccent hover:underline mt-2">
+          Registre complet →
+        </a>
+      </div>
+    </section>
+
+    {# Top projets discutés #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+      <h2 class="text-base font-semibold text-devtext1 mb-4">
+        <i class="fa-solid fa-comments"></i> Top projets discutés (IA)
+      </h2>
+      {% if top_discussed_projects %}
+        <ul class="space-y-2">
+          {% for p in top_discussed_projects %}
+          <li class="flex items-center justify-between text-sm">
+            <span class="text-devtext1 truncate">{{ p.title|truncatechars:35 }}</span>
+            <span class="ml-2 inline-flex rounded-full bg-devaccent/15 px-2 py-0.5 text-[11px] font-semibold text-devaccent">
+              {{ p.nb }} ×
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-devtext3 italic">L'IA n'a pas encore détecté de projets mentionnés.</p>
+      {% endif %}
+    </section>
+  </div>
+
   {# ─── Séries actives ─── #}
   {% if active_series %}
   <section class="rounded-2xl border border-devborder bg-devbg2 p-6">

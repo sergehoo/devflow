@@ -190,12 +190,23 @@ class RecordingSummaryView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
         decisions = [e for e in extractions if e.kind == "decision"]
         actions = [e for e in extractions if e.kind == "action"]
         risks = [e for e in extractions if e.kind == "risk"]
+        # PR-MEET-10 : suggestions IA de création + mentions
+        project_suggestions = [e for e in extractions if e.kind == "project_suggestion"]
+        sprint_suggestions = [e for e in extractions if e.kind == "sprint_suggestion"]
+        milestone_suggestions = [e for e in extractions if e.kind == "milestone_suggestion"]
+        mentions = [e for e in extractions if e.kind in (
+            "project_mention", "sprint_mention", "milestone_mention",
+        )]
         return render(request, self.template_name, {
             "meeting": recording.meeting,
             "recording": recording,
             "decisions": decisions,
             "actions": actions,
             "risks": risks,
+            "project_suggestions": project_suggestions,
+            "sprint_suggestions": sprint_suggestions,
+            "milestone_suggestions": milestone_suggestions,
+            "mentions": mentions,
             "section": "meetings",
             "page_title": "Compte-rendu IA",
             "breadcrumb": "Collaboration · Réunions · Compte-rendu",

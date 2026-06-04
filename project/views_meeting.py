@@ -551,6 +551,68 @@ class MeetingDashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             .order_by("name")[:10]
         )
 
+        # ── PR-MEET-10 : analyses qualitatives ──
+        # Temps de parole par participant (cumul sur tous les recordings
+        # du workspace, sur l'année courante)
+        from django.db.models import F, FloatField, ExpressionWrapper
+        speaking_qs = (
+            dm.SpeakerSegment.objects
+            .filter(
+                recording__workspace_id__in=ws_ids,
+                recording__created_at__date__gte=year_start,
+            )
+            .annotate(dur=ExpressionWrapper(
+                F("end_seconds") - F("start_seconds"),
+                output_field=FloatField(),
+            ))
+        )
+        from django.db.models import Sum
+        # On joint via DetectedSpeaker.mapped_participant
+        speaking_by_user = (
+            speaking_qs
+            .filter(
+                # ne garder que les segments dont le label est mappé à un user
+                recording__speakers__speaker_label=F("speaker_label"),
+                recording__speakers__mapped_participant__isnull=False,
+            )
+            .values(
+                "recording__speakers__mapped_participant_id",
+                "recording__speakers__mapped_participant__first_name",
+                "recording__speakers__mapped_participant__last_name",
+                "recording__speakers__mapped_participant__username",
+            )
+            .annotate(total_seconds=Sum("dur"))
+            .order_by("-total_seconds")[:10]
+        )
+
+        # Taux d'exécution des décisions du workspace
+        decisions_qs = dm.MeetingDecision.objects.filter(
+            workspace_id__in=ws_ids,
+            decided_at__date__gte=year_start,
+            is_archived=False,
+        )
+        total_dec = decisions_qs.count()
+        executed_dec = decisions_qs.filter(
+            status=dm.MeetingDecision.Status.EXECUTED,
+        ).count()
+        execution_rate = (
+            round(100.0 * executed_dec / total_dec, 1) if total_dec else 0
+        )
+
+        # Top projets discutés (basé sur PROJECT_MENTION dans les
+        # extractions IA des recordings du workspace, année courante)
+        top_discussed_projects = (
+            dm.RecordingAIExtraction.objects
+            .filter(
+                recording__workspace_id__in=ws_ids,
+                kind=dm.RecordingAIExtraction.Kind.PROJECT_MENTION,
+                created_at__date__gte=year_start,
+            )
+            .values("title")
+            .annotate(nb=Count("id"))
+            .order_by("-nb")[:8]
+        )
+
         # Calendrier mini-mois : pour chaque jour, nombre de réunions
         days_with_meetings = (
             month_qs
@@ -575,6 +637,19 @@ class MeetingDashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
                 "is_weekend": (day_date.weekday() >= 5),
             })
 
+        # Préformate les données speaking pour template
+        speaking_rows = []
+        for row in speaking_by_user:
+            name = (
+                (row["recording__speakers__mapped_participant__first_name"] or "")
+                + " "
+                + (row["recording__speakers__mapped_participant__last_name"] or "")
+            ).strip() or row["recording__speakers__mapped_participant__username"]
+            speaking_rows.append({
+                "name": name,
+                "minutes": round((row["total_seconds"] or 0) / 60, 1),
+            })
+
         return render(request, self.template_name, {
             "upcoming_meetings": upcoming,
             "recent_meetings": recent,
@@ -583,10 +658,124 @@ class MeetingDashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             "active_series": active_series,
             "calendar_grid": calendar_grid,
             "current_month_label": today.strftime("%B %Y").capitalize(),
+            # PR-MEET-10
+            "speaking_rows": speaking_rows,
+            "execution_rate": execution_rate,
+            "total_decisions_year": total_dec,
+            "executed_decisions_year": executed_dec,
+            "top_discussed_projects": top_discussed_projects,
             "section": "meetings",
             "page_title": "Tableau de bord réunions",
             "breadcrumb": "Collaboration · Réunions · Vue d'ensemble",
         })
+
+
+# =========================================================================
+# PR-MEET-9 : PDF compte-rendu + Registre décisions + Convert IA
+# =========================================================================
+class MeetingMinutesPDFView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """GET : télécharge le compte-rendu en PDF avec branding workspace."""
+
+    def get(self, request, pk):
+        from django.http import HttpResponse
+        ws_ids = get_user_workspace_ids(request.user)
+        meeting = get_object_or_404(
+            dm.ProjectMeeting, pk=pk, workspace_id__in=ws_ids,
+        )
+        try:
+            from project.services.meeting import MeetingService
+            pdf_bytes = MeetingService.render_minutes_pdf(meeting)
+        except Exception as exc:
+            logger.exception("render_minutes_pdf failed: %s", exc)
+            messages.error(request, f"Génération PDF échouée : {exc}")
+            return redirect("meeting_detail", pk=meeting.pk)
+        filename = f"CR-{meeting.title.replace(' ', '_')}.pdf"
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        return response
+
+
+class MeetingDecisionListView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """Registre transversal de toutes les décisions du workspace."""
+    template_name = "project/meeting/decisions_list.html"
+
+    def get(self, request):
+        from django.shortcuts import render
+        ws = self.get_current_workspace()
+        qs = dm.MeetingDecision.objects.filter(workspace=ws, is_archived=False) \
+            .select_related("meeting", "decided_by", "executed_by") \
+            .prefetch_related("projects").order_by("-decided_at")
+        status_filter = request.GET.get("status", "")
+        category_filter = request.GET.get("category", "")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        if category_filter:
+            qs = qs.filter(category=category_filter)
+        return render(request, self.template_name, {
+            "decisions": qs[:200],
+            "status_choices": dm.MeetingDecision.Status.choices,
+            "category_choices": dm.MeetingDecision.Category.choices,
+            "current_status": status_filter,
+            "current_category": category_filter,
+            "section": "meetings",
+            "page_title": "Registre des décisions",
+            "breadcrumb": "Collaboration · Réunions · Décisions",
+        })
+
+
+class RecordingConvertSuggestionView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """
+    POST : transforme une RecordingAIExtraction (project_suggestion /
+    sprint_suggestion / milestone_suggestion) en VRAI objet DevFlow.
+
+    Body : `extraction_id` (PK de l'extraction à convertir).
+    """
+
+    @method_decorator(csrf_protect)
+    def post(self, request, recording_pk):
+        ws_ids = get_user_workspace_ids(request.user)
+        recording = get_object_or_404(
+            dm.MeetingRecording, pk=recording_pk, workspace_id__in=ws_ids,
+        )
+        ext_ids = request.POST.getlist("accept_suggestion")
+        created_projects = 0
+        skipped = 0
+        for ext_id in ext_ids:
+            ext = recording.ai_extractions.filter(
+                pk=ext_id, is_accepted=False,
+            ).first()
+            if not ext:
+                continue
+            kind = ext.kind
+            try:
+                if kind == dm.RecordingAIExtraction.Kind.PROJECT_SUGGESTION:
+                    proj = dm.Project.objects.create(
+                        workspace=recording.workspace,
+                        name=ext.title[:200],
+                        description=ext.description or "",
+                        status=getattr(dm.Project, "Status", None) and
+                               dm.Project.Status.PLANNED or "PLANNED",
+                    )
+                    ext.is_accepted = True
+                    ext.accepted_at = timezone.now()
+                    ext.save(update_fields=["is_accepted", "accepted_at", "updated_at"])
+                    created_projects += 1
+                else:
+                    # Sprint/Milestone : besoin d'un project parent — on
+                    # se contente de marquer accepté et l'utilisateur les
+                    # crée à la main pour l'instant (à enrichir)
+                    ext.is_accepted = True
+                    ext.accepted_at = timezone.now()
+                    ext.save(update_fields=["is_accepted", "accepted_at", "updated_at"])
+                    skipped += 1
+            except Exception as exc:
+                logger.warning("convert suggestion %s failed: %s", ext_id, exc)
+        if created_projects:
+            messages.success(request, f"{created_projects} projet(s) créé(s).")
+        if skipped:
+            messages.info(request, f"{skipped} suggestion(s) acceptée(s) (création manuelle requise).")
+        return redirect("recording_summary",
+                        meeting_pk=recording.meeting_id, recording_pk=recording.pk)
 
 
 class MeetingSendMinutesView(WorkspaceSecurityMixin, DevflowBaseMixin, View):

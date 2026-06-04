@@ -49,6 +49,9 @@
                     <a href="{% url 'meeting_minutes_docx' meeting.pk %}" class="btn-soft">
                         <i class="fa-solid fa-file-word"></i> Word
                     </a>
+                    <a href="{% url 'meeting_minutes_pdf' meeting.pk %}" target="_blank" class="btn-soft">
+                        <i class="fa-solid fa-file-pdf"></i> PDF
+                    </a>
                     <form method="post" action="{% url 'meeting_send_minutes' meeting.pk %}">
                         {% csrf_token %}
                         <button type="submit" class="btn-soft" title="Envoie le .docx par email aux participants">
