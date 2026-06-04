@@ -1,0 +1,97 @@
+{% extends "layout/base.html" %}
+
+{% block title %}DevFlow — Identifier les voix · {{ meeting.title }}{% endblock %}
+{% block page_title %}Identifier les voix détectées{% endblock %}
+{% block breadcrumb %}Collaboration · Réunions · Mapping voix{% endblock %}
+
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Réunion · Mapping voix">
+  <meta name="devflow-ai-object-type" content="recording_speakers">
+  <meta name="devflow-ai-object-id" content="{{ recording.id }}">
+  <meta name="devflow-ai-object-name" content="{{ meeting.title }}">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+  <div class="flex items-center justify-between">
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-devaccent">{{ meeting.title }}</p>
+      <h1 class="mt-1 text-2xl font-semibold text-devtext1">Identifier les voix</h1>
+    </div>
+    <a href="{% url 'meeting_detail' meeting.pk %}"
+       class="btn-soft text-xs">← Retour à la réunion</a>
+  </div>
+
+  <div class="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-200">
+    <strong>Identification manuelle</strong> — Le système a détecté
+    <strong>{{ speakers|length }}</strong> voix distincte(s). Écoutez chaque
+    extrait et associez-le à un participant. Cette étape est obligatoire pour
+    générer un compte-rendu nominatif.
+  </div>
+
+  <form method="post"
+        action="{% url 'recording_speaker_mapping_post' recording.pk %}"
+        class="space-y-4">
+    {% csrf_token %}
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% for sp in speakers %}
+      <div class="rounded-2xl border border-devborder bg-devbg2 p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-base font-semibold text-devtext1">
+            <i class="fa-solid fa-user-circle"></i>
+            {{ sp.speaker_label }}
+            {% if sp.is_confirmed %}
+              <span class="ml-2 text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/15 text-emerald-500 px-2 py-0.5 rounded-full">Confirmé</span>
+            {% endif %}
+          </h3>
+          <span class="text-[11px] text-devtext3">
+            {{ sp.total_duration_seconds|floatformat:0 }} s · {{ sp.total_segments }} seg.
+          </span>
+        </div>
+
+        {% if sp.sample_audio %}
+        <audio controls preload="metadata" class="w-full mb-3">
+          <source src="{% url 'recording_stream_speaker_sample' meeting_pk=meeting.pk recording_pk=recording.pk speaker_label=sp.speaker_label %}?token={{ sp.sample_token }}"
+                  type="audio/mpeg">
+          Votre navigateur ne supporte pas l'audio HTML5.
+        </audio>
+        {% else %}
+        <p class="text-xs text-devtext3 italic mb-3">Extrait audio non disponible</p>
+        {% endif %}
+
+        <label class="block text-xs text-devtext2 mb-1">Associer à :</label>
+        <select name="speaker_{{ sp.speaker_label }}"
+                class="w-full rounded-lg border border-devborder bg-devbg3 px-3 py-1.5 text-sm text-devtext1">
+          <option value="">— Sélectionner —</option>
+          {% for p in participants %}
+          <option value="{{ p.id }}"
+                  {% if sp.mapped_participant_id|stringformat:"s" == p.id %}selected{% endif %}>
+            {{ p.full_name }}{% if p.email %} ({{ p.email }}){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% empty %}
+      <div class="col-span-2 rounded-2xl border border-devborder bg-devbg2 p-6 text-center text-devtext3">
+        Aucune voix détectée — le pipeline est peut-être encore en cours.
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="flex items-center justify-end gap-2">
+      <button type="submit" class="btn-soft">
+        <i class="fa-solid fa-floppy-disk"></i> Enregistrer les associations
+      </button>
+      {% if all_mapped %}
+      <button type="submit"
+              formaction="{% url 'recording_confirm_speakers' recording.pk %}"
+              class="btn-main">
+        <i class="fa-solid fa-check"></i> Confirmer et générer le CR
+      </button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -3129,8 +3129,24 @@ class ProjectMeeting(TimeStampedModel, SoftDeleteModel):
     workspace = models.ForeignKey(
         "Workspace", on_delete=models.CASCADE, related_name="meetings"
     )
+    # Une réunion peut couvrir plusieurs projets en revue (comité, sprint
+    # review multi-projets…). Le champ ``project`` reste optionnel pour
+    # rétro-compatibilité avec les réunions 1-projet existantes.
     project = models.ForeignKey(
-        "Project", on_delete=models.CASCADE, related_name="meetings"
+        "Project", on_delete=models.CASCADE, related_name="meetings",
+        null=True, blank=True,
+        help_text="Projet principal (optionnel). Pour une revue multi-projets, utilisez plutôt 'projects'.",
+    )
+    projects = models.ManyToManyField(
+        "Project",
+        related_name="committee_meetings",
+        blank=True,
+        help_text="Projets passés en revue dans cette réunion (comité, revue, etc.).",
+    )
+    series = models.ForeignKey(
+        "MeetingSeries", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="occurrences",
+        help_text="Si l'occurrence vient d'une série récurrente.",
     )
     sprint = models.ForeignKey(
         "Sprint", on_delete=models.SET_NULL, null=True, blank=True,
@@ -3198,7 +3214,9 @@ class ProjectMeeting(TimeStampedModel, SoftDeleteModel):
         ]
 
     def __str__(self):
-        return f"{self.title} · {self.project.name}"
+        if self.project_id:
+            return f"{self.title} · {self.project.name}"
+        return self.title
 
     def save(self, *args, **kwargs):
         if not self.workspace_id and self.project_id:
@@ -3304,6 +3322,526 @@ class MeetingAttachment(TimeStampedModel):
 
     def __str__(self):
         return self.label or self.file.name
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Module Enregistrement audio + transcription IA (PR-REC-1)
+# ─────────────────────────────────────────────────────────────────────────
+def _recording_storage():
+    """
+    Storage dédié aux enregistrements audio (bucket MinIO/S3 séparé).
+    Fallback sur le default storage si la config 'recordings' n'existe pas
+    (par ex. en dev local sans MinIO configuré).
+    """
+    try:
+        from django.core.files.storage import storages
+        return storages["recordings"]
+    except Exception:
+        from django.core.files.storage import default_storage
+        return default_storage
+
+
+def _audio_upload_path(instance, filename):
+    """Chemin : devflow/recordings/<workspace_id>/<meeting_id>/<filename>"""
+    meeting_id = instance.meeting_id or "orphan"
+    workspace_id = (instance.workspace_id
+                    or (instance.meeting.workspace_id if instance.meeting_id else "orphan"))
+    return f"devflow/recordings/{workspace_id}/{meeting_id}/{filename}"
+
+
+def _speaker_sample_upload_path(instance, filename):
+    """Chemin : devflow/recordings/<ws>/<meeting>/samples/<label>/<filename>"""
+    rec = instance.recording
+    workspace_id = rec.workspace_id or rec.meeting.workspace_id
+    meeting_id = rec.meeting_id
+    label = instance.speaker_label or "unknown"
+    return f"devflow/recordings/{workspace_id}/{meeting_id}/samples/{label}/{filename}"
+
+
+class MeetingRecording(TimeStampedModel):
+    """
+    Enregistrement audio d'une réunion. Stocke le fichier audio brut + le
+    statut du pipeline IA (upload → transcription → diarisation → mapping
+    voix → résumé).
+
+    Isolation tenant via ``workspace`` FK + duplication depuis ``meeting``.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Brouillon"
+        UPLOADING = "uploading", "Upload en cours"
+        UPLOADED = "uploaded", "Audio uploadé"
+        TRANSCRIBING = "transcribing", "Transcription en cours"
+        DIARIZING = "diarizing", "Détection des voix"
+        WAITING_SPEAKER_MAPPING = "waiting_speaker_mapping", "Identification voix"
+        GENERATING_SUMMARY = "generating_summary", "Génération du compte-rendu"
+        COMPLETED = "completed", "Terminé"
+        FAILED = "failed", "Échec"
+        CANCELLED = "cancelled", "Annulé"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="meeting_recordings",
+    )
+    meeting = models.ForeignKey(
+        ProjectMeeting, on_delete=models.CASCADE, related_name="recordings",
+    )
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="recordings_made",
+    )
+
+    audio_file = models.FileField(
+        upload_to=_audio_upload_path, max_length=600, null=True, blank=True,
+        storage=_recording_storage,
+        help_text="Fichier audio brut (webm/opus/mp3/wav).",
+    )
+    original_filename = models.CharField(max_length=255, blank=True)
+    mime_type = models.CharField(max_length=80, blank=True)
+    duration_seconds = models.FloatField(default=0)
+    file_size_bytes = models.BigIntegerField(default=0)
+
+    status = models.CharField(
+        max_length=30, choices=Status.choices, default=Status.DRAFT,
+        db_index=True,
+    )
+    error_message = models.TextField(blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    # ── Consentement RGPD ──────────────────────────────────────────────
+    consent_acknowledged = models.BooleanField(
+        default=False,
+        help_text="L'organisateur a confirmé avoir informé les participants.",
+    )
+    consent_acknowledged_at = models.DateTimeField(null=True, blank=True)
+
+    # ── Transcription / IA ─────────────────────────────────────────────
+    full_transcript = models.TextField(blank=True)
+    final_transcript = models.TextField(
+        blank=True,
+        help_text="Transcript final avec noms réels des speakers (post-mapping).",
+    )
+    summary_markdown = models.TextField(
+        blank=True,
+        help_text="Compte-rendu structuré (Markdown) généré par l'IA.",
+    )
+    transcription_provider = models.CharField(max_length=40, blank=True)
+    summary_provider = models.CharField(max_length=40, blank=True)
+    tokens_used = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Enregistrement de réunion"
+        verbose_name_plural = "Enregistrements de réunion"
+        indexes = [
+            models.Index(fields=["workspace", "status"]),
+            models.Index(fields=["meeting", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Enregistrement de {self.meeting.title} ({self.get_status_display()})"
+
+    def save(self, *args, **kwargs):
+        if not self.workspace_id and self.meeting_id:
+            self.workspace = self.meeting.workspace
+        super().save(*args, **kwargs)
+
+    @property
+    def is_terminal(self):
+        return self.status in {
+            self.Status.COMPLETED, self.Status.FAILED, self.Status.CANCELLED,
+        }
+
+
+class SpeakerSegment(TimeStampedModel):
+    """
+    Segment de transcription diarisé (1 speaker × 1 plage temporelle).
+    Issu de la sortie AssemblyAI utterances.
+    """
+    recording = models.ForeignKey(
+        MeetingRecording, on_delete=models.CASCADE, related_name="segments",
+    )
+    speaker_label = models.CharField(
+        max_length=40,
+        help_text="Label brut diarisé (ex: 'SPEAKER_00', 'A', 'B').",
+    )
+    start_seconds = models.FloatField(default=0)
+    end_seconds = models.FloatField(default=0)
+    text = models.TextField()
+    confidence = models.FloatField(default=0)
+
+    class Meta:
+        ordering = ["recording", "start_seconds", "id"]
+        indexes = [
+            models.Index(fields=["recording", "speaker_label"]),
+            models.Index(fields=["recording", "start_seconds"]),
+        ]
+
+    def __str__(self):
+        return f"{self.speaker_label} [{self.start_seconds:.1f}-{self.end_seconds:.1f}]"
+
+
+class DetectedSpeaker(TimeStampedModel):
+    """
+    Voix unique détectée dans l'enregistrement, à mapper manuellement à
+    un MeetingParticipant. Stocke un extrait audio représentatif (10s max)
+    pour permettre l'identification à l'oreille.
+    """
+    recording = models.ForeignKey(
+        MeetingRecording, on_delete=models.CASCADE, related_name="speakers",
+    )
+    speaker_label = models.CharField(max_length=40, db_index=True)
+    display_name = models.CharField(max_length=200, blank=True)
+    total_duration_seconds = models.FloatField(default=0)
+    total_segments = models.PositiveIntegerField(default=0)
+
+    sample_audio = models.FileField(
+        upload_to=_speaker_sample_upload_path, max_length=600,
+        null=True, blank=True,
+        storage=_recording_storage,
+        help_text="Extrait MP3 ~8s pour identification à l'oreille.",
+    )
+    sample_start_seconds = models.FloatField(default=0)
+    sample_end_seconds = models.FloatField(default=0)
+
+    # ── Mapping manuel ─────────────────────────────────────────────────
+    mapped_participant = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="speaker_mappings",
+    )
+    is_confirmed = models.BooleanField(default=False)
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="confirmed_speaker_mappings",
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["recording", "speaker_label"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["recording", "speaker_label"],
+                name="uniq_detected_speaker_per_recording",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["recording", "is_confirmed"]),
+        ]
+
+    def __str__(self):
+        if self.mapped_participant:
+            return f"{self.speaker_label} → {self.mapped_participant}"
+        return self.speaker_label
+
+
+class SpeakerParticipantMapping(TimeStampedModel):
+    """
+    Trace historique des mappings voix → participant. Permet l'audit et le
+    rollback. Une seule mapping ACTIVE à un instant T pour un couple
+    (recording, speaker_label).
+    """
+    recording = models.ForeignKey(
+        MeetingRecording, on_delete=models.CASCADE,
+        related_name="speaker_mappings",
+    )
+    speaker_label = models.CharField(max_length=40)
+    participant = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="received_speaker_mappings",
+    )
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="speaker_mappings_made",
+    )
+    is_active = models.BooleanField(default=True)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["recording", "speaker_label", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"{self.speaker_label} → {self.participant}"
+
+
+class RecordingAIExtraction(TimeStampedModel):
+    """
+    Brouillons IA (décisions, actions, risques) à valider par l'utilisateur
+    avant création des vrais objets DevFlow (MeetingActionItem, etc.).
+
+    Permet à l'utilisateur de cocher / décocher ce qu'il garde avant que
+    le système crée les enregistrements définitifs.
+    """
+
+    class Kind(models.TextChoices):
+        DECISION = "decision", "Décision"
+        ACTION = "action", "Action"
+        RISK = "risk", "Risque"
+        NOTE = "note", "Note"
+
+    recording = models.ForeignKey(
+        MeetingRecording, on_delete=models.CASCADE,
+        related_name="ai_extractions",
+    )
+    kind = models.CharField(max_length=15, choices=Kind.choices)
+    title = models.CharField(max_length=250)
+    description = models.TextField(blank=True)
+    assignee_hint = models.CharField(
+        max_length=120, blank=True,
+        help_text="Nom détecté par l'IA (à matcher à un User si possible).",
+    )
+    due_date_hint = models.CharField(max_length=80, blank=True)
+    priority_hint = models.CharField(max_length=15, blank=True)
+    confidence = models.FloatField(default=0)
+    is_accepted = models.BooleanField(
+        default=False,
+        help_text="L'utilisateur a confirmé cette extraction.",
+    )
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    # FK vers les objets DevFlow réels créés à l'acceptation
+    created_action_item = models.ForeignKey(
+        MeetingActionItem, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="source_extraction",
+    )
+
+    class Meta:
+        ordering = ["recording", "kind", "id"]
+        indexes = [
+            models.Index(fields=["recording", "kind", "is_accepted"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} · {self.title[:50]}"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Réunions cycliques (séries) + revue projet par projet (PR-MEET-1)
+# ─────────────────────────────────────────────────────────────────────────
+class MeetingSeries(TimeStampedModel, SoftDeleteModel):
+    """
+    Série récurrente de réunions (ex: Comité hebdo lundi 9h, Daily 9h30,
+    Sprint Review tous les 14 jours, Comité de pilotage mensuel).
+
+    Une série génère automatiquement des occurrences ``ProjectMeeting``
+    (cf. ``MeetingService.generate_occurrences`` + Celery beat journalier).
+    Chaque occurrence reste éditable indépendamment (notes, participants,
+    statut), la série ne pousse que les valeurs par défaut.
+    """
+
+    class Recurrence(models.TextChoices):
+        NONE = "NONE", "Aucune (réunion unique)"
+        DAILY = "DAILY", "Quotidienne (jours ouvrés)"
+        WEEKLY = "WEEKLY", "Hebdomadaire"
+        BIWEEKLY = "BIWEEKLY", "Bi-hebdomadaire"
+        MONTHLY = "MONTHLY", "Mensuelle (jour du mois)"
+
+    workspace = models.ForeignKey(
+        "Workspace", on_delete=models.CASCADE, related_name="meeting_series"
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    meeting_type = models.CharField(
+        max_length=25,
+        choices=ProjectMeeting.MeetingType.choices,
+        default=ProjectMeeting.MeetingType.FOLLOW_UP,
+    )
+
+    # ── Récurrence ─────────────────────────────────────────────────────
+    recurrence = models.CharField(
+        max_length=15, choices=Recurrence.choices, default=Recurrence.WEEKLY,
+    )
+    # WEEKLY / BIWEEKLY : jour de la semaine (0=lundi, 6=dimanche)
+    weekday = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Pour les récurrences hebdo/bi-hebdo : 0=lundi…6=dimanche.",
+    )
+    # MONTHLY : jour du mois (1-31). 0 = dernier jour du mois.
+    month_day = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Pour la récurrence mensuelle : 1-31, ou 0 = dernier jour.",
+    )
+
+    # ── Heure & durée ──────────────────────────────────────────────────
+    time_local = models.TimeField(
+        help_text="Heure locale de l'occurrence (ex: 09:30).",
+    )
+    duration_minutes = models.PositiveIntegerField(default=60)
+    location = models.CharField(max_length=200, blank=True)
+    meeting_link = models.URLField(blank=True)
+
+    # ── Validité de la série ───────────────────────────────────────────
+    start_date = models.DateField(
+        help_text="Date de la 1ère occurrence (ex: lundi prochain).",
+    )
+    end_date = models.DateField(
+        null=True, blank=True,
+        help_text="Si renseignée, plus aucune occurrence après cette date.",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Si False, la génération auto cesse mais l'historique reste.",
+    )
+
+    # ── Participants & projets par défaut ──────────────────────────────
+    organizer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="organized_meeting_series",
+    )
+    default_participants = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="default_meeting_series",
+        blank=True,
+        help_text="Participants invités automatiquement à chaque occurrence.",
+    )
+    default_projects = models.ManyToManyField(
+        "Project",
+        related_name="default_meeting_series",
+        blank=True,
+        help_text=(
+            "Projets pré-renseignés en revue à chaque occurrence. "
+            "Permet le scénario 'Comité hebdo : on passe TOUS les projets en revue'."
+        ),
+    )
+    default_agenda = models.TextField(
+        blank=True,
+        help_text="Ordre du jour par défaut (peut être édité par occurrence).",
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="created_meeting_series",
+    )
+
+    class Meta:
+        ordering = ["-is_active", "name"]
+        verbose_name = "Série de réunions"
+        verbose_name_plural = "Séries de réunions"
+        indexes = [
+            models.Index(fields=["workspace", "is_active"]),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def recurrence_label(self):
+        """Libellé humain de la récurrence (ex: 'Tous les lundis à 09:30')."""
+        days = ["lundi", "mardi", "mercredi", "jeudi",
+                "vendredi", "samedi", "dimanche"]
+        time_str = self.time_local.strftime("%H:%M") if self.time_local else ""
+        if self.recurrence == self.Recurrence.NONE:
+            return f"Unique · {self.start_date} {time_str}"
+        if self.recurrence == self.Recurrence.DAILY:
+            return f"Tous les jours ouvrés à {time_str}"
+        if self.recurrence == self.Recurrence.WEEKLY:
+            day = days[self.weekday] if self.weekday is not None else "?"
+            return f"Tous les {day}s à {time_str}"
+        if self.recurrence == self.Recurrence.BIWEEKLY:
+            day = days[self.weekday] if self.weekday is not None else "?"
+            return f"Un {day} sur deux à {time_str}"
+        if self.recurrence == self.Recurrence.MONTHLY:
+            d = "dernier" if self.month_day == 0 else f"{self.month_day}"
+            return f"Le {d} jour de chaque mois à {time_str}"
+        return self.get_recurrence_display()
+
+
+class MeetingProjectReview(TimeStampedModel):
+    """
+    Un point de revue d'un projet lors d'une réunion. Un enregistrement
+    par couple (meeting, project). C'est la trace structurée du « tour
+    de table projet par projet » qu'on attend en comité.
+
+    Tous les champs sont optionnels — l'utilisateur remplit ce qui est
+    pertinent pour le projet à cet instant. Le PDF/Word de compte-rendu
+    affichera une section par review.
+    """
+
+    class StatusSnapshot(models.TextChoices):
+        ON_TRACK = "ON_TRACK", "Sur les rails"
+        AT_RISK = "AT_RISK", "À risque"
+        BLOCKED = "BLOCKED", "Bloqué"
+        AHEAD = "AHEAD", "En avance"
+        COMPLETED = "COMPLETED", "Terminé"
+        ON_HOLD = "ON_HOLD", "En attente"
+
+    meeting = models.ForeignKey(
+        ProjectMeeting, on_delete=models.CASCADE,
+        related_name="project_reviews",
+    )
+    project = models.ForeignKey(
+        "Project", on_delete=models.CASCADE,
+        related_name="meeting_reviews",
+    )
+    # Ordre d'affichage dans le compte-rendu (drag-to-reorder côté UI)
+    position = models.PositiveIntegerField(default=0)
+
+    # ── Snapshot du projet à la date de la réunion ─────────────────────
+    status_snapshot = models.CharField(
+        max_length=15, choices=StatusSnapshot.choices,
+        default=StatusSnapshot.ON_TRACK,
+    )
+    progress_pct = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Avancement en % à la date de la revue (0-100).",
+    )
+    presented_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="presented_meeting_reviews",
+    )
+
+    # ── Contenu structuré ──────────────────────────────────────────────
+    achievements = models.TextField(
+        blank=True,
+        help_text="Réalisations / avancées depuis la dernière revue.",
+    )
+    blockers = models.TextField(
+        blank=True,
+        help_text="Points bloquants / risques identifiés.",
+    )
+    decisions = models.TextField(
+        blank=True,
+        help_text="Décisions prises pendant la réunion concernant ce projet.",
+    )
+    actions_to_take = models.TextField(
+        blank=True,
+        help_text=(
+            "Actions à mener avant la prochaine revue, "
+            "format libre ou puces (- action @qui — pour quand)."
+        ),
+    )
+    next_milestone = models.CharField(
+        max_length=200, blank=True,
+        help_text="Prochain jalon attendu (texte libre).",
+    )
+    next_milestone_date = models.DateField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["meeting", "position", "id"]
+        verbose_name = "Revue projet"
+        verbose_name_plural = "Revues projet"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["meeting", "project"],
+                name="uniq_meeting_project_review",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["meeting", "position"]),
+            models.Index(fields=["project", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.meeting.title} · {self.project.name}"
 
 
 class AIChatSession(TimeStampedModel):

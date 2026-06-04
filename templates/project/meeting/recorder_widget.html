@@ -1,0 +1,323 @@
+{% load static %}
+{# ────────────────────────────────────────────────────────────────────
+   Widget d'enregistrement audio — inclus dans meeting/detail.html.
+   Utilise MediaRecorder (microphone) + upload XHR + polling status.
+
+   Pré-requis :
+     - HTTPS obligatoire (sinon getUserMedia bloqué)
+     - Permissions-Policy: microphone=(self) côté reverse-proxy
+─────────────────────────────────────────────────────────────────────── #}
+
+<section class="rounded-2xl border border-devborder bg-devbg2 p-5"
+         x-data="devflowRecorderWidget({{ meeting.pk }}, {% if latest_recording %}{{ latest_recording.pk }}{% else %}null{% endif %})"
+         x-init="init()">
+
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+                <i class="fa-solid fa-microphone-lines"></i> Enregistrement & CR IA
+            </p>
+            <h3 class="mt-1 text-lg font-semibold text-devtext1">Capter cette réunion</h3>
+            <p class="text-xs text-devtext3 mt-1">
+                L'audio sera transcrit par AssemblyAI, les voix identifiées
+                puis un compte-rendu généré par l'IA (DeepSeek → Claude → Ollama).
+            </p>
+        </div>
+    </div>
+
+    {# ── État: idle ─── #}
+    <template x-if="phase === 'idle'">
+        <div class="space-y-3">
+            <div class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+                <div class="font-semibold text-amber-700 dark:text-amber-200 mb-1">⚠️ Consentement requis</div>
+                <p class="text-amber-700/90 dark:text-amber-200/90 text-xs">
+                    Cette réunion sera enregistrée à des fins de compte-rendu.
+                    Les participants doivent être informés AVANT le début.
+                </p>
+                <label class="flex items-center gap-2 mt-2 text-xs text-amber-700 dark:text-amber-200">
+                    <input type="checkbox" x-model="consentAck">
+                    J'ai informé les participants et j'assume la responsabilité.
+                </label>
+            </div>
+            <button type="button" @click="startRecording()"
+                    :disabled="!consentAck"
+                    class="btn-main"
+                    :class="!consentAck ? 'opacity-50 cursor-not-allowed' : ''">
+                <i class="fa-solid fa-circle"></i> Démarrer l'enregistrement
+            </button>
+        </div>
+    </template>
+
+    {# ── État: recording ─── #}
+    <template x-if="phase === 'recording'">
+        <div class="space-y-2">
+            <div class="flex items-center gap-3">
+                <span class="inline-block w-3 h-3 rounded-full bg-devred animate-pulse"></span>
+                <span class="text-lg font-mono font-bold text-devtext1" x-text="formatDuration(durationMs)"></span>
+                <div class="flex gap-0.5 ml-2" id="audioLevelBars"></div>
+                <div class="flex-1"></div>
+                <button type="button" @click="pauseRecording()" x-show="!isPaused" class="btn-soft text-xs">
+                    <i class="fa-solid fa-pause"></i> Pause
+                </button>
+                <button type="button" @click="resumeRecording()" x-show="isPaused" class="btn-soft text-xs">
+                    <i class="fa-solid fa-play"></i> Reprendre
+                </button>
+                <button type="button" @click="stopRecording()" class="btn-main bg-devred text-xs">
+                    <i class="fa-solid fa-stop"></i> Arrêter
+                </button>
+            </div>
+        </div>
+    </template>
+
+    {# ── État: uploading ─── #}
+    <template x-if="phase === 'uploading'">
+        <div class="space-y-2">
+            <p class="text-sm text-devtext2">Envoi de l'audio…</p>
+            <div class="w-full bg-devbg3 rounded-full h-2">
+                <div class="bg-devaccent h-2 rounded-full transition-all"
+                     :style="`width: ${uploadProgress}%`"></div>
+            </div>
+            <p class="text-xs text-devtext3" x-text="`${uploadProgress} %`"></p>
+        </div>
+    </template>
+
+    {# ── État: processing (htmx polling) ─── #}
+    <template x-if="phase === 'processing' && recordingId">
+        <div hx-get="" :hx-get="`/recordings/${recordingId}/status-fragment/`"
+             hx-trigger="load delay:1s, every 3s"
+             hx-swap="innerHTML"
+             class="text-sm text-devtext2">
+            <div class="flex items-center gap-2">
+                <div class="spinner-border w-4 h-4 inline-block animate-spin border-2 border-devaccent border-r-transparent rounded-full"></div>
+                Pipeline IA en cours…
+            </div>
+        </div>
+    </template>
+
+    {# ── Erreur ─── #}
+    <template x-if="error">
+        <div class="mt-3 rounded-xl border border-devred/40 bg-devred/10 p-3 text-sm text-devred">
+            <strong>Erreur :</strong> <span x-text="error"></span>
+            <button x-show="savedBlob" type="button" @click="retryUpload()"
+                    class="btn-soft text-xs mt-2">
+                Réessayer l'envoi
+            </button>
+        </div>
+    </template>
+</section>
+
+<script>
+window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
+    return {
+        phase: existingRecordingId ? 'processing' : 'idle',
+        consentAck: false,
+        durationMs: 0,
+        audioLevel: 0,
+        uploadProgress: 0,
+        isPaused: false,
+        error: null,
+        recordingId: existingRecordingId,
+        savedBlob: null,
+
+        _mediaRecorder: null,
+        _stream: null,
+        _chunks: [],
+        _startMs: 0,
+        _accumulatedMs: 0,
+        _timerId: null,
+        _audioCtx: null,
+        _analyser: null,
+        _rafId: null,
+
+        init() {
+            // Si on a déjà un recording en processing, le polling htmx se déclenche automatiquement.
+        },
+
+        async startRecording() {
+            this.error = null;
+            if (!this.consentAck) return;
+            try {
+                this._stream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                });
+            } catch (err) {
+                this.error = err.name === 'NotAllowedError'
+                    ? "Permission micro refusée — activez-la dans le navigateur."
+                    : `Impossible d'accéder au micro : ${err.message}`;
+                return;
+            }
+            const mimeType = this._pickMimeType();
+            this._mediaRecorder = new MediaRecorder(
+                this._stream, mimeType ? { mimeType } : {}
+            );
+            this._chunks = [];
+            this._mediaRecorder.ondataavailable = (ev) => {
+                if (ev.data && ev.data.size > 0) this._chunks.push(ev.data);
+            };
+            this._mediaRecorder.start(5000);
+            this._startMs = Date.now();
+            this._accumulatedMs = 0;
+            this._timerId = setInterval(() => {
+                this.durationMs = Date.now() - this._startMs + this._accumulatedMs;
+            }, 200);
+            this._setupAudioLevel();
+            this.phase = 'recording';
+        },
+
+        pauseRecording() {
+            if (!this._mediaRecorder || this._mediaRecorder.state !== 'recording') return;
+            this._mediaRecorder.pause();
+            this._accumulatedMs += Date.now() - this._startMs;
+            clearInterval(this._timerId);
+            this.isPaused = true;
+        },
+
+        resumeRecording() {
+            if (!this._mediaRecorder || this._mediaRecorder.state !== 'paused') return;
+            this._mediaRecorder.resume();
+            this._startMs = Date.now();
+            this._timerId = setInterval(() => {
+                this.durationMs = Date.now() - this._startMs + this._accumulatedMs;
+            }, 200);
+            this.isPaused = false;
+        },
+
+        async stopRecording() {
+            const blob = await this._finalize();
+            if (!blob) return;
+            this.savedBlob = blob;
+            await this._upload(blob);
+        },
+
+        async retryUpload() {
+            if (this.savedBlob) await this._upload(this.savedBlob);
+        },
+
+        _pickMimeType() {
+            const candidates = [
+                'audio/webm;codecs=opus', 'audio/webm',
+                'audio/mp4', 'audio/ogg;codecs=opus',
+            ];
+            for (const c of candidates) {
+                if (MediaRecorder.isTypeSupported(c)) return c;
+            }
+            return '';
+        },
+
+        _setupAudioLevel() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const src = ctx.createMediaStreamSource(this._stream);
+                const analyser = ctx.createAnalyser();
+                analyser.fftSize = 512;
+                src.connect(analyser);
+                this._audioCtx = ctx;
+                this._analyser = analyser;
+                const data = new Uint8Array(analyser.fftSize);
+                const loop = () => {
+                    if (!this._analyser) return;
+                    this._analyser.getByteTimeDomainData(data);
+                    let sum = 0;
+                    for (let i = 0; i < data.length; i++) {
+                        const v = (data[i] - 128) / 128;
+                        sum += v * v;
+                    }
+                    this.audioLevel = Math.sqrt(sum / data.length);
+                    this._renderAudioBars();
+                    this._rafId = requestAnimationFrame(loop);
+                };
+                this._rafId = requestAnimationFrame(loop);
+            } catch (e) { /* silent */ }
+        },
+
+        _renderAudioBars() {
+            const el = document.getElementById('audioLevelBars');
+            if (!el) return;
+            const bars = 10;
+            const lit = Math.min(bars, Math.round(this.audioLevel * bars * 3));
+            let html = '';
+            for (let i = 0; i < bars; i++) {
+                const on = i < lit;
+                const c = on ? 'bg-devaccent' : 'bg-devbg4';
+                html += `<span class="inline-block w-1 h-3 rounded ${c}"></span>`;
+            }
+            el.innerHTML = html;
+        },
+
+        _finalize() {
+            return new Promise((resolve) => {
+                if (!this._mediaRecorder) return resolve(null);
+                this._mediaRecorder.onstop = () => {
+                    try {
+                        const blob = new Blob(this._chunks, { type: this._mediaRecorder.mimeType });
+                        this._cleanup();
+                        resolve(blob);
+                    } catch {
+                        this._cleanup();
+                        resolve(null);
+                    }
+                };
+                try { this._mediaRecorder.stop(); }
+                catch { this._cleanup(); resolve(null); }
+            });
+        },
+
+        _cleanup() {
+            try { this._stream && this._stream.getTracks().forEach(t => t.stop()); } catch {}
+            if (this._timerId) clearInterval(this._timerId);
+            if (this._rafId) cancelAnimationFrame(this._rafId);
+            try { this._audioCtx && this._audioCtx.close(); } catch {}
+            this._mediaRecorder = null;
+            this._stream = null;
+        },
+
+        async _upload(blob) {
+            this.phase = 'uploading';
+            this.uploadProgress = 0;
+            this.error = null;
+            const form = new FormData();
+            if (this.recordingId) form.append('recording_id', this.recordingId);
+            form.append('audio', new File([blob], 'recording.webm', { type: blob.type }));
+            form.append('duration_seconds', String(this.durationMs / 1000));
+            form.append('consent_acknowledged', String(this.consentAck));
+            try {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `/api/v1/meetings/${meetingId}/recordings/upload/`);
+                const csrftoken = this._getCookie('csrftoken');
+                if (csrftoken) xhr.setRequestHeader('X-CSRFToken', csrftoken);
+                xhr.upload.onprogress = (e) => {
+                    if (e.total) this.uploadProgress = Math.round(e.loaded / e.total * 100);
+                };
+                const res = await new Promise((resolve, reject) => {
+                    xhr.onload = () => resolve(xhr);
+                    xhr.onerror = () => reject(new Error('Erreur réseau'));
+                    xhr.send(form);
+                });
+                if (res.status >= 200 && res.status < 300) {
+                    const data = JSON.parse(res.responseText);
+                    this.recordingId = data.recording_id;
+                    this.savedBlob = null;
+                    this.phase = 'processing';
+                } else {
+                    let detail;
+                    try { detail = JSON.parse(res.responseText).detail; }
+                    catch { detail = res.statusText; }
+                    throw new Error(detail || `Erreur ${res.status}`);
+                }
+            } catch (err) {
+                this.error = err.message;
+            }
+        },
+
+        _getCookie(name) {
+            const m = document.cookie.match(`(^|;)\\s*${name}\\s*=\\s*([^;]+)`);
+            return m ? m[2] : null;
+        },
+
+        formatDuration(ms) {
+            const s = Math.floor(ms / 1000);
+            return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+        },
+    };
+};
+</script>

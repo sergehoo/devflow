@@ -1,0 +1,138 @@
+{% extends "layout/base.html" %}
+
+{% block title %}DevFlow — CR · {{ meeting.title }}{% endblock %}
+{% block page_title %}Compte-rendu IA{% endblock %}
+{% block breadcrumb %}Collaboration · Réunions · CR · {{ meeting.title }}{% endblock %}
+
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Réunion · Compte-rendu IA">
+  <meta name="devflow-ai-object-type" content="recording_summary">
+  <meta name="devflow-ai-object-id" content="{{ recording.id }}">
+  <meta name="devflow-ai-object-name" content="{{ meeting.title }}">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+  <div class="flex items-center justify-between">
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-devaccent">{{ meeting.title }}</p>
+      <h1 class="mt-1 text-2xl font-semibold text-devtext1">Compte-rendu</h1>
+      <p class="text-xs text-devtext3 mt-1">
+        Status : {{ recording.get_status_display }}
+        {% if recording.summary_provider %}· via {{ recording.summary_provider }}{% endif %}
+        {% if recording.transcription_provider %}· transcription {{ recording.transcription_provider }}{% endif %}
+      </p>
+    </div>
+    <a href="{% url 'meeting_detail' meeting.pk %}" class="btn-soft text-xs">← Retour à la réunion</a>
+  </div>
+
+  {# Résumé IA #}
+  {% if recording.summary_markdown %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-pen-nib"></i> Résumé exécutif
+    </h2>
+    <div class="ai-markdown text-sm text-devtext1 leading-relaxed whitespace-pre-wrap"
+         x-init="$nextTick(() => window.devflowAIRender && window.devflowAIRender($el))">
+      {{ recording.summary_markdown }}
+    </div>
+  </section>
+  {% endif %}
+
+  {# Extractions à valider : Décisions #}
+  {% if decisions %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-gavel"></i> Décisions détectées ({{ decisions|length }})
+    </h2>
+    <form method="post" action="{% url 'recording_create_decisions' recording.pk %}" class="space-y-2">
+      {% csrf_token %}
+      {% for d in decisions %}
+      <label class="flex items-start gap-3 rounded-xl border border-devborder/40 bg-devbg3/40 p-3 cursor-pointer hover:bg-devbg3/60">
+        <input type="checkbox" name="accept_decision" value="{{ d.pk }}"
+               {% if d.is_accepted %}checked disabled{% endif %}
+               class="mt-1">
+        <div class="flex-1">
+          <div class="text-sm font-medium text-devtext1">{{ d.title }}</div>
+          {% if d.description %}<div class="text-xs text-devtext3 mt-1">{{ d.description }}</div>{% endif %}
+          {% if d.is_accepted %}<div class="text-[10px] text-emerald-500 mt-1">✓ Validée</div>{% endif %}
+        </div>
+      </label>
+      {% endfor %}
+      <div class="flex justify-end pt-2">
+        <button type="submit" class="btn-soft text-xs">
+          Valider les décisions cochées
+        </button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+
+  {# Extractions à valider : Actions #}
+  {% if actions %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-list-check"></i> Actions à créer ({{ actions|length }})
+    </h2>
+    <form method="post" action="{% url 'recording_create_actions' recording.pk %}" class="space-y-2">
+      {% csrf_token %}
+      {% for a in actions %}
+      <label class="flex items-start gap-3 rounded-xl border border-devborder/40 bg-devbg3/40 p-3 cursor-pointer hover:bg-devbg3/60">
+        <input type="checkbox" name="accept_action" value="{{ a.pk }}"
+               {% if a.is_accepted %}checked disabled{% endif %}
+               class="mt-1">
+        <div class="flex-1">
+          <div class="text-sm font-medium text-devtext1">{{ a.title }}</div>
+          <div class="flex flex-wrap gap-2 mt-1 text-[11px] text-devtext3">
+            {% if a.assignee_hint %}<span><i class="fa-solid fa-user"></i> {{ a.assignee_hint }}</span>{% endif %}
+            {% if a.due_date_hint %}<span><i class="fa-solid fa-calendar"></i> {{ a.due_date_hint }}</span>{% endif %}
+            {% if a.priority_hint %}<span><i class="fa-solid fa-flag"></i> {{ a.priority_hint }}</span>{% endif %}
+          </div>
+          {% if a.description %}<div class="text-xs text-devtext3 mt-1">{{ a.description }}</div>{% endif %}
+          {% if a.is_accepted %}<div class="text-[10px] text-emerald-500 mt-1">✓ Action créée</div>{% endif %}
+        </div>
+      </label>
+      {% endfor %}
+      <div class="flex justify-end pt-2">
+        <button type="submit" class="btn-soft text-xs">
+          Créer les actions cochées
+        </button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+
+  {# Risques (consultation seule) #}
+  {% if risks %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-triangle-exclamation"></i> Points de vigilance ({{ risks|length }})
+    </h2>
+    <ul class="space-y-2">
+      {% for r in risks %}
+      <li class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+        <div class="text-sm font-medium text-amber-700 dark:text-amber-200">{{ r.title }}</div>
+        {% if r.description %}<div class="text-xs text-amber-700/80 dark:text-amber-200/80 mt-1">{{ r.description }}</div>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {# Transcription complète #}
+  {% if recording.final_transcript or recording.full_transcript %}
+  <details class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <summary class="cursor-pointer text-base font-semibold text-devtext1">
+      <i class="fa-solid fa-file-lines"></i> Transcription complète
+    </summary>
+    <pre class="mt-3 text-xs text-devtext2 leading-relaxed whitespace-pre-wrap font-mono">{{ recording.final_transcript|default:recording.full_transcript }}</pre>
+  </details>
+  {% endif %}
+
+  <p class="text-xs text-devtext3 text-right">
+    {{ recording.tokens_used }} tokens utilisés
+    {% if recording.completed_at %}· terminé le {{ recording.completed_at|date:"d/m/Y H:i" }}{% endif %}
+  </p>
+</div>
+{% endblock %}

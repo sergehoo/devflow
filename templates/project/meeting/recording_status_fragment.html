@@ -1,0 +1,45 @@
+{# Fragment HTML retourné par polling htmx (toutes les 3s). #}
+<div class="pipeline-status">
+{% if recording.status == "transcribing" %}
+    <div class="rounded-xl border border-devborder bg-devbg3/40 p-3 text-sm">
+        <i class="fa-solid fa-microphone"></i> Transcription AssemblyAI en cours…
+    </div>
+{% elif recording.status == "diarizing" %}
+    <div class="rounded-xl border border-devborder bg-devbg3/40 p-3 text-sm">
+        <i class="fa-solid fa-users"></i> Détection des voix…
+    </div>
+{% elif recording.status == "waiting_speaker_mapping" %}
+    <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm flex items-center justify-between">
+        <span class="text-emerald-700 dark:text-emerald-300">
+            <strong>✓ Voix détectées !</strong> Identifiez chaque speaker.
+        </span>
+        <a href="{% url 'recording_speakers' meeting_pk=recording.meeting_id recording_pk=recording.pk %}"
+           class="btn-main text-xs">
+            Identifier les voix →
+        </a>
+    </div>
+{% elif recording.status == "generating_summary" %}
+    <div class="rounded-xl border border-devborder bg-devbg3/40 p-3 text-sm">
+        <i class="fa-solid fa-pen-nib"></i> Génération du compte-rendu IA…
+    </div>
+{% elif recording.status == "completed" %}
+    <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm flex items-center justify-between">
+        <span class="text-emerald-700 dark:text-emerald-300">
+            <strong>✓ Compte-rendu prêt !</strong>
+        </span>
+        <a href="{% url 'recording_summary' meeting_pk=recording.meeting_id recording_pk=recording.pk %}"
+           class="btn-main text-xs">
+            Voir le résumé →
+        </a>
+    </div>
+{% elif recording.status == "failed" %}
+    <div class="rounded-xl border border-devred/40 bg-devred/10 p-3 text-sm text-devred">
+        <strong>Échec :</strong> {{ recording.error_message|default:"Erreur inconnue" }}
+    </div>
+{% else %}
+    <div class="rounded-xl border border-devborder bg-devbg3/40 p-3 text-sm">
+        <div class="inline-block w-3 h-3 border-2 border-devaccent border-r-transparent rounded-full animate-spin mr-2"></div>
+        {{ recording.get_status_display }}
+    </div>
+{% endif %}
+</div>

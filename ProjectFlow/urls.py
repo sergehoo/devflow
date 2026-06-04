@@ -497,11 +497,23 @@ from project.views_meeting import (  # noqa: E402
     ProjectMeetingDetailView,
     ProjectMeetingListView,
     ProjectMeetingUpdateView,
+    # PR-MEET-3
+    MeetingSeriesListView,
+    MeetingSeriesCreateView,
+    MeetingSeriesDetailView,
+    MeetingSeriesUpdateView,
+    MeetingSeriesDeleteView,
+    MeetingSeriesRegenerateView,
+    MeetingReviewsSaveView,
+    MeetingMinutesAISummaryView,
+    MeetingMinutesDocxView,
+    MeetingSendMinutesView,
 )
 from project.views_ai_genesis import (  # noqa: E402
     ProjectGenesisAPIView,
     ProjectGenesisView,
 )
+from project import views_recording as _recording_views  # noqa: E402
 from project.views_ai_chat import (  # noqa: E402
     AIChatCloseSessionView,
     AIChatHistoryView,
@@ -642,6 +654,68 @@ urlpatterns += [
         MeetingAIProcessView.as_view(),
         name="meeting_ai_process",
     ),
+
+    # ─── PR-REC-3 : Enregistrement audio + transcription ──────────────
+    path("meetings/<int:meeting_pk>/recordings/<int:recording_pk>/speakers/",
+         _recording_views.SpeakerMappingView.as_view(),
+         name="recording_speakers"),
+    path("meetings/<int:meeting_pk>/recordings/<int:recording_pk>/summary/",
+         _recording_views.RecordingSummaryView.as_view(),
+         name="recording_summary"),
+    path("recordings/<int:recording_pk>/status-fragment/",
+         _recording_views.RecordingStatusFragmentView.as_view(),
+         name="recording_status_fragment"),
+    path("recordings/<int:recording_pk>/speaker-mapping/",
+         _recording_views.SpeakerMappingPostView.as_view(),
+         name="recording_speaker_mapping_post"),
+    path("recordings/<int:recording_pk>/confirm-speakers/",
+         _recording_views.ConfirmSpeakersView.as_view(),
+         name="recording_confirm_speakers"),
+    path("recordings/<int:recording_pk>/create-decisions/",
+         _recording_views.CreateDecisionsView.as_view(),
+         name="recording_create_decisions"),
+    path("recordings/<int:recording_pk>/create-action-plans/",
+         _recording_views.CreateActionPlansView.as_view(),
+         name="recording_create_actions"),
+    # API JSON
+    path("api/v1/meetings/<int:meeting_pk>/recordings/upload/",
+         _recording_views.api_upload_recording,
+         name="api_recording_upload"),
+    path("api/v1/recordings/<int:recording_pk>/status/",
+         _recording_views.api_recording_status,
+         name="api_recording_status"),
+    # Stream audio (HMAC)
+    path("meetings/<int:meeting_pk>/recordings/<int:recording_pk>/speakers/<str:speaker_label>/sample/",
+         _recording_views.stream_speaker_sample,
+         name="recording_stream_speaker_sample"),
+    path("recordings/<int:recording_pk>/audio/",
+         _recording_views.stream_recording_audio,
+         name="recording_stream_audio"),
+
+    # ─── PR-MEET-3 : Séries récurrentes ────────────────────────────────
+    path("meetings/series/", MeetingSeriesListView.as_view(),
+         name="meeting_series_list"),
+    path("meetings/series/create/", MeetingSeriesCreateView.as_view(),
+         name="meeting_series_create"),
+    path("meetings/series/<int:pk>/", MeetingSeriesDetailView.as_view(),
+         name="meeting_series_detail"),
+    path("meetings/series/<int:pk>/update/", MeetingSeriesUpdateView.as_view(),
+         name="meeting_series_update"),
+    path("meetings/series/<int:pk>/delete/", MeetingSeriesDeleteView.as_view(),
+         name="meeting_series_delete"),
+    path("meetings/series/<int:pk>/regenerate/",
+         MeetingSeriesRegenerateView.as_view(),
+         name="meeting_series_regenerate"),
+
+    # ─── PR-MEET-3 : Actions compte-rendu ──────────────────────────────
+    path("meetings/<int:pk>/reviews/save/", MeetingReviewsSaveView.as_view(),
+         name="meeting_reviews_save"),
+    path("meetings/<int:pk>/ai-summary/", MeetingMinutesAISummaryView.as_view(),
+         name="meeting_ai_summary"),
+    path("meetings/<int:pk>/minutes.docx", MeetingMinutesDocxView.as_view(),
+         name="meeting_minutes_docx"),
+    path("meetings/<int:pk>/send-minutes/", MeetingSendMinutesView.as_view(),
+         name="meeting_send_minutes"),
 
     # =====================================================================
     # Module Facturation

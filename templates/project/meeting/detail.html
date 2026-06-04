@@ -40,6 +40,21 @@
                             <span x-show="aiBusy" style="display:none">Analyse en cours…</span>
                         </button>
                     </form>
+                    <form method="post" action="{% url 'meeting_ai_summary' meeting.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-soft" title="Génère un compte-rendu structuré par IA">
+                            <i class="fa-solid fa-pen-nib"></i> Résumé IA
+                        </button>
+                    </form>
+                    <a href="{% url 'meeting_minutes_docx' meeting.pk %}" class="btn-soft">
+                        <i class="fa-solid fa-file-word"></i> Word
+                    </a>
+                    <form method="post" action="{% url 'meeting_send_minutes' meeting.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-soft" title="Envoie le .docx par email aux participants">
+                            <i class="fa-solid fa-paper-plane"></i> Envoyer
+                        </button>
+                    </form>
                     <a href="{% url 'meeting_update' meeting.pk %}" class="btn-soft">
                         <i class="fa-solid fa-pen"></i> Modifier
                     </a>
@@ -209,10 +224,130 @@
         </div>
     </section>
 
+    <!-- ─── PR-REC-3 : Enregistrement audio + CR IA ─── -->
+    {% with latest_recording=meeting.recordings.first %}
+        {% include "project/meeting/recorder_widget.html" with meeting=meeting latest_recording=latest_recording %}
+    {% endwith %}
+
+    {# Charge htmx si pas déjà chargé (utilisé pour le polling status) #}
+    <script src="https://unpkg.com/htmx.org@1.9.10" defer></script>
+
+    <!-- ─── PR-MEET-3 : Revue projet par projet (formset inline) ─── -->
+    {% if review_formset %}
+    <section class="rounded-[28px] border border-devborder bg-devbg2 p-6 lg:p-8 shadow-soft">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">Revue projet par projet</p>
+                <h2 class="mt-1 text-xl font-serif text-devtext1">Tour de table</h2>
+                <p class="text-sm text-devtext3 mt-1">
+                    Pour chaque projet listé dans cette réunion : statut, % d'avancement,
+                    réalisations, bloquants, décisions et actions à mener.
+                </p>
+            </div>
+            <span class="text-xs text-devtext3">{{ reviews|length }} projet(s) en revue</span>
+        </div>
+
+        {% if review_formset.forms %}
+        <form method="post" action="{% url 'meeting_reviews_save' meeting.pk %}" class="space-y-4">
+            {% csrf_token %}
+            {{ review_formset.management_form }}
+            {% for form in review_formset.forms %}
+            <details class="rounded-2xl border border-devborder bg-devbg3/40 p-4" {% if forloop.first %}open{% endif %}>
+                <summary class="cursor-pointer text-sm font-semibold text-devtext1 flex items-center justify-between">
+                    <span>
+                        {% if form.instance.project %}{{ form.instance.project.name }}{% else %}— Nouveau —{% endif %}
+                    </span>
+                    <span class="text-[11px] text-devtext3">
+                        {{ form.instance.get_status_snapshot_display }} · {{ form.instance.progress_pct|default:0 }} %
+                    </span>
+                </summary>
+                <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+                    <div class="md:col-span-2">{{ form.project.as_hidden }}</div>
+                    <div>
+                        <label class="block text-[11px] uppercase tracking-wider text-devtext3 mb-1">Statut</label>
+                        {{ form.status_snapshot }}
+                    </div>
+                    <div>
+                        <label class="block text-[11px] uppercase tracking-wider text-devtext3 mb-1">Avancement (%)</label>
+                        {{ form.progress_pct }}
+                    </div>
+                    <div>
+                        <label class="block text-[11px] uppercase tracking-wider text-devtext3 mb-1">Présenté par</label>
+                        {{ form.presented_by }}
+                    </div>
+                    <div>
+                        <label class="block text-[11px] uppercase tracking-wider text-devtext3 mb-1">Position</label>
+                        {{ form.position }}
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-[11px] uppercase tracking-wider text-devtext3 mb-1">Réalisations</label>
+                        {{ form.achievements }}
+                    </div>
+                    <div>
+                        <label class="block text-[11px] uppercase tracking-wider text-devtext3 mb-1">Bloquants</label>
+                        {{ form.blockers }}
+                    </div>
+                    <div>
+                        <label class="block text-[11px] uppercase tracking-wider text-devtext3 mb-1">Décisions</label>
+                        {{ form.decisions }}
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-[11px] uppercase tracking-wider text-devtext3 mb-1">Actions à mener</label>
+                        {{ form.actions_to_take }}
+                    </div>
+                    <div>
+                        <label class="block text-[11px] uppercase tracking-wider text-devtext3 mb-1">Prochain jalon</label>
+                        {{ form.next_milestone }}
+                    </div>
+                    <div>
+                        <label class="block text-[11px] uppercase tracking-wider text-devtext3 mb-1">Date du jalon</label>
+                        {{ form.next_milestone_date }}
+                    </div>
+                    {% if form.DELETE %}
+                    <div class="md:col-span-2 flex items-center gap-2 text-xs text-devred">
+                        {{ form.DELETE }} <label>Supprimer ce projet de la revue</label>
+                    </div>
+                    {% endif %}
+                </div>
+            </details>
+            {% endfor %}
+            <div class="flex justify-end">
+                <button type="submit" class="btn-main">
+                    <i class="fa-solid fa-floppy-disk"></i> Enregistrer les revues
+                </button>
+            </div>
+        </form>
+        {% else %}
+        <p class="text-sm text-devtext3 italic">
+            Aucun projet rattaché à cette réunion. Modifiez la réunion pour
+            ajouter des projets à passer en revue.
+        </p>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- ─── Résumé IA généré ─── -->
+    {% if meeting.ai_summary %}
+    <section class="rounded-[28px] border border-devborder bg-devbg2 p-6 lg:p-8 shadow-soft">
+        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+            <i class="fa-solid fa-sparkles"></i> Compte-rendu IA
+            {% if meeting.ai_used_provider %}· via {{ meeting.ai_used_provider }}{% endif %}
+        </p>
+        <div class="mt-3 text-sm text-devtext1 leading-relaxed whitespace-pre-wrap">{{ meeting.ai_summary }}</div>
+        {% if meeting.ai_extracted_at %}
+            <p class="mt-3 text-[11px] text-devtext3">Généré le {{ meeting.ai_extracted_at|date:"d/m/Y H:i" }}</p>
+        {% endif %}
+    </section>
+    {% endif %}
+
     <!-- Métadonnées -->
     <section class="text-xs text-devtext3 px-4 flex flex-wrap gap-4">
         <span>Créée par {{ meeting.created_by|default:"—" }} le {{ meeting.created_at|date:"d/m/Y H:i" }}</span>
         {% if meeting.updated_by %}<span>· Mise à jour par {{ meeting.updated_by }} le {{ meeting.updated_at|date:"d/m/Y H:i" }}</span>{% endif %}
+        {% if meeting.series %}
+            <span>· Issue de la série <a href="{% url 'meeting_series_detail' meeting.series.pk %}" class="text-devaccent hover:underline">{{ meeting.series.name }}</a></span>
+        {% endif %}
     </section>
 </div>
 {% endblock %}

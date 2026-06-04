@@ -676,3 +676,110 @@ def recompute_project_eac_sweep(self):
         except Exception:
             pass
         return {"ok": False, "reason": str(exc), **total}
+
+
+# =============================================================================
+# Réunions — génération d'occurrences cycliques (PR-MEET-2)
+# =============================================================================
+@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+def generate_meeting_occurrences_sweep(self, horizon_days: int = 60):
+    """
+    Pour chaque MeetingSeries active, génère les occurrences futures
+    sur un horizon de ``horizon_days`` (60 par défaut). Idempotent : ne
+    re-crée pas les occurrences déjà présentes.
+
+    Planifié quotidiennement via Celery beat (cf. settings).
+    """
+    from project import models as dm
+    from project.services.meeting import MeetingService
+
+    total = {"series_processed": 0, "occurrences_created": 0}
+    try:
+        series_qs = dm.MeetingSeries.objects.filter(
+            is_active=True, is_archived=False,
+        ).select_related("workspace", "organizer", "created_by")
+        for series in series_qs:
+            try:
+                created = MeetingService.generate_occurrences(
+                    series, horizon_days=horizon_days,
+                )
+                total["series_processed"] += 1
+                total["occurrences_created"] += len(created)
+            except Exception as exc:
+                logger.warning(
+                    "generate_meeting_occurrences: series %s failed: %s",
+                    series.pk, exc,
+                )
+        return {"ok": True, **total}
+    except Exception as exc:
+        logger.exception("generate_meeting_occurrences_sweep failed: %s", exc)
+        try:
+            self.retry(exc=exc)
+        except Exception:
+            pass
+        return {"ok": False, "reason": str(exc), **total}
+
+
+# =============================================================================
+# Enregistrement audio + transcription IA (PR-REC-2) — queue 'recordings'
+# =============================================================================
+@shared_task(
+    bind=True, max_retries=2, default_retry_delay=300,
+    queue="recordings",
+)
+def process_recording_task(self, recording_id: int):
+    """Pipeline auto post-upload : transcribe → diarize → samples."""
+    from project.services.recording.pipeline import process_recording
+    try:
+        process_recording(recording_id)
+        return {"ok": True, "recording_id": recording_id}
+    except Exception as exc:
+        logger.exception("process_recording_task failed: %s", exc)
+        try:
+            self.retry(exc=exc)
+        except Exception:
+            pass
+        return {"ok": False, "reason": str(exc)}
+
+
+@shared_task(
+    bind=True, max_retries=2, default_retry_delay=180,
+    queue="recordings",
+)
+def finalize_recording_task(self, recording_id: int):
+    """Pipeline post-mapping : final transcript + summary + extractions."""
+    from project.services.recording.pipeline import finalize_recording
+    try:
+        finalize_recording(recording_id)
+        return {"ok": True, "recording_id": recording_id}
+    except Exception as exc:
+        logger.exception("finalize_recording_task failed: %s", exc)
+        try:
+            self.retry(exc=exc)
+        except Exception:
+            pass
+        return {"ok": False, "reason": str(exc)}
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=120)
+def send_meeting_minutes_email_async(self, meeting_id: int,
+                                     include_external: bool = True):
+    """Tâche async pour envoyer le compte-rendu en background."""
+    from project import models as dm
+    from project.services.meeting import MeetingService
+
+    try:
+        meeting = dm.ProjectMeeting.objects.get(pk=meeting_id)
+        sent = MeetingService.send_minutes_email(
+            meeting, include_external=include_external,
+        )
+        return {"ok": True, "meeting_id": meeting_id, "recipients": sent}
+    except dm.ProjectMeeting.DoesNotExist:
+        return {"ok": False, "reason": "meeting not found"}
+    except Exception as exc:
+        logger.exception("send_meeting_minutes_email failed: %s", exc)
+        try:
+            self.retry(exc=exc)
+        except Exception:
+            pass
+        return {"ok": False, "reason": str(exc)}

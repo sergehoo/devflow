@@ -183,6 +183,13 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Routing : tâches d'enregistrement sur queue dédiée 'recordings'
+# (workload lourd, ne doit pas bloquer les emails/notifications)
+CELERY_TASK_ROUTES = {
+    "project.tasks.process_recording_task": {"queue": "recordings"},
+    "project.tasks.finalize_recording_task": {"queue": "recordings"},
+}
+
 CELERY_BEAT_SCHEDULE = {
     # Balayage de toutes les tâches DevFlow 2x/jour pour envoyer
     # automatiquement des relances aux assignees et notifier les PM.
@@ -211,6 +218,12 @@ CELERY_BEAT_SCHEDULE = {
     "send-daily-notification-digest": {
         "task": "project.tasks.send_daily_notification_digest",
         "schedule": crontab(hour=8, minute=0),
+    },
+    # PR-MEET-2 : génère quotidiennement les occurrences futures des
+    # séries de réunions actives, horizon de 60 jours glissants.
+    "generate-meeting-occurrences-sweep": {
+        "task": "project.tasks.generate_meeting_occurrences_sweep",
+        "schedule": crontab(hour=4, minute=0),
     },
     # Phase 5 — PR22 : Rapports IA hebdomadaires
     # Lundi 6h : génère le rapport semaine N-1 pour chaque projet actif
@@ -315,9 +328,65 @@ AI_LOCAL_MODEL = os.getenv("AI_LOCAL_MODEL", "llama3.2:3b")
 AI_LOCAL_API_KEY = os.getenv("AI_LOCAL_API_KEY", "ollama")
 
 # Chaîne de fallback en mode AI_BACKEND="auto" — ordre de préférence.
-# Valeurs possibles, séparées par des virgules : deepseek, openai, local
-# Default : "deepseek,local" → DeepSeek principal, Ollama backup silencieux.
-AI_FALLBACK_CHAIN = os.getenv("AI_FALLBACK_CHAIN", "deepseek,local")
+# Valeurs possibles : deepseek, openai, anthropic, claude, local, ollama
+# Default : "deepseek,anthropic,local"
+#   1. DeepSeek (économique, rapide)
+#   2. Anthropic Claude (qualité premium, payant)
+#   3. Ollama / Local (gratuit, dernier recours)
+AI_FALLBACK_CHAIN = os.getenv("AI_FALLBACK_CHAIN", "deepseek,anthropic,local")
+
+# ── Anthropic Claude (PR-REC-1) ────────────────────────────────────
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "")
+
+# ── AssemblyAI (PR-REC-2 : transcription audio) ────────────────────
+ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY", "")
+ASSEMBLYAI_LANGUAGE = os.getenv("ASSEMBLYAI_LANGUAGE", "fr")
+
+# ── Enregistrements de réunion (PR-REC-1) ──────────────────────────
+MAX_RECORDING_UPLOAD_MB = int(os.getenv("MAX_RECORDING_UPLOAD_MB", "600"))
+SPEAKER_SAMPLE_DURATION_SEC = int(os.getenv("SPEAKER_SAMPLE_DURATION_SEC", "8"))
+# Secret pour signer les URLs audio (HMAC). Si vide → fallback sur SECRET_KEY.
+RECORDING_AUDIO_TOKEN_SECRET = os.getenv("RECORDING_AUDIO_TOKEN_SECRET", "")
+RECORDING_AUDIO_TOKEN_TTL = int(os.getenv("RECORDING_AUDIO_TOKEN_TTL", "1800"))
+
+# ── Storage MinIO/S3 dédié aux recordings (optionnel) ──────────────
+# Si MINIO_RECORDINGS_BUCKET est défini, on configure un storage 'recordings'
+# qui pointe vers ce bucket. Sinon le fallback est le default storage (local).
+MINIO_ENDPOINT = os.getenv("S3_ENDPOINT", "")
+MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
+MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
+MINIO_REGION = os.getenv("S3_REGION", "eu-west-1")
+MINIO_RECORDINGS_BUCKET = os.getenv("RECORDING_S3_BUCKET", "")
+
+if MINIO_RECORDINGS_BUCKET and MINIO_ENDPOINT:
+    # Configuration multi-storages (Django 4.2+)
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+        "recordings": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": MINIO_RECORDINGS_BUCKET,
+                "endpoint_url": MINIO_ENDPOINT,
+                "access_key": MINIO_ACCESS_KEY,
+                "secret_key": MINIO_SECRET_KEY,
+                "region_name": MINIO_REGION,
+                "addressing_style": "path",  # critique pour MinIO
+                "signature_version": "s3v4",
+                "default_acl": None,        # MinIO ne supporte pas les ACLs
+                "file_overwrite": False,
+                "querystring_auth": True,
+                "object_parameters": {},     # PAS de ServerSideEncryption sur MinIO standalone
+            },
+        },
+    }
+# Sinon : Django utilise sa config default_storage classique.
 
 # Cache court pour éviter de spammer le LLM (secondes)
 AI_CACHE_TTL = int(os.getenv("AI_CACHE_TTL", "300"))

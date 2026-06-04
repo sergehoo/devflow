@@ -31,6 +31,7 @@ import logging
 
 from django.conf import settings
 
+from .anthropic_provider import AnthropicProvider
 from .base import AIProvider
 from .deepseek_provider import DeepSeekProvider
 from .fallback import FallbackChainProvider
@@ -54,6 +55,8 @@ class _NullProvider(AIProvider):
 _PROVIDER_CLASSES = {
     "deepseek": DeepSeekProvider,
     "openai": OpenAIProvider,
+    "anthropic": AnthropicProvider,
+    "claude": AnthropicProvider,  # alias
     "local": LocalProvider,
     "ollama": LocalProvider,  # alias — Ollama est un cas particulier de Local
 }
