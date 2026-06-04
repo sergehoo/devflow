@@ -1,0 +1,213 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}DevFlow — Tableau de bord réunions{% endblock %}
+{% block page_title %}Tableau de bord réunions{% endblock %}
+{% block breadcrumb %}Collaboration · Réunions · Vue d'ensemble{% endblock %}
+
+{% block ai_context %}
+  <meta name="devflow-ai-section" content="Réunions · Tableau de bord global">
+  <meta name="devflow-ai-object-type" content="meeting_dashboard">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6">
+
+  {# ─── Header + actions ─── #}
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">DevFlow · Collaboration</p>
+      <h1 class="mt-2 text-3xl font-serif text-devtext1">Réunions — Vue d'ensemble</h1>
+      <p class="mt-1 text-sm text-devtext2">
+        Toutes les réunions du workspace (projet ou libre), comités multi-projets et séries récurrentes.
+      </p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="{% url 'meeting_list' %}" class="btn-soft">
+        <i class="fa-solid fa-list"></i> Liste complète
+      </a>
+      <a href="{% url 'meeting_series_list' %}" class="btn-soft">
+        <i class="fa-solid fa-repeat"></i> Séries
+      </a>
+      <a href="{% url 'meeting_create' %}" class="btn-main">
+        <i class="fa-solid fa-plus"></i> Nouvelle réunion
+      </a>
+    </div>
+  </div>
+
+  {# ─── KPI mois courant ─── #}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div class="rounded-2xl border border-devborder bg-devbg2 p-4">
+      <div class="text-[10px] uppercase text-devtext3">Réunions ce mois</div>
+      <div class="text-2xl font-semibold text-devtext1 mt-1">{{ month_stats.total|default:0 }}</div>
+    </div>
+    <div class="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+      <div class="text-[10px] uppercase text-emerald-700/80 dark:text-emerald-300/80">Tenues</div>
+      <div class="text-2xl font-semibold text-emerald-700 dark:text-emerald-300 mt-1">{{ month_stats.held|default:0 }}</div>
+    </div>
+    <div class="rounded-2xl border border-devaccent/30 bg-devaccent/10 p-4">
+      <div class="text-[10px] uppercase text-devaccent">Planifiées</div>
+      <div class="text-2xl font-semibold text-devaccent mt-1">{{ month_stats.planned|default:0 }}</div>
+    </div>
+    <div class="rounded-2xl border border-devred/30 bg-devred/10 p-4">
+      <div class="text-[10px] uppercase text-devred">Annulées</div>
+      <div class="text-2xl font-semibold text-devred mt-1">{{ month_stats.cancelled|default:0 }}</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    {# ─── Prochaines réunions (col gauche - 2/3) ─── #}
+    <section class="lg:col-span-2 rounded-2xl border border-devborder bg-devbg2 p-6">
+      <h2 class="text-base font-semibold text-devtext1 mb-4">
+        <i class="fa-solid fa-clock"></i> Prochaines réunions (14 jours)
+      </h2>
+      {% if upcoming_meetings %}
+        <ul class="space-y-2">
+          {% for m in upcoming_meetings %}
+          <li class="flex items-start gap-3 rounded-xl border border-devborder/40 bg-devbg3/40 p-3 hover:bg-devbg3/60">
+            <div class="shrink-0 text-center w-14">
+              <div class="text-[10px] uppercase text-devtext3">{{ m.scheduled_at|date:"D" }}</div>
+              <div class="text-lg font-bold text-devtext1">{{ m.scheduled_at|date:"d" }}</div>
+              <div class="text-[10px] uppercase text-devtext3">{{ m.scheduled_at|date:"M" }}</div>
+            </div>
+            <div class="flex-1 min-w-0">
+              <a href="{% url 'meeting_detail' m.pk %}" class="text-sm font-medium text-devtext1 hover:text-devaccent block truncate">
+                {{ m.title }}
+              </a>
+              <div class="text-[11px] text-devtext3 mt-0.5 flex flex-wrap gap-x-3 gap-y-1">
+                <span><i class="fa-solid fa-clock"></i> {{ m.scheduled_at|date:"H:i" }} · {{ m.duration_minutes }} min</span>
+                <span><i class="fa-solid fa-tag"></i> {{ m.get_meeting_type_display }}</span>
+                {% if m.project %}<span><i class="fa-solid fa-folder-open"></i> {{ m.project.name|truncatechars:30 }}</span>{% endif %}
+                {% if m.projects.exists %}<span><i class="fa-solid fa-folder"></i> {{ m.projects.count }} projets</span>{% endif %}
+                {% if m.series %}<span><i class="fa-solid fa-repeat"></i> Série</span>{% endif %}
+                {% if m.organizer %}<span><i class="fa-solid fa-user"></i> {{ m.organizer }}</span>{% endif %}
+              </div>
+            </div>
+            <div class="shrink-0">
+              <span class="inline-flex rounded-full bg-devbg4 px-2 py-0.5 text-[10px] font-semibold text-devtext2">
+                {{ m.get_status_display }}
+              </span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-devtext3 italic">Aucune réunion planifiée dans les 14 prochains jours.</p>
+        <a href="{% url 'meeting_create' %}" class="btn-main text-xs mt-3 inline-flex">
+          <i class="fa-solid fa-plus"></i> Planifier une réunion
+        </a>
+      {% endif %}
+    </section>
+
+    {# ─── Calendrier mini-mois (col droite - 1/3) ─── #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+      <h2 class="text-base font-semibold text-devtext1 mb-4">
+        <i class="fa-solid fa-calendar"></i> {{ current_month_label }}
+      </h2>
+      <div class="grid grid-cols-7 gap-1 text-center text-[10px]">
+        <div class="text-devtext3 font-semibold uppercase">L</div>
+        <div class="text-devtext3 font-semibold uppercase">M</div>
+        <div class="text-devtext3 font-semibold uppercase">M</div>
+        <div class="text-devtext3 font-semibold uppercase">J</div>
+        <div class="text-devtext3 font-semibold uppercase">V</div>
+        <div class="text-devtext3 font-semibold uppercase">S</div>
+        <div class="text-devtext3 font-semibold uppercase">D</div>
+        {% for cell in calendar_grid %}
+          {% if cell.day %}
+            <div class="aspect-square rounded-lg flex flex-col items-center justify-center text-[11px] relative
+                        {% if cell.is_today %}bg-devaccent text-white font-semibold
+                        {% elif cell.is_weekend %}bg-devbg3/30 text-devtext3
+                        {% else %}bg-devbg3/50 text-devtext2{% endif %}
+                        {% if cell.nb %}ring-1 ring-devaccent/40{% endif %}">
+              <span>{{ cell.day }}</span>
+              {% if cell.nb %}
+                <span class="absolute bottom-0.5 inline-block w-1 h-1 rounded-full bg-devaccent"></span>
+              {% endif %}
+            </div>
+          {% else %}
+            <div></div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <p class="text-[10px] text-devtext3 mt-3 italic">
+        <span class="inline-block w-2 h-2 rounded-full bg-devaccent mr-1"></span>
+        Jour avec réunion(s) planifiée(s)
+      </p>
+    </section>
+
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    {# ─── Réunions récentes (passées) ─── #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+      <h2 class="text-base font-semibold text-devtext1 mb-4">
+        <i class="fa-solid fa-history"></i> Récentes (7 jours passés)
+      </h2>
+      {% if recent_meetings %}
+        <ul class="space-y-2">
+          {% for m in recent_meetings %}
+          <li class="rounded-xl border border-devborder/40 bg-devbg3/40 p-3 hover:bg-devbg3/60">
+            <a href="{% url 'meeting_detail' m.pk %}" class="text-sm font-medium text-devtext1 hover:text-devaccent block">
+              {{ m.title }}
+            </a>
+            <div class="text-[11px] text-devtext3 mt-0.5">
+              {{ m.scheduled_at|date:"d/m/Y H:i" }}
+              {% if m.project %}· {{ m.project.name|truncatechars:25 }}{% endif %}
+              · {{ m.get_status_display }}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-devtext3 italic">Aucune réunion récente.</p>
+      {% endif %}
+    </section>
+
+    {# ─── Top projets ─── #}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+      <h2 class="text-base font-semibold text-devtext1 mb-4">
+        <i class="fa-solid fa-folder-open"></i> Top projets par réunions (année)
+      </h2>
+      {% if top_projects %}
+        <ul class="space-y-2">
+          {% for p in top_projects %}
+          <li class="flex items-center justify-between rounded-xl border border-devborder/40 bg-devbg3/40 p-3">
+            <a href="{% url 'project_detail' p.project_id %}" class="text-sm text-devtext1 hover:text-devaccent truncate">
+              {{ p.project__name }}
+            </a>
+            <span class="ml-2 shrink-0 inline-flex rounded-full bg-devaccent/15 px-2 py-0.5 text-[11px] font-semibold text-devaccent">
+              {{ p.nb }} réunion{{ p.nb|pluralize }}
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-devtext3 italic">Aucune réunion liée à un projet cette année.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  {# ─── Séries actives ─── #}
+  {% if active_series %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-semibold text-devtext1">
+        <i class="fa-solid fa-repeat"></i> Séries récurrentes actives ({{ active_series|length }})
+      </h2>
+      <a href="{% url 'meeting_series_list' %}" class="text-xs text-devaccent hover:underline">Toutes les séries →</a>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      {% for s in active_series %}
+      <a href="{% url 'meeting_series_detail' s.pk %}"
+         class="rounded-xl border border-devborder/40 bg-devbg3/40 p-3 hover:bg-devbg3/60">
+        <div class="text-sm font-medium text-devtext1 truncate">{{ s.name }}</div>
+        <div class="text-[11px] text-devtext3 mt-0.5">{{ s.recurrence_label }}</div>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

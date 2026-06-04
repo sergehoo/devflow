@@ -10,7 +10,8 @@ import logging
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
+from project.utils.workspaces import get_user_workspace_ids
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views import View
@@ -468,6 +469,124 @@ class MeetingMinutesDocxView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+
+class MeetingDashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """
+    Tableau de bord global des réunions du workspace (PR-MEET-4).
+
+    Vue panoramique :
+      * Prochaines réunions (7 jours glissants)
+      * Mini-calendrier du mois courant avec dots par jour
+      * Statistiques du mois (total, par statut, par type)
+      * Réunions par projet (compteur des 10 plus actifs)
+      * Séries actives
+    """
+    template_name = "project/meeting/dashboard.html"
+
+    def get(self, request):
+        from django.db.models import Count, Q
+        from datetime import datetime, timedelta
+        from calendar import monthrange
+
+        ws_ids = get_user_workspace_ids(request.user)
+        all_meetings = dm.ProjectMeeting.objects.filter(workspace_id__in=ws_ids)
+
+        now = timezone.now()
+        today = now.date()
+
+        # Prochaines réunions (jusqu'à +14 jours)
+        upcoming = (
+            all_meetings
+            .filter(
+                scheduled_at__gte=now,
+                scheduled_at__lte=now + timedelta(days=14),
+                status__in=[
+                    dm.ProjectMeeting.Status.PLANNED,
+                    dm.ProjectMeeting.Status.HELD,
+                ],
+            )
+            .select_related("project", "organizer", "series")
+            .prefetch_related("projects")
+            .order_by("scheduled_at")[:20]
+        )
+
+        # Réunions récentes (dernière semaine)
+        recent = (
+            all_meetings
+            .filter(scheduled_at__lt=now, scheduled_at__gte=now - timedelta(days=7))
+            .select_related("project", "organizer")
+            .order_by("-scheduled_at")[:10]
+        )
+
+        # Stats du mois courant
+        month_start = today.replace(day=1)
+        month_end_day = monthrange(today.year, today.month)[1]
+        month_end = today.replace(day=month_end_day)
+        month_qs = all_meetings.filter(
+            scheduled_at__date__gte=month_start,
+            scheduled_at__date__lte=month_end,
+        )
+        stats = month_qs.aggregate(
+            total=Count("id"),
+            held=Count("id", filter=Q(status=dm.ProjectMeeting.Status.HELD)),
+            planned=Count("id", filter=Q(status=dm.ProjectMeeting.Status.PLANNED)),
+            cancelled=Count("id", filter=Q(status=dm.ProjectMeeting.Status.CANCELLED)),
+        )
+
+        # Top projets par nombre de réunions sur l'année courante
+        year_start = today.replace(month=1, day=1)
+        top_projects = (
+            all_meetings
+            .filter(scheduled_at__date__gte=year_start, project__isnull=False)
+            .values("project_id", "project__name")
+            .annotate(nb=Count("id"))
+            .order_by("-nb")[:10]
+        )
+
+        # Séries actives
+        active_series = (
+            dm.MeetingSeries.objects
+            .filter(workspace_id__in=ws_ids, is_active=True, is_archived=False)
+            .order_by("name")[:10]
+        )
+
+        # Calendrier mini-mois : pour chaque jour, nombre de réunions
+        days_with_meetings = (
+            month_qs
+            .extra(select={"day": "DATE(scheduled_at)"})
+            .values("day")
+            .annotate(nb=Count("id"))
+        )
+        calendar_map = {row["day"]: row["nb"] for row in days_with_meetings}
+        # Construit la grille du mois
+        first_weekday = month_start.weekday()  # 0=lundi
+        calendar_grid = []
+        # Cases vides du début
+        for _ in range(first_weekday):
+            calendar_grid.append({"day": None, "nb": 0})
+        for d in range(1, month_end_day + 1):
+            day_date = today.replace(day=d)
+            calendar_grid.append({
+                "day": d,
+                "date": day_date,
+                "nb": calendar_map.get(day_date, 0),
+                "is_today": (day_date == today),
+                "is_weekend": (day_date.weekday() >= 5),
+            })
+
+        return render(request, self.template_name, {
+            "upcoming_meetings": upcoming,
+            "recent_meetings": recent,
+            "month_stats": stats,
+            "top_projects": top_projects,
+            "active_series": active_series,
+            "calendar_grid": calendar_grid,
+            "current_month_label": today.strftime("%B %Y").capitalize(),
+            "section": "meetings",
+            "page_title": "Tableau de bord réunions",
+            "breadcrumb": "Collaboration · Réunions · Vue d'ensemble",
+        })
 
 
 class MeetingSendMinutesView(WorkspaceSecurityMixin, DevflowBaseMixin, View):

@@ -1,12 +1,5 @@
 {% load static %}
-{# ────────────────────────────────────────────────────────────────────
-   Widget d'enregistrement audio — inclus dans meeting/detail.html.
-   Utilise MediaRecorder (microphone) + upload XHR + polling status.
 
-   Pré-requis :
-     - HTTPS obligatoire (sinon getUserMedia bloqué)
-     - Permissions-Policy: microphone=(self) côté reverse-proxy
-─────────────────────────────────────────────────────────────────────── #}
 
 <section class="rounded-2xl border border-devborder bg-devbg2 p-5"
          x-data="devflowRecorderWidget({{ meeting.pk }}, {% if latest_recording %}{{ latest_recording.pk }}{% else %}null{% endif %})"

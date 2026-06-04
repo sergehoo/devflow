@@ -514,6 +514,7 @@ from project.views_ai_genesis import (  # noqa: E402
     ProjectGenesisView,
 )
 from project import views_recording as _recording_views  # noqa: E402
+from project import views_meeting as _meeting_dashboard_view  # noqa: E402
 from project.views_ai_chat import (  # noqa: E402
     AIChatCloseSessionView,
     AIChatHistoryView,
@@ -634,6 +635,9 @@ urlpatterns += [
     # =====================================================================
     # Module Réunions projet
     # =====================================================================
+    path("meetings/dashboard/",
+         _meeting_dashboard_view.MeetingDashboardView.as_view(),
+         name="meeting_dashboard"),
     path("meetings/", ProjectMeetingListView.as_view(), name="meeting_list"),
     path("meetings/create/", ProjectMeetingCreateView.as_view(), name="meeting_create"),
     path("meetings/<int:pk>/", ProjectMeetingDetailView.as_view(), name="meeting_detail"),

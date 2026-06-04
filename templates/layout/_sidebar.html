@@ -335,7 +335,8 @@
         <a class="nav-subitem {% if current_url == 'reaction_list' or current_url == 'reaction_detail' or current_url == 'reaction_create' or current_url == 'reaction_update' %}lenk-active{% endif %}" href="{% url 'reaction_list' %}">Réactions</a>
         <a class="nav-subitem {% if current_url == 'notification_list' or current_url == 'notification_detail' or current_url == 'notification_create' or current_url == 'notification_update' %}lenk-active{% endif %}" href="{% url 'notification_list' %}">Notifications</a>
         <a class="nav-subitem {% if current_url == 'activity_log_list' or current_url == 'activity_log_detail' or current_url == 'activity_log_create' or current_url == 'activity_log_update' %}lenk-active{% endif %}" href="{% url 'activity_log_list' %}">Journal d’activités</a>
-        <a class="nav-subitem {% if current_url == 'meeting_list' or current_url == 'meeting_detail' or current_url == 'meeting_create' or current_url == 'meeting_update' %}lenk-active{% endif %}" href="{% url 'meeting_list' %}">Réunions</a>
+        <a class="nav-subitem {% if current_url == 'meeting_dashboard' %}lenk-active{% endif %}" href="{% url 'meeting_dashboard' %}">📅 Tableau de bord réunions</a>
+        <a class="nav-subitem {% if current_url == 'meeting_list' or current_url == 'meeting_detail' or current_url == 'meeting_create' or current_url == 'meeting_update' %}lenk-active{% endif %}" href="{% url 'meeting_list' %}">Toutes les réunions</a>
         <a class="nav-subitem {% if current_url == 'meeting_series_list' or current_url == 'meeting_series_detail' or current_url == 'meeting_series_create' or current_url == 'meeting_series_update' %}lenk-active{% endif %}" href="{% url 'meeting_series_list' %}">Séries récurrentes</a>
       </div>
     </details>
