@@ -320,6 +320,29 @@ services:
       - "traefik.http.routers.devflowmedia.tls.certresolver=lets"
       - "traefik.http.services.devflowmedia.loadbalancer.server.port=80"
     restart: unless-stopped
+  devflowminio:
+    image: minio/minio:latest
+    container_name: devflowminio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - devflowminio_data:/data
+    networks:
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.devflowminio.rule=Host(`storage-flow.datarium-dev.com`)"
+      - "traefik.http.routers.devflowminio.entrypoints=websecure"
+      - "traefik.http.routers.devflowminio.tls.certresolver=le"
+      - "traefik.http.services.devflowminio.loadbalancer.server.port=9000"
+      - "traefik.http.routers.devflowminio-console.rule=Host(`flow-minio-console.datarium-dev.com`)"
+      - "traefik.http.routers.devflowminio-console.entrypoints=websecure"
+      - "traefik.http.routers.devflowminio-console.tls.certresolver=le"
+      - "traefik.http.services.devflowminio-console.loadbalancer.server.port=9001"
+
 
   ollama:
     image: ollama/ollama:latest
@@ -344,6 +367,7 @@ volumes:
   media_volume:
   logs_volume:
   ollama_data:
+  devflowminio_data:
 
 networks:
   proxy:
