@@ -3597,7 +3597,8 @@ class RecordingAIExtraction(TimeStampedModel):
         MeetingRecording, on_delete=models.CASCADE,
         related_name="ai_extractions",
     )
-    kind = models.CharField(max_length=15, choices=Kind.choices)
+    # max_length=25 pour tenir 'milestone_suggestion' (20 chars) + marge
+    kind = models.CharField(max_length=25, choices=Kind.choices)
     title = models.CharField(max_length=250)
     description = models.TextField(blank=True)
     assignee_hint = models.CharField(
