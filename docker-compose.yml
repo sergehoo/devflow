@@ -365,11 +365,11 @@ services:
 
       # ─── Redirection HTTP -> HTTPS ──────────────────────────────
       - "traefik.http.routers.devflowminio-api-http.rule=Host(`storage-flow.datarium-dev.com`)"
-      - "traefik.http.routers.devflowminio-api-http.entrypoints=web"
+      - "traefik.http.routers.devflowminio-api-http.entrypoints=websecure"
       - "traefik.http.routers.devflowminio-api-http.service=devflowminio-api"
       - "traefik.http.routers.devflowminio-api-http.middlewares=devflowminio-redirect"
       - "traefik.http.routers.devflowminio-console-http.rule=Host(`flow-minio-console.datarium-dev.com`)"
-      - "traefik.http.routers.devflowminio-console-http.entrypoints=web"
+      - "traefik.http.routers.devflowminio-console-http.entrypoints=websecure"
       - "traefik.http.routers.devflowminio-console-http.service=devflowminio-console"
       - "traefik.http.routers.devflowminio-console-http.middlewares=devflowminio-redirect"
       - "traefik.http.middlewares.devflowminio-redirect.redirectscheme.scheme=https"
