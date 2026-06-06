@@ -334,6 +334,7 @@ services:
       - default
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
       - "traefik.http.routers.devflowminio.rule=Host(`storage-flow.datarium-dev.com`)"
       - "traefik.http.routers.devflowminio.entrypoints=websecure"
       - "traefik.http.routers.devflowminio.tls.certresolver=lets"
