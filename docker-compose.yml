@@ -9,7 +9,7 @@ services:
       -k uvicorn.workers.UvicornWorker
       --bind 0.0.0.0:8000
       --workers 3
-      --timeout 120
+      --timeout 300
       --keep-alive 5
       --max-requests 1000
       --max-requests-jitter 150
