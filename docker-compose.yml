@@ -336,11 +336,11 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.devflowminio.rule=Host(`storage-flow.datarium-dev.com`)"
       - "traefik.http.routers.devflowminio.entrypoints=websecure"
-      - "traefik.http.routers.devflowminio.tls.certresolver=le"
+      - "traefik.http.routers.devflowminio.tls.certresolver=lets"
       - "traefik.http.services.devflowminio.loadbalancer.server.port=9000"
       - "traefik.http.routers.devflowminio-console.rule=Host(`flow-minio-console.datarium-dev.com`)"
       - "traefik.http.routers.devflowminio-console.entrypoints=websecure"
-      - "traefik.http.routers.devflowminio-console.tls.certresolver=le"
+      - "traefik.http.routers.devflowminio-console.tls.certresolver=lets"
       - "traefik.http.services.devflowminio-console.loadbalancer.server.port=9001"
 
 
