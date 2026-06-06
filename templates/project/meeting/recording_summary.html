@@ -24,10 +24,27 @@
         {% if recording.transcription_provider %}· transcription {{ recording.transcription_provider }}{% endif %}
       </p>
     </div>
-    <div class="flex flex-wrap gap-2">
+    <div class="flex flex-wrap gap-2"
+         x-data="{ showEmailForm: false, extraEmails: '' }">
       <a href="{% url 'meeting_recordings_list' meeting.pk %}" class="btn-soft text-xs">
         <i class="fa-solid fa-list"></i> Tous les enregistrements
       </a>
+
+      {# ── PR-MEET-EXPORT : Export Word / PDF / Email ─────────────── #}
+      <a href="{% url 'recording_minutes_docx' meeting.pk recording.pk %}"
+         class="btn-soft text-xs" title="Télécharger le compte-rendu en Word">
+        <i class="fa-solid fa-file-word"></i> Word
+      </a>
+      <a href="{% url 'recording_minutes_pdf' meeting.pk recording.pk %}"
+         target="_blank"
+         class="btn-soft text-xs" title="Ouvrir le compte-rendu en PDF">
+        <i class="fa-solid fa-file-pdf"></i> PDF
+      </a>
+      <button type="button" @click="showEmailForm = !showEmailForm"
+              class="btn-soft text-xs" title="Envoyer par email aux participants">
+        <i class="fa-solid fa-paper-plane"></i> Envoyer par email
+      </button>
+
       <form method="post" action="{% url 'recording_regenerate_summary' recording.pk %}" class="inline">
         {% csrf_token %}
         <button type="submit" class="btn-soft text-xs" title="Régénérer le compte-rendu IA">
@@ -42,6 +59,36 @@
         </button>
       </form>
       <a href="{% url 'meeting_detail' meeting.pk %}" class="btn-soft text-xs">← Retour</a>
+
+      {# ── Formulaire d'envoi email (dépliable) ───────────────────── #}
+      <div x-show="showEmailForm" x-transition x-cloak
+           class="basis-full mt-3 rounded-xl border border-devborder bg-devbg3/60 p-4">
+        <form method="post" action="{% url 'recording_send_minutes' meeting.pk recording.pk %}"
+              class="space-y-3">
+          {% csrf_token %}
+          <div class="text-xs text-devtext3">
+            Le compte-rendu sera envoyé en pièce jointe (Word) à&nbsp;:
+            <strong>tous les participants internes</strong>
+            ({{ meeting.internal_participants.count }})
+            {% if meeting.external_participants %}
+              + <strong>les emails parsés depuis les participants externes</strong>
+            {% endif %}.
+          </div>
+          <label class="block text-[11px] uppercase tracking-wider text-devtext3">
+            Adresses supplémentaires (optionnel — virgule ou retour à la ligne)
+          </label>
+          <textarea name="extra_emails" rows="2" x-model="extraEmails"
+                    placeholder="exemple@client.com, marie.dupont@autre.fr"
+                    class="w-full rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-xs font-mono"></textarea>
+          <div class="flex justify-end gap-2">
+            <button type="button" @click="showEmailForm = false"
+                    class="btn-soft text-xs">Annuler</button>
+            <button type="submit" class="btn-main text-xs">
+              <i class="fa-solid fa-paper-plane"></i> Envoyer maintenant
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -121,8 +168,8 @@
   </section>
   {% endif %}
 
-  {# PR-MEET-10 : Suggestions IA de création (projets/sprints/jalons) #}
-  {% if project_suggestions or sprint_suggestions or milestone_suggestions %}
+  {# PR-MEET-10 + PR-MEET-AI-ENRICH : Suggestions IA de création (projets/sprints/jalons/tâches) #}
+  {% if project_suggestions or sprint_suggestions or milestone_suggestions or task_suggestions %}
   <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
     <h2 class="text-base font-semibold text-devtext1 mb-3">
       <i class="fa-solid fa-lightbulb"></i> Suggestions IA — Nouveaux objets à créer
@@ -136,7 +183,7 @@
       <label class="flex items-start gap-3 rounded-xl border border-devaccent/30 bg-devaccent/5 p-3 cursor-pointer hover:bg-devaccent/10">
         <input type="checkbox" name="accept_suggestion" value="{{ s.pk }}" class="mt-1" {% if s.is_accepted %}checked disabled{% endif %}>
         <div class="flex-1">
-          <div class="text-sm font-medium text-devtext1">📁 Nouveau projet : {{ s.title }}</div>
+          <div class="text-sm font-medium text-devtext1"><i class="fa-solid fa-folder-plus"></i> Nouveau projet : {{ s.title }}</div>
           {% if s.description %}<div class="text-xs text-devtext3 mt-1">{{ s.description|truncatechars:200 }}</div>{% endif %}
           {% if s.confidence %}<div class="text-[10px] text-devtext3 mt-1">Confiance IA : {{ s.confidence|floatformat:0 }}%</div>{% endif %}
           {% if s.is_accepted %}<div class="text-[10px] text-emerald-500 mt-1">✓ Créé</div>{% endif %}
@@ -147,7 +194,7 @@
       <label class="flex items-start gap-3 rounded-xl border border-devborder/40 bg-devbg3/40 p-3 cursor-pointer hover:bg-devbg3/60">
         <input type="checkbox" name="accept_suggestion" value="{{ s.pk }}" class="mt-1" {% if s.is_accepted %}checked disabled{% endif %}>
         <div class="flex-1">
-          <div class="text-sm font-medium text-devtext1">🏃 Sprint : {{ s.title }}</div>
+          <div class="text-sm font-medium text-devtext1"><i class="fa-solid fa-flag-checkered"></i> Sprint : {{ s.title }}</div>
           {% if s.description %}<div class="text-xs text-devtext3 mt-1">{{ s.description|truncatechars:200 }}</div>{% endif %}
           <div class="text-[10px] text-devtext3 mt-1 italic">Sprint nécessite un projet — création manuelle à finaliser ensuite.</div>
         </div>
@@ -157,9 +204,26 @@
       <label class="flex items-start gap-3 rounded-xl border border-devborder/40 bg-devbg3/40 p-3 cursor-pointer hover:bg-devbg3/60">
         <input type="checkbox" name="accept_suggestion" value="{{ s.pk }}" class="mt-1" {% if s.is_accepted %}checked disabled{% endif %}>
         <div class="flex-1">
-          <div class="text-sm font-medium text-devtext1">🎯 Jalon : {{ s.title }}</div>
-          {% if s.due_date_hint %}<div class="text-[11px] text-devtext3 mt-1">📅 {{ s.due_date_hint }}</div>{% endif %}
+          <div class="text-sm font-medium text-devtext1"><i class="fa-solid fa-bullseye"></i> Jalon : {{ s.title }}</div>
+          {% if s.due_date_hint %}<div class="text-[11px] text-devtext3 mt-1"><i class="fa-regular fa-calendar"></i> {{ s.due_date_hint }}</div>{% endif %}
           {% if s.description %}<div class="text-xs text-devtext3 mt-1">{{ s.description|truncatechars:200 }}</div>{% endif %}
+        </div>
+      </label>
+      {% endfor %}
+      {# PR-MEET-AI-ENRICH : Tâches suggérées avec owner + due + priorité #}
+      {% for s in task_suggestions %}
+      <label class="flex items-start gap-3 rounded-xl border border-devcyan/30 bg-devcyan/5 p-3 cursor-pointer hover:bg-devcyan/10">
+        <input type="checkbox" name="accept_suggestion" value="{{ s.pk }}" class="mt-1" {% if s.is_accepted %}checked disabled{% endif %}>
+        <div class="flex-1">
+          <div class="text-sm font-medium text-devtext1"><i class="fa-solid fa-clipboard-check"></i> Tâche : {{ s.title }}</div>
+          {% if s.description %}<div class="text-xs text-devtext3 mt-1">{{ s.description|truncatechars:200 }}</div>{% endif %}
+          <div class="flex flex-wrap gap-2 mt-1 text-[11px] text-devtext3">
+            {% if s.assignee_hint %}<span><i class="fa-solid fa-user"></i> {{ s.assignee_hint }}</span>{% endif %}
+            {% if s.due_date_hint %}<span><i class="fa-regular fa-calendar"></i> {{ s.due_date_hint }}</span>{% endif %}
+            {% if s.priority_hint %}<span class="badge {% if s.priority_hint|upper == 'CRITICAL' or s.priority_hint|upper == 'HIGH' %}b-red{% elif s.priority_hint|upper == 'MEDIUM' %}b-amber{% else %}b-cyan{% endif %}">{{ s.priority_hint|upper }}</span>{% endif %}
+            {% if s.confidence %}<span>Conf. IA {{ s.confidence|floatformat:0 }}%</span>{% endif %}
+          </div>
+          {% if s.is_accepted %}<div class="text-[10px] text-emerald-500 mt-1">✓ Tâche créée</div>{% endif %}
         </div>
       </label>
       {% endfor %}

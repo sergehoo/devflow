@@ -508,6 +508,13 @@ from project.views_meeting import (  # noqa: E402
     MeetingMinutesAISummaryView,
     MeetingMinutesDocxView,
     MeetingSendMinutesView,
+    MeetingRSVPView,
+    MeetingSelfPresentView,
+    MeetingMarkAttendanceView,
+    MeetingAgendaItemCreateView,
+    MeetingAgendaItemUpdateView,
+    MeetingAgendaItemDeleteView,
+    MeetingAgendaReorderView,
 )
 from project.views_ai_genesis import (  # noqa: E402
     ProjectGenesisAPIView,
@@ -687,6 +694,16 @@ urlpatterns += [
     path("recordings/<int:recording_pk>/delete/",
          _recording_views.RecordingDeleteView.as_view(),
          name="recording_delete"),
+    # PR-MEET-EXPORT : Export d'un recording en Word / PDF / Email
+    path("meetings/<int:meeting_pk>/recordings/<int:recording_pk>/minutes.docx",
+         _recording_views.RecordingDocxView.as_view(),
+         name="recording_minutes_docx"),
+    path("meetings/<int:meeting_pk>/recordings/<int:recording_pk>/minutes.pdf",
+         _recording_views.RecordingPdfView.as_view(),
+         name="recording_minutes_pdf"),
+    path("meetings/<int:meeting_pk>/recordings/<int:recording_pk>/send-minutes/",
+         _recording_views.RecordingSendEmailView.as_view(),
+         name="recording_send_minutes"),
     path("meetings/<int:meeting_pk>/recordings/",
          _recording_views.MeetingRecordingsListView.as_view(),
          name="meeting_recordings_list"),
@@ -738,6 +755,31 @@ urlpatterns += [
          name="recording_convert_suggestion"),
     path("meetings/<int:pk>/send-minutes/", MeetingSendMinutesView.as_view(),
          name="meeting_send_minutes"),
+
+    # PR-MEET-RSVP : RSVP et présence
+    path("meetings/<int:meeting_pk>/rsvp/",
+         MeetingRSVPView.as_view(),
+         name="meeting_rsvp"),
+    path("meetings/<int:meeting_pk>/confirm-presence/",
+         MeetingSelfPresentView.as_view(),
+         name="meeting_confirm_presence"),
+    path("meetings/<int:meeting_pk>/attendance/",
+         MeetingMarkAttendanceView.as_view(),
+         name="meeting_mark_attendance"),
+
+    # PR-MEET-AGENDA-LIVE : CRUD ordre du jour
+    path("meetings/<int:meeting_pk>/agenda/create/",
+         MeetingAgendaItemCreateView.as_view(),
+         name="meeting_agenda_create"),
+    path("meetings/<int:meeting_pk>/agenda/<int:item_pk>/update/",
+         MeetingAgendaItemUpdateView.as_view(),
+         name="meeting_agenda_update"),
+    path("meetings/<int:meeting_pk>/agenda/<int:item_pk>/delete/",
+         MeetingAgendaItemDeleteView.as_view(),
+         name="meeting_agenda_delete"),
+    path("meetings/<int:meeting_pk>/agenda/reorder/",
+         MeetingAgendaReorderView.as_view(),
+         name="meeting_agenda_reorder"),
 
     # =====================================================================
     # Module Facturation

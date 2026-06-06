@@ -1,0 +1,164 @@
+{% load humanize %}<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Compte-rendu — {{ meeting.title|default:"Réunion" }}</title>
+<style>
+    @page {
+        size: A4;
+        margin: 38mm 18mm 42mm 18mm;
+        @top-left {
+            content: "";
+            background-image: url("{{ logo_uri }}");
+            background-repeat: no-repeat;
+            background-position: left center;
+            background-size: contain;
+            width: 60mm; height: 24mm;
+        }
+        @top-center {
+            content: "{{ workspace.tagline|default:'' }}";
+            font-size: 10pt; font-weight: 700; letter-spacing: 3pt;
+            color: {{ workspace.accent_color|default:"#F4722B" }};
+            vertical-align: middle; padding-top: 6mm;
+        }
+        @top { border-bottom: 1.5pt solid {{ workspace.accent_color|default:"#F4722B" }}; }
+        @bottom-left {
+            content:
+                "{{ workspace.legal_name|default:workspace.name }}"
+                "{% if workspace.legal_rccm %}\A RCCM : {{ workspace.legal_rccm }}{% endif %}"
+                "{% if workspace.legal_cc %}\A CC : {{ workspace.legal_cc }}{% endif %}";
+            white-space: pre; font-size: 8pt; color: #1d1a17;
+            padding-top: 5mm; border-top: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
+            text-align: left; vertical-align: top;
+        }
+        @bottom-center {
+            content:
+                "{% if workspace.address_line1 %}{{ workspace.address_line1 }}{% endif %}"
+                "{% if workspace.address_line2 %}\A {{ workspace.address_line2 }}{% endif %}"
+                "{% if workspace.postal_code or workspace.city %}\A {{ workspace.postal_code }} {{ workspace.city }}{% endif %}";
+            white-space: pre; font-size: 8pt; color: #1d1a17;
+            padding-top: 5mm; border-top: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
+            text-align: center; vertical-align: top;
+        }
+        @bottom-right {
+            content:
+                "{% if workspace.phone %}Tél. : {{ workspace.phone }}{% endif %}"
+                "{% if workspace.email %}\A {{ workspace.email }}{% endif %}"
+                "{% if workspace.website %}\A {{ workspace.website }}{% endif %}";
+            white-space: pre; font-size: 8pt; color: #1d1a17;
+            padding-top: 5mm; border-top: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
+            text-align: right; vertical-align: top;
+        }
+    }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1d1a17; font-size: 10pt; line-height: 1.55; }
+    h1 { font-size: 20pt; margin: 0 0 2mm 0; }
+    h2 { font-size: 13pt; color: {{ workspace.accent_color|default:"#F4722B" }};
+         border-bottom: 1pt solid #e9e1d8; padding-bottom: 1mm; margin: 8mm 0 3mm 0; }
+    h3 { font-size: 11pt; margin: 5mm 0 1.5mm 0; }
+    .kicker { color: {{ workspace.accent_color|default:"#F4722B" }};
+              font-weight: 700; font-size: 10pt; letter-spacing: 1.5pt;
+              text-transform: uppercase; }
+    .meta-grid { width: 100%; margin: 4mm 0; }
+    .meta-grid td { padding: 1mm 0; font-size: 9pt; vertical-align: top; }
+    .meta-grid .label { color: #6d655d; text-transform: uppercase; font-size: 8pt; letter-spacing: 1pt; width: 30mm; }
+    ul { margin: 2mm 0 2mm 6mm; padding: 0; }
+    ul li { margin: 0.5mm 0; }
+    .extraction { padding: 2mm 3mm; margin: 1.5mm 0; background: #f6f3ef; border-left: 3pt solid {{ workspace.accent_color|default:"#F4722B" }}; border-radius: 2pt; page-break-inside: avoid; }
+    .extraction .title { font-weight: 700; font-size: 10pt; }
+    .extraction .desc { font-size: 9pt; color: #3f3a35; margin-top: 1mm; }
+    .extraction .meta { font-size: 8.5pt; color: #6d655d; margin-top: 1mm; }
+    .extraction .meta .tag { display: inline-block; padding: 0.5mm 2mm; border-radius: 2pt; background: #fff; margin-right: 2mm; font-weight: 700; }
+    .badge { display: inline-block; padding: 0.5mm 2mm; border-radius: 2pt; font-size: 8pt; font-weight: 700; }
+    .badge-prio-CRITICAL, .badge-prio-HIGH { background: #fee2e2; color: #b91c1c; }
+    .badge-prio-MEDIUM { background: #fef9c3; color: #a16207; }
+    .badge-prio-LOW { background: #dbeafe; color: #1d4ed8; }
+    .transcript {
+        font-size: 9pt; color: #2a2622;
+        white-space: pre-wrap; line-height: 1.5;
+        padding: 3mm 4mm; background: #faf7f3;
+        border-radius: 4pt; border-left: 2pt solid #d4ccc1;
+        margin-top: 2mm;
+    }
+</style>
+</head>
+<body>
+
+<div class="kicker">Compte-rendu d'enregistrement</div>
+<h1>{{ meeting.title|default:"Réunion" }}</h1>
+
+<table class="meta-grid">
+  {% if meeting %}
+    <tr><td class="label">Date</td><td>{{ meeting.scheduled_at|date:"l j F Y · H:i" }}</td></tr>
+    <tr><td class="label">Durée prévue</td><td>{{ meeting.duration_minutes }} min</td></tr>
+    <tr><td class="label">Type</td><td>{{ meeting.get_meeting_type_display }}</td></tr>
+    {% if meeting.organizer %}<tr><td class="label">Organisateur</td><td>{{ meeting.organizer }}</td></tr>{% endif %}
+    {% if meeting.location %}<tr><td class="label">Lieu</td><td>{{ meeting.location }}</td></tr>{% endif %}
+  {% endif %}
+  <tr><td class="label">Durée audio</td>
+      <td>
+        {% widthratio recording.duration_seconds 60 1 %} min
+        {% if recording.transcription_provider %} · Transcription : {{ recording.transcription_provider }}{% endif %}
+        {% if recording.summary_provider %} · Synthèse IA : {{ recording.summary_provider }}{% endif %}
+      </td></tr>
+  {% if internal_participants %}
+    <tr><td class="label">Participants</td>
+        <td>{% for p in internal_participants %}{{ p }}{% if not forloop.last %}, {% endif %}{% endfor %}</td></tr>
+  {% endif %}
+  {% if meeting.external_participants %}
+    <tr><td class="label">Externes</td><td>{{ meeting.external_participants|linebreaksbr }}</td></tr>
+  {% endif %}
+</table>
+
+{% if recording.summary_markdown %}
+<h2>Résumé exécutif</h2>
+<div>{{ recording.summary_markdown|linebreaks }}</div>
+{% endif %}
+
+{% if decisions %}
+<h2>Décisions</h2>
+{% for d in decisions %}
+<div class="extraction">
+  <div class="title">{{ d.title }}</div>
+  {% if d.description %}<div class="desc">{{ d.description }}</div>{% endif %}
+  {% if d.assignee_hint or d.due_date_hint %}
+  <div class="meta">
+    {% if d.assignee_hint %}<span class="tag">@{{ d.assignee_hint }}</span>{% endif %}
+    {% if d.due_date_hint %}<span class="tag">⌛ {{ d.due_date_hint }}</span>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if actions %}
+<h2>Actions à mener</h2>
+{% for a in actions %}
+<div class="extraction">
+  <div class="title">{{ a.title }}</div>
+  {% if a.description %}<div class="desc">{{ a.description }}</div>{% endif %}
+  <div class="meta">
+    {% if a.assignee_hint %}<span class="tag">@{{ a.assignee_hint }}</span>{% endif %}
+    {% if a.due_date_hint %}<span class="tag">⌛ {{ a.due_date_hint }}</span>{% endif %}
+    {% if a.priority_hint %}<span class="badge badge-prio-{{ a.priority_hint }}">{{ a.priority_hint }}</span>{% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if risks %}
+<h2>Points de vigilance</h2>
+{% for r in risks %}
+<div class="extraction">
+  <div class="title">{{ r.title }}</div>
+  {% if r.description %}<div class="desc">{{ r.description }}</div>{% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if transcript %}
+<h2>Transcription complète</h2>
+<div class="transcript">{{ transcript }}</div>
+{% endif %}
+
+</body>
+</html>

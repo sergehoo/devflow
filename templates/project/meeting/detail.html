@@ -1,4 +1,5 @@
 {% extends "layout/base.html" %}
+{% load devflow_extras %}
 
 {% block title %}{{ meeting.title }} — Réunion{% endblock %}
 
@@ -115,7 +116,13 @@
                 <p class="text-[11px] text-devtext3">
                     Provider : {{ meeting.ai_used_provider|default:"—" }} · {{ meeting.ai_extracted_at|date:"d/m/Y H:i" }}
                 </p>
-                <div class="mt-3 text-sm text-devtext2 leading-7 whitespace-pre-line">{{ meeting.ai_summary }}</div>
+                <div class="mt-3 devflow-prose text-sm text-devtext2 leading-7
+                            [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
+                            [&_li]:my-1 [&_p]:my-2 [&_strong]:text-devtext1
+                            [&_h1]:text-base [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold
+                            [&_a]:text-devaccent [&_a]:underline
+                            [&_table]:border-collapse [&_td]:border [&_td]:border-devborder [&_td]:px-2 [&_td]:py-1
+                            [&_th]:border [&_th]:border-devborder [&_th]:px-2 [&_th]:py-1 [&_th]:bg-devbg3">{{ meeting.ai_summary|safe_html }}</div>
             </div>
         </div>
     </section>
@@ -132,36 +139,212 @@
 
         <!-- Notes -->
         <div x-show="tab === 'notes'" class="p-6 space-y-5">
-            {% if meeting.agenda %}
-            <div>
-                <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3 mb-2">Ordre du jour</h3>
-                <div class="text-sm text-devtext2 leading-7 whitespace-pre-line">{{ meeting.agenda }}</div>
+
+            {# ── PR-MEET-AGENDA-LIVE : Ordre du jour structuré, éditable inline ── #}
+            <div x-data="{ showAdd: false, editing: null }">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3">
+                        Ordre du jour ({{ agenda_items|length }})
+                    </h3>
+                    <button type="button" @click="showAdd = !showAdd" class="btn-soft text-xs">
+                        <i class="fa-solid fa-plus"></i> Ajouter un point
+                    </button>
+                </div>
+
+                {# Formulaire d'ajout (dépliable) #}
+                <div x-show="showAdd" x-transition x-cloak
+                     class="rounded-xl border border-devborder bg-devbg3/40 p-4 mb-3">
+                    <form method="post" action="{% url 'meeting_agenda_create' meeting.pk %}"
+                          class="grid grid-cols-1 md:grid-cols-12 gap-2">
+                        {% csrf_token %}
+                        <input type="text" name="title" required maxlength="200" placeholder="Titre du point"
+                               class="md:col-span-6 rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+                        <select name="owner" class="md:col-span-3 rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+                            <option value="">— Owner —</option>
+                            {% for p in participations %}
+                                <option value="{{ p.user.pk }}">{{ p.user.get_full_name|default:p.user.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="number" name="duration_minutes" value="5" min="0" step="1"
+                               class="md:col-span-2 rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm" placeholder="min">
+                        <button class="md:col-span-1 btn-main text-xs">
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                        <textarea name="description" rows="2" placeholder="Description (optionnel)"
+                                  class="md:col-span-12 rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm"></textarea>
+                    </form>
+                </div>
+
+                {# Liste des items #}
+                <ul id="agenda-items-list" class="space-y-2">
+                    {% for item in agenda_items %}
+                    <li class="rounded-xl border border-devborder bg-devbg3/30 p-3"
+                        data-item-id="{{ item.pk }}"
+                        :class="editing === {{ item.pk }} ? 'ring-1 ring-devaccent' : ''">
+                        <div x-show="editing !== {{ item.pk }}" class="flex items-start gap-3">
+                            <span class="cursor-move text-devtext3 mt-1 select-none agenda-drag-handle" title="Glisser pour réordonner">
+                                <i class="fa-solid fa-grip-vertical"></i>
+                            </span>
+                            <span class="badge b-{{ item.status_color }} mt-0.5">{{ item.position }}</span>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-medium text-sm text-devtext1">{{ item.title }}</div>
+                                {% if item.description %}
+                                <div class="text-xs text-devtext3 mt-1">{{ item.description|safe_html }}</div>
+                                {% endif %}
+                                <div class="flex flex-wrap gap-2 mt-1 text-[11px] text-devtext3">
+                                    {% if item.owner %}<span><i class="fa-solid fa-user"></i> {{ item.owner.get_full_name|default:item.owner.username }}</span>{% endif %}
+                                    <span><i class="fa-solid fa-clock"></i> {{ item.duration_minutes }} min</span>
+                                    <span class="badge b-{{ item.status_color }}">{{ item.get_status_display }}</span>
+                                </div>
+                                {% if item.notes %}
+                                <div class="mt-2 rounded-md bg-devbg2/40 p-2 text-xs text-devtext2">
+                                    <strong class="text-devaccent">Notes :</strong>
+                                    <span class="devflow-prose [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5">{{ item.notes|safe_html }}</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="flex flex-col gap-1 shrink-0">
+                                {# Cycle status rapide #}
+                                <form method="post" action="{% url 'meeting_agenda_update' meeting.pk item.pk %}" class="inline">
+                                    {% csrf_token %}
+                                    <select name="status" onchange="this.form.submit()"
+                                            class="text-[11px] rounded-md border border-devborder bg-devbg3 px-1.5 py-0.5">
+                                        {% for code, label in item.Status.choices %}
+                                        <option value="{{ code }}" {% if item.status == code %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </form>
+                                <button type="button" @click="editing = {{ item.pk }}" class="btn-soft text-xs"><i class="fa-solid fa-pen-to-square"></i></button>
+                                <form method="post" action="{% url 'meeting_agenda_delete' meeting.pk item.pk %}" class="inline"
+                                      onsubmit="return confirm('Supprimer ce point ?');">
+                                    {% csrf_token %}
+                                    <button class="btn-soft text-xs text-devred"><i class="fa-solid fa-trash"></i></button>
+                                </form>
+                            </div>
+                        </div>
+
+                        {# Mode édition inline #}
+                        <form x-show="editing === {{ item.pk }}" x-cloak
+                              method="post" action="{% url 'meeting_agenda_update' meeting.pk item.pk %}"
+                              class="grid grid-cols-1 md:grid-cols-12 gap-2">
+                            {% csrf_token %}
+                            <input type="text" name="title" value="{{ item.title }}" required maxlength="200"
+                                   class="md:col-span-6 rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+                            <select name="owner" class="md:col-span-3 rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+                                <option value="">— Owner —</option>
+                                {% for p in participations %}
+                                    <option value="{{ p.user.pk }}" {% if item.owner_id == p.user.pk %}selected{% endif %}>{{ p.user.get_full_name|default:p.user.username }}</option>
+                                {% endfor %}
+                            </select>
+                            <input type="number" name="duration_minutes" value="{{ item.duration_minutes }}" min="0"
+                                   class="md:col-span-2 rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+                            <div class="md:col-span-1 flex gap-1">
+                                <button class="btn-main text-xs flex-1"><i class="fa-solid fa-check"></i></button>
+                                <button type="button" @click="editing = null" class="btn-soft text-xs"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                            <textarea name="description" rows="2" placeholder="Description"
+                                      class="md:col-span-12 rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">{{ item.description }}</textarea>
+                            <textarea name="notes" rows="2" placeholder="Notes prises pendant le point"
+                                      class="md:col-span-12 rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">{{ item.notes }}</textarea>
+                        </form>
+                    </li>
+                    {% empty %}
+                    <li class="text-sm text-devtext3 italic px-3 py-4 rounded-xl border border-devborder/40 border-dashed text-center">
+                        Aucun point. Cliquez sur "Ajouter un point" pour commencer.
+                    </li>
+                    {% endfor %}
+                </ul>
             </div>
+
+            {# Ancien champ texte libre (fallback / legacy) — affiché seulement si rempli #}
+            {% if meeting.agenda %}
+            <details class="rounded-xl border border-devborder/40 bg-devbg3/20 p-3">
+                <summary class="text-xs text-devtext3 cursor-pointer">Ordre du jour (texte libre — legacy)</summary>
+                <div class="mt-2 devflow-prose text-sm text-devtext2 leading-7
+                            [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
+                            [&_li]:my-1 [&_p]:my-2 [&_strong]:text-devtext1
+                            [&_a]:text-devaccent [&_a]:underline">
+                    {{ meeting.agenda|safe_html }}
+                </div>
+            </details>
             {% endif %}
+
+            <script>
+                // PR-MEET-AGENDA-LIVE : drag-drop natif HTML5 pour réordonner
+                (function() {
+                    const list = document.getElementById('agenda-items-list');
+                    if (!list) return;
+                    let dragged = null;
+                    list.querySelectorAll('li[data-item-id]').forEach(li => {
+                        li.setAttribute('draggable', 'true');
+                        li.addEventListener('dragstart', e => {
+                            dragged = li;
+                            li.classList.add('opacity-50');
+                        });
+                        li.addEventListener('dragend', () => {
+                            li.classList.remove('opacity-50');
+                            saveOrder();
+                        });
+                        li.addEventListener('dragover', e => {
+                            e.preventDefault();
+                            const rect = li.getBoundingClientRect();
+                            const after = (e.clientY - rect.top) > rect.height / 2;
+                            if (dragged && dragged !== li) {
+                                list.insertBefore(dragged, after ? li.nextSibling : li);
+                            }
+                        });
+                    });
+                    function saveOrder() {
+                        const ids = [...list.querySelectorAll('li[data-item-id]')]
+                            .map(el => el.getAttribute('data-item-id'));
+                        if (window.devflowApi) {
+                            window.devflowApi.post(
+                                "{% url 'meeting_agenda_reorder' meeting.pk %}",
+                                { order: ids.join(',') },
+                                { form: true }
+                            ).catch(() => {});
+                        }
+                    }
+                })();
+            </script>
             <div>
                 <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3 mb-2">Notes / compte-rendu</h3>
-                <div class="text-sm text-devtext2 leading-7 whitespace-pre-line">
-                    {{ meeting.notes|default:"Aucune note enregistrée." }}
+                <div class="devflow-prose text-sm text-devtext2 leading-7
+                            [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
+                            [&_li]:my-1 [&_p]:my-2 [&_strong]:text-devtext1
+                            [&_a]:text-devaccent [&_a]:underline
+                            [&_table]:border-collapse [&_td]:border [&_td]:border-devborder [&_td]:px-2 [&_td]:py-1
+                            [&_th]:border [&_th]:border-devborder [&_th]:px-2 [&_th]:py-1 [&_th]:bg-devbg3">
+                    {% if meeting.notes %}{{ meeting.notes|safe_html }}{% else %}<span class="text-devtext3">Aucune note enregistrée.</span>{% endif %}
                 </div>
             </div>
             {% if meeting.blockers %}
             <div>
                 <h3 class="text-xs font-semibold uppercase tracking-wide text-devred mb-2">⚠️ Points bloquants</h3>
-                <div class="text-sm text-devtext2 leading-7 whitespace-pre-line">{{ meeting.blockers }}</div>
+                <div class="devflow-prose text-sm text-devtext2 leading-7
+                            [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
+                            [&_li]:my-1 [&_p]:my-2 [&_strong]:text-devtext1
+                            [&_a]:text-devaccent [&_a]:underline">{{ meeting.blockers|safe_html }}</div>
             </div>
             {% endif %}
             {% if meeting.next_steps %}
             <div>
                 <h3 class="text-xs font-semibold uppercase tracking-wide text-devcyan mb-2">→ Prochaine étape</h3>
-                <div class="text-sm text-devtext2 leading-7 whitespace-pre-line">{{ meeting.next_steps }}</div>
+                <div class="devflow-prose text-sm text-devtext2 leading-7
+                            [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
+                            [&_li]:my-1 [&_p]:my-2 [&_strong]:text-devtext1
+                            [&_a]:text-devaccent [&_a]:underline">{{ meeting.next_steps|safe_html }}</div>
             </div>
             {% endif %}
         </div>
 
         <!-- Decisions -->
         <div x-show="tab === 'decisions'" class="p-6" style="display:none">
-            <div class="text-sm text-devtext2 leading-7 whitespace-pre-line">
-                {{ meeting.decisions|default:"Aucune décision tracée." }}
+            <div class="devflow-prose text-sm text-devtext2 leading-7
+                        [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
+                        [&_li]:my-1 [&_p]:my-2 [&_strong]:text-devtext1
+                        [&_a]:text-devaccent [&_a]:underline">
+                {% if meeting.decisions %}{{ meeting.decisions|safe_html }}{% else %}<span class="text-devtext3">Aucune décision tracée.</span>{% endif %}
             </div>
         </div>
 
@@ -216,27 +399,148 @@
             </ul>
         </div>
 
-        <!-- Participants -->
-        <div x-show="tab === 'participants'" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6" style="display:none">
-            <div>
-                <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3 mb-2">Internes ({{ meeting.internal_participants.count }})</h3>
-                <ul class="space-y-2 text-sm">
-                    {% for u in meeting.internal_participants.all %}
-                    <li class="flex items-center gap-2 p-2 rounded-[12px] bg-devbg3/40">
-                        <div class="w-8 h-8 rounded-full bg-devaccent/20 text-devaccent flex items-center justify-center text-xs font-bold">
-                            {{ u.first_name|default:u.username|slice:":1"|upper }}
-                        </div>
-                        <span class="text-devtext1">{{ u.get_full_name|default:u.username }}</span>
-                    </li>
-                    {% empty %}
-                    <li class="text-devtext3 text-sm">Aucun participant interne.</li>
-                    {% endfor %}
-                </ul>
+        <!-- Participants (PR-MEET-RSVP : RSVP + Présence) -->
+        <div x-show="tab === 'participants'" class="p-6 space-y-6" style="display:none">
+
+            {# ── Bandeau RSVP personnel ── #}
+            {% if my_participation %}
+            <div class="rounded-2xl border border-devaccent/40 bg-devaccent/5 p-4">
+                <div class="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">Votre statut</p>
+                        <p class="text-sm text-devtext1 mt-1">
+                            RSVP : <strong>{{ my_participation.get_rsvp_status_display }}</strong>
+                            {% if my_participation.attendance_status != 'UNKNOWN' %}
+                                · Présence : <strong>{{ my_participation.get_attendance_status_display }}</strong>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <form method="post" action="{% url 'meeting_rsvp' meeting.pk %}" class="inline-flex gap-1">
+                            {% csrf_token %}
+                            <input type="hidden" name="rsvp_status" value="ACCEPTED">
+                            <button class="btn-soft text-xs {% if my_participation.rsvp_status == 'ACCEPTED' %}bg-devgreen/20 text-devgreen{% endif %}">
+                                <i class="fa-solid fa-check"></i> J'accepte
+                            </button>
+                        </form>
+                        <form method="post" action="{% url 'meeting_rsvp' meeting.pk %}" class="inline-flex gap-1">
+                            {% csrf_token %}
+                            <input type="hidden" name="rsvp_status" value="TENTATIVE">
+                            <button class="btn-soft text-xs {% if my_participation.rsvp_status == 'TENTATIVE' %}bg-devcyan/20 text-devcyan{% endif %}">
+                                <i class="fa-solid fa-question"></i> Peut-être
+                            </button>
+                        </form>
+                        <form method="post" action="{% url 'meeting_rsvp' meeting.pk %}" class="inline-flex gap-1">
+                            {% csrf_token %}
+                            <input type="hidden" name="rsvp_status" value="DECLINED">
+                            <button class="btn-soft text-xs {% if my_participation.rsvp_status == 'DECLINED' %}bg-devred/20 text-devred{% endif %}">
+                                <i class="fa-solid fa-xmark"></i> Je décline
+                            </button>
+                        </form>
+                        {% if not my_participation.self_confirmed %}
+                        <form method="post" action="{% url 'meeting_confirm_presence' meeting.pk %}" class="inline-flex">
+                            {% csrf_token %}
+                            <button class="btn-main text-xs">
+                                <i class="fa-solid fa-hand"></i> Je confirme ma présence
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
-            <div>
-                <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3 mb-2">Externes</h3>
-                <div class="text-sm text-devtext2 leading-7 whitespace-pre-line p-3 rounded-[12px] bg-devbg3/40">
-                    {{ meeting.external_participants|default:"—" }}
+            {% endif %}
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {# ── Liste participants internes avec RSVP + présence ── #}
+                <div class="lg:col-span-2">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3">
+                            Participants internes ({{ participations|length }})
+                        </h3>
+                        {% if user_can_mark_attendance %}
+                        <span class="text-[11px] text-devtext3">
+                            <i class="fa-solid fa-user-shield"></i> Vous pouvez marquer la présence
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    {% if user_can_mark_attendance %}
+                    <form method="post" action="{% url 'meeting_mark_attendance' meeting.pk %}" class="space-y-2">
+                        {% csrf_token %}
+                        <div class="rounded-2xl border border-devborder divide-y divide-devborder overflow-hidden">
+                            {% for p in participations %}
+                            <div class="flex items-center gap-3 p-3 bg-devbg3/30 hover:bg-devbg3/50">
+                                <div class="w-8 h-8 rounded-full bg-devaccent/20 text-devaccent flex items-center justify-center text-xs font-bold shrink-0">
+                                    {{ p.user.first_name|default:p.user.username|slice:":1"|upper }}
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm text-devtext1 truncate">{{ p.user.get_full_name|default:p.user.username }}</div>
+                                    <div class="flex flex-wrap gap-1 mt-0.5 text-[10px]">
+                                        <span class="badge b-{{ p.rsvp_badge_color }}">RSVP : {{ p.get_rsvp_status_display }}</span>
+                                        {% if p.self_confirmed %}<span class="badge b-green">Auto-confirmé</span>{% endif %}
+                                    </div>
+                                </div>
+                                <select name="attendance_{{ p.user.pk }}"
+                                        class="rounded-[10px] border border-devborder bg-devbg3 text-xs px-2 py-1 shrink-0">
+                                    {% for code, label in p.AttendanceStatus.choices %}
+                                    <option value="{{ code }}" {% if p.attendance_status == code %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {% empty %}
+                            <div class="p-6 text-center text-devtext3 text-sm">Aucun participant interne.</div>
+                            {% endfor %}
+                        </div>
+                        <div class="flex justify-end">
+                            <button class="btn-main text-xs">
+                                <i class="fa-solid fa-floppy-disk"></i> Enregistrer la présence
+                            </button>
+                        </div>
+                    </form>
+                    {% else %}
+                    <ul class="rounded-2xl border border-devborder divide-y divide-devborder overflow-hidden">
+                        {% for p in participations %}
+                        <li class="flex items-center gap-3 p-3 bg-devbg3/30">
+                            <div class="w-8 h-8 rounded-full bg-devaccent/20 text-devaccent flex items-center justify-center text-xs font-bold">
+                                {{ p.user.first_name|default:p.user.username|slice:":1"|upper }}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm text-devtext1 truncate">{{ p.user.get_full_name|default:p.user.username }}</div>
+                                <div class="flex flex-wrap gap-1 mt-0.5 text-[10px]">
+                                    <span class="badge b-{{ p.rsvp_badge_color }}">RSVP : {{ p.get_rsvp_status_display }}</span>
+                                    <span class="badge b-{{ p.attendance_badge_color }}">{{ p.get_attendance_status_display }}</span>
+                                    {% if p.self_confirmed %}<span class="badge b-green">Auto-confirmé</span>{% endif %}
+                                </div>
+                            </div>
+                        </li>
+                        {% empty %}
+                        <li class="p-6 text-center text-devtext3 text-sm">Aucun participant interne.</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+
+                {# ── Participants externes + résumé statistiques ── #}
+                <div class="space-y-4">
+                    <div>
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-devtext3 mb-2">Externes</h3>
+                        <div class="text-sm text-devtext2 leading-7 whitespace-pre-line p-3 rounded-[12px] bg-devbg3/40">
+                            {{ meeting.external_participants|default:"—" }}
+                        </div>
+                    </div>
+
+                    {% if participations_stats %}
+                    <div class="rounded-2xl border border-devborder bg-devbg3/30 p-4 text-xs space-y-2">
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">Statistiques RSVP</p>
+                        <div class="flex justify-between"><span>Accepté</span><strong class="text-devgreen">{{ participations_stats.accepted }}</strong></div>
+                        <div class="flex justify-between"><span>Peut-être</span><strong class="text-devcyan">{{ participations_stats.tentative }}</strong></div>
+                        <div class="flex justify-between"><span>Décliné</span><strong class="text-devred">{{ participations_stats.declined }}</strong></div>
+                        <div class="flex justify-between"><span>Sans réponse</span><strong class="text-devamber">{{ participations_stats.pending }}</strong></div>
+                        <hr class="border-devborder/40">
+                        <div class="flex justify-between"><span>Présents</span><strong class="text-devgreen">{{ participations_stats.present }}</strong></div>
+                        <div class="flex justify-between"><span>Absents</span><strong class="text-devred">{{ participations_stats.absent }}</strong></div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -352,7 +656,13 @@
             <i class="fa-solid fa-sparkles"></i> Compte-rendu IA
             {% if meeting.ai_used_provider %}· via {{ meeting.ai_used_provider }}{% endif %}
         </p>
-        <div class="mt-3 text-sm text-devtext1 leading-relaxed whitespace-pre-wrap">{{ meeting.ai_summary }}</div>
+        <div class="mt-3 devflow-prose text-sm text-devtext1 leading-relaxed
+                    [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
+                    [&_li]:my-1 [&_p]:my-2 [&_strong]:text-devtext1
+                    [&_h1]:text-base [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold
+                    [&_a]:text-devaccent [&_a]:underline
+                    [&_table]:border-collapse [&_td]:border [&_td]:border-devborder [&_td]:px-2 [&_td]:py-1
+                    [&_th]:border [&_th]:border-devborder [&_th]:px-2 [&_th]:py-1 [&_th]:bg-devbg3">{{ meeting.ai_summary|safe_html }}</div>
         {% if meeting.ai_extracted_at %}
             <p class="mt-3 text-[11px] text-devtext3">Généré le {{ meeting.ai_extracted_at|date:"d/m/Y H:i" }}</p>
         {% endif %}

@@ -194,8 +194,10 @@ class RecordingSummaryView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
         project_suggestions = [e for e in extractions if e.kind == "project_suggestion"]
         sprint_suggestions = [e for e in extractions if e.kind == "sprint_suggestion"]
         milestone_suggestions = [e for e in extractions if e.kind == "milestone_suggestion"]
+        # PR-MEET-AI-ENRICH : tâches détectées + suggérées
+        task_suggestions = [e for e in extractions if e.kind == "task_suggestion"]
         mentions = [e for e in extractions if e.kind in (
-            "project_mention", "sprint_mention", "milestone_mention",
+            "project_mention", "sprint_mention", "milestone_mention", "task_mention",
         )]
         return render(request, self.template_name, {
             "meeting": recording.meeting,
@@ -206,6 +208,7 @@ class RecordingSummaryView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             "project_suggestions": project_suggestions,
             "sprint_suggestions": sprint_suggestions,
             "milestone_suggestions": milestone_suggestions,
+            "task_suggestions": task_suggestions,
             "mentions": mentions,
             "section": "meetings",
             "page_title": "Compte-rendu IA",
@@ -582,3 +585,149 @@ def _stream_file_response(file_field, *, content_type, filename):
     response["Cache-Control"] = "private, max-age=3600"
     response["Accept-Ranges"] = "bytes"
     return response
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PR-MEET-EXPORT : Export du compte-rendu d'un recording (.docx, .pdf, email)
+# ─────────────────────────────────────────────────────────────────────
+def _get_recording_for_user(request, recording_pk):
+    """Helper d'accès workspace-safe (réutilisé par les 3 vues d'export)."""
+    ws_ids = get_user_workspace_ids(request.user)
+    recording = (
+        dm.MeetingRecording.objects
+        .select_related("meeting", "workspace")
+        .filter(pk=recording_pk, workspace_id__in=ws_ids)
+        .first()
+    )
+    if recording is None:
+        raise Http404("Enregistrement introuvable.")
+    return recording
+
+
+def _safe_filename_part(text: str) -> str:
+    """Convertit une chaîne en partie de nom de fichier safe."""
+    import re
+    cleaned = re.sub(r"[^A-Za-z0-9\-_]+", "_", text or "")
+    return cleaned.strip("_") or "recording"
+
+
+class RecordingDocxView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """GET → télécharge le compte-rendu d'enregistrement en .docx (branding workspace)."""
+
+    def get(self, request, meeting_pk, recording_pk):
+        recording = _get_recording_for_user(request, recording_pk)
+        try:
+            from project.services.recording.export import render_recording_docx
+            docx_bytes = render_recording_docx(recording)
+        except ImportError as exc:
+            logger.error("python-docx missing: %s", exc)
+            messages.error(request, "Le module Word (python-docx) n'est pas installé.")
+            return redirect("recording_summary",
+                            meeting_pk=meeting_pk, recording_pk=recording_pk)
+        except Exception as exc:
+            logger.exception("Failed to render recording docx: %s", exc)
+            messages.error(request, f"Impossible de générer le .docx : {exc}")
+            return redirect("recording_summary",
+                            meeting_pk=meeting_pk, recording_pk=recording_pk)
+
+        title_part = _safe_filename_part(
+            recording.meeting.title if recording.meeting else "Recording"
+        )
+        date_part = (
+            timezone.localtime(recording.meeting.scheduled_at).strftime("%Y-%m-%d")
+            if recording.meeting and recording.meeting.scheduled_at
+            else timezone.localtime(recording.created_at).strftime("%Y-%m-%d")
+        )
+        filename = f"CR-{title_part}-{date_part}.docx"
+
+        response = HttpResponse(
+            docx_bytes,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document"
+            ),
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Content-Length"] = str(len(docx_bytes))
+        return response
+
+
+class RecordingPdfView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """GET → télécharge le compte-rendu en PDF (WeasyPrint + branding)."""
+
+    def get(self, request, meeting_pk, recording_pk):
+        recording = _get_recording_for_user(request, recording_pk)
+        try:
+            from project.services.recording.export import render_recording_pdf
+            pdf_bytes = render_recording_pdf(recording)
+        except ImportError as exc:
+            logger.error("WeasyPrint missing: %s", exc)
+            messages.error(request, "Le module PDF (WeasyPrint) n'est pas installé.")
+            return redirect("recording_summary",
+                            meeting_pk=meeting_pk, recording_pk=recording_pk)
+        except Exception as exc:
+            logger.exception("Failed to render recording pdf: %s", exc)
+            messages.error(request, f"Impossible de générer le PDF : {exc}")
+            return redirect("recording_summary",
+                            meeting_pk=meeting_pk, recording_pk=recording_pk)
+
+        title_part = _safe_filename_part(
+            recording.meeting.title if recording.meeting else "Recording"
+        )
+        date_part = (
+            timezone.localtime(recording.meeting.scheduled_at).strftime("%Y-%m-%d")
+            if recording.meeting and recording.meeting.scheduled_at
+            else timezone.localtime(recording.created_at).strftime("%Y-%m-%d")
+        )
+        filename = f"CR-{title_part}-{date_part}.pdf"
+
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        # `inline` pour ouvrir dans le navigateur (vue rapide). L'utilisateur
+        # peut quand même sauvegarder via le menu navigateur.
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        response["Content-Length"] = str(len(pdf_bytes))
+        return response
+
+
+class RecordingSendEmailView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """POST → envoie le compte-rendu par email à tous les participants."""
+
+    @method_decorator(csrf_protect)
+    def post(self, request, meeting_pk, recording_pk):
+        recording = _get_recording_for_user(request, recording_pk)
+
+        # Optionnel : champ extra_emails (séparés par virgule ou newline)
+        extra_raw = (request.POST.get("extra_emails") or "").strip()
+        extra_emails = []
+        if extra_raw:
+            import re
+            extra_emails = [
+                m for m in re.findall(r"[\w\.\-+]+@[\w\.\-]+\.\w+", extra_raw)
+            ]
+
+        try:
+            from project.services.recording.export import send_recording_email
+            sent = send_recording_email(
+                recording,
+                include_external=True,
+                extra_emails=extra_emails or None,
+            )
+        except Exception as exc:
+            logger.exception("Failed to send recording email: %s", exc)
+            messages.error(request, f"Échec de l'envoi : {exc}")
+            return redirect("recording_summary",
+                            meeting_pk=meeting_pk, recording_pk=recording_pk)
+
+        if sent > 0:
+            messages.success(
+                request,
+                f"Compte-rendu envoyé à {sent} destinataire(s).",
+            )
+        else:
+            messages.warning(
+                request,
+                "Aucun destinataire — vérifiez les emails des participants "
+                "ou ajoutez des adresses externes.",
+            )
+        return redirect("recording_summary",
+                        meeting_pk=meeting_pk, recording_pk=recording_pk)

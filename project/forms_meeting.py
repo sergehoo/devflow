@@ -75,6 +75,37 @@ class ProjectMeetingForm(StyledModelForm):
                 workspace=ws, is_archived=False,
             ).order_by("-start_date")
 
+            # PR-MEET-RSVP : filtrer internal_participants au workspace ET
+            # pré-cocher tous les membres à la CRÉATION (pas en édition).
+            from project.utils.workspaces import users_in_workspaces
+            if "internal_participants" in self.fields:
+                workspace_users_qs = users_in_workspaces([ws.pk]).order_by(
+                    "first_name", "last_name", "username",
+                )
+                self.fields["internal_participants"].queryset = workspace_users_qs
+                self.fields["internal_participants"].help_text = (
+                    "Par défaut, tous les membres du workspace sont invités. "
+                    "Décochez ceux que vous voulez retirer."
+                )
+                # Pré-cochage à la CRÉATION uniquement (instance.pk is None)
+                is_creation = not (self.instance and self.instance.pk)
+                # Seulement si l'utilisateur n'a pas explicitement déjà passé
+                # une liste (POST en cours, ou initial déjà fourni par la vue).
+                already_set = bool(
+                    self.data.get("internal_participants") if self.is_bound
+                    else self.initial.get("internal_participants")
+                )
+                if is_creation and not already_set:
+                    self.initial["internal_participants"] = list(
+                        workspace_users_qs.values_list("pk", flat=True)
+                    )
+
+            # Organisateur restreint aux membres du workspace
+            if "organizer" in self.fields:
+                self.fields["organizer"].queryset = users_in_workspaces(
+                    [ws.pk]
+                ).order_by("first_name", "last_name", "username")
+
         # PR-MEET-3 : project devient optionnel (réunion comité multi-projets)
         if "project" in self.fields:
             self.fields["project"].required = False
@@ -98,6 +129,63 @@ class ProjectMeetingForm(StyledModelForm):
         if project and sprint and sprint.project_id != project.pk:
             self.add_error("sprint", "Le sprint sélectionné n'appartient pas au projet choisi.")
         return data
+
+    def save(self, commit=True):
+        """
+        Override pour synchroniser les ``MeetingParticipation`` avec le
+        M2M ``internal_participants`` après le save.
+
+        - Ajoute une participation INVITED pour chaque user nouvellement coché
+        - Supprime la participation des users décochés (sauf si déjà confirmés)
+        """
+        meeting = super().save(commit=commit)
+        if commit:
+            self._sync_participations(meeting)
+        else:
+            # Si commit=False, on retient la sync pour quand save_m2m sera appelé
+            original_save_m2m = self.save_m2m
+
+            def _sync_after_m2m():
+                original_save_m2m()
+                self._sync_participations(meeting)
+
+            self.save_m2m = _sync_after_m2m
+        return meeting
+
+    def _sync_participations(self, meeting):
+        """Crée/met à jour les MeetingParticipation à partir de internal_participants."""
+        invited_user_ids = set(
+            meeting.internal_participants.values_list("pk", flat=True)
+        )
+        existing = {
+            p.user_id: p for p in meeting.participations.select_related("user")
+        }
+        # Ajout des nouveaux
+        to_create = []
+        for uid in invited_user_ids:
+            if uid not in existing:
+                to_create.append(dm.MeetingParticipation(
+                    meeting=meeting, user_id=uid,
+                    rsvp_status=dm.MeetingParticipation.RSVPStatus.INVITED,
+                ))
+        if to_create:
+            dm.MeetingParticipation.objects.bulk_create(to_create)
+        # Suppression des décochés — sauf s'ils ont déjà confirmé ou été marqués
+        # présents (l'historique de présence est précieux, on ne le détruit pas
+        # silencieusement).
+        decoches = set(existing.keys()) - invited_user_ids
+        if decoches:
+            preservable_statuses = {
+                dm.MeetingParticipation.RSVPStatus.ACCEPTED,
+                dm.MeetingParticipation.RSVPStatus.DECLINED,
+                dm.MeetingParticipation.RSVPStatus.TENTATIVE,
+            }
+            for uid in decoches:
+                p = existing[uid]
+                if (p.rsvp_status not in preservable_statuses
+                        and not p.is_attended
+                        and not p.self_confirmed):
+                    p.delete()
 
 
 class MeetingSeriesForm(StyledModelForm):

@@ -27,26 +27,32 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "Tu es l'assistant DevFlow chargé d'analyser le transcript d'une "
-    "réunion pour repérer les entités projets/sprints/jalons mentionnées "
-    "ou nouvellement émergentes. Tu reçois :\n"
+    "réunion pour repérer les entités existantes mentionnées ET les "
+    "nouvelles entités émergentes. Tu reçois :\n"
     "  - le transcript final de la réunion (avec noms des participants)\n"
-    "  - la liste des projets, sprints et jalons EXISTANTS du workspace\n\n"
+    "  - la liste des projets, sprints, jalons et TÂCHES existants du "
+    "    workspace\n\n"
     "Tu réponds en JSON STRICT (sans bloc markdown ni commentaire) :\n"
     "{\n"
     '  "mentioned_projects": [{"id": int, "confidence": 0-1, "context": "..."}],\n'
     '  "mentioned_sprints": [{"id": int, "confidence": 0-1, "context": "..."}],\n'
     '  "mentioned_milestones": [{"id": int, "confidence": 0-1, "context": "..."}],\n'
+    '  "mentioned_tasks": [{"id": int, "confidence": 0-1, "context": "..."}],\n'
     '  "new_project_suggestions": [{"name": "...", "description": "...", "confidence": 0-1}],\n'
     '  "new_sprint_suggestions": [{"name": "...", "context_project": "...", "confidence": 0-1}],\n'
-    '  "new_milestone_suggestions": [{"name": "...", "due_date_hint": "...", "confidence": 0-1}]\n'
+    '  "new_milestone_suggestions": [{"name": "...", "due_date_hint": "...", "confidence": 0-1}],\n'
+    '  "new_task_suggestions": [{"name": "...", "description": "...", '
+    '"assignee_hint": "...", "due_date_hint": "...", "priority_hint": "low|medium|high|critical", '
+    '"context_project": "...", "confidence": 0-1}]\n'
     "}\n\n"
     "Règles :\n"
     "  - id = identifiant exact de l'entité existante (utilise ceux fournis).\n"
     "  - confidence = nombre flottant 0-1.\n"
     "  - context = court extrait du transcript qui justifie la mention.\n"
-    "  - Pour les suggestions : ne propose que si le besoin est CLAIRE dans "
-    "    le transcript (« il faut créer un projet X… », « on devrait lancer "
-    "    un sprint pour Y… »). Sinon retourne une liste vide."
+    "  - Pour les suggestions : ne propose que si le besoin est CLAIR dans "
+    "    le transcript. Pour une tâche : verbe d'action + owner identifié si "
+    "    possible. assignee_hint = nom mentionné du responsable.\n"
+    "  - Si rien ne sort, retourne des listes vides."
 )
 
 
@@ -85,6 +91,19 @@ def detect_and_suggest(recording: dm.MeetingRecording) -> int:
     except Exception:
         milestones = []
 
+    # PR-MEET-AI-ENRICH : catalogue des TÂCHES ouvertes (limité aux 80 dernières
+    # actives pour ne pas exploser le prompt — les terminées ne sont
+    # généralement pas mentionnées).
+    try:
+        tasks = list(
+            dm.Task.objects.filter(workspace=ws)
+            .exclude(status__in=["DONE", "CANCELLED", "ARCHIVED"])
+            .order_by("-updated_at")
+            .values("id", "title", "project__name")[:80]
+        )
+    except Exception:
+        tasks = []
+
     catalog = (
         f"# Projets existants (workspace {ws.name})\n"
         + "\n".join(
@@ -101,6 +120,11 @@ def detect_and_suggest(recording: dm.MeetingRecording) -> int:
         + "\n".join(
             f"  [{m['id']}] {m['title']} (projet {m.get('project__name') or '—'})"
             for m in milestones
+        ) + "\n\n"
+        + "# Tâches ouvertes\n"
+        + "\n".join(
+            f"  [{t['id']}] {t['title']} (projet {t.get('project__name') or '—'})"
+            for t in tasks
         )
     )
 
@@ -135,6 +159,7 @@ def detect_and_suggest(recording: dm.MeetingRecording) -> int:
         ("mentioned_projects", dm.RecordingAIExtraction.Kind.PROJECT_MENTION, projects),
         ("mentioned_sprints", dm.RecordingAIExtraction.Kind.SPRINT_MENTION, sprints),
         ("mentioned_milestones", dm.RecordingAIExtraction.Kind.MILESTONE_MENTION, milestones),
+        ("mentioned_tasks", dm.RecordingAIExtraction.Kind.TASK_MENTION, tasks),
     ]
     for key, kind, catalog_list in mention_map:
         for item in data.get(key, []) or []:
@@ -179,6 +204,28 @@ def detect_and_suggest(recording: dm.MeetingRecording) -> int:
                 due_date_hint=str(item.get("due_date_hint", "") or "")[:80],
             )
             created += 1
+
+    # PR-MEET-AI-ENRICH : suggestions de nouvelles TÂCHES
+    # Format spécifique : porte assignee_hint + priority_hint en plus
+    for item in data.get("new_task_suggestions", []) or []:
+        name = item.get("name") or item.get("title")
+        if not name:
+            continue
+        dm.RecordingAIExtraction.objects.create(
+            recording=recording,
+            kind=dm.RecordingAIExtraction.Kind.TASK_SUGGESTION,
+            title=str(name)[:250],
+            description=(
+                item.get("description")
+                or item.get("context_project")
+                or ""
+            )[:5000],
+            assignee_hint=str(item.get("assignee_hint", "") or "")[:120],
+            due_date_hint=str(item.get("due_date_hint", "") or "")[:80],
+            priority_hint=str(item.get("priority_hint", "") or "")[:15],
+            confidence=float(item.get("confidence", 0) or 0),
+        )
+        created += 1
 
     return created
 

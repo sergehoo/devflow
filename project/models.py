@@ -3325,6 +3325,190 @@ class MeetingAttachment(TimeStampedModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# PR-MEET-RSVP : Statut RSVP + Présence par participant
+# ─────────────────────────────────────────────────────────────────────────
+class MeetingParticipation(TimeStampedModel):
+    """
+    Statut RSVP + Présence d'un User pour une ProjectMeeting donnée.
+
+    Coexistence avec ``ProjectMeeting.internal_participants`` (M2M existant) :
+    on synchronise les deux dans le form de création/édition pour ne pas
+    casser le code existant. ``internal_participants`` reste la source de
+    vérité pour "qui est invité" — cette table en est l'extension.
+
+    Cycle de vie :
+      1. Création réunion → 1 row par invité (rsvp_status=INVITED)
+      2. Avant la réunion → l'invité peut self-RSVP (ACCEPTED/DECLINED/TENTATIVE)
+      3. Pendant / après → l'invité confirme sa présence OU l'organisateur
+         marque la présence (admin override).
+    """
+
+    class RSVPStatus(models.TextChoices):
+        INVITED = "INVITED", "Invité"
+        ACCEPTED = "ACCEPTED", "Accepté"
+        DECLINED = "DECLINED", "Décliné"
+        TENTATIVE = "TENTATIVE", "Peut-être"
+
+    class AttendanceStatus(models.TextChoices):
+        UNKNOWN = "UNKNOWN", "Non renseigné"
+        PRESENT = "PRESENT", "Présent"
+        ABSENT = "ABSENT", "Absent"
+        LATE = "LATE", "Retard"
+        LEFT_EARLY = "LEFT_EARLY", "Parti tôt"
+
+    meeting = models.ForeignKey(
+        ProjectMeeting, on_delete=models.CASCADE,
+        related_name="participations",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="meeting_participations",
+    )
+
+    # RSVP (avant la réunion)
+    rsvp_status = models.CharField(
+        max_length=12, choices=RSVPStatus.choices,
+        default=RSVPStatus.INVITED, db_index=True,
+    )
+    rsvp_at = models.DateTimeField(null=True, blank=True)
+    rsvp_note = models.CharField(max_length=300, blank=True)
+
+    # Présence (pendant / après la réunion)
+    attendance_status = models.CharField(
+        max_length=12, choices=AttendanceStatus.choices,
+        default=AttendanceStatus.UNKNOWN, db_index=True,
+    )
+    attendance_marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="marked_attendances",
+        help_text="L'utilisateur qui a marqué la présence (souvent l'organisateur).",
+    )
+    attendance_marked_at = models.DateTimeField(null=True, blank=True)
+    self_confirmed = models.BooleanField(
+        default=False,
+        help_text="True si le participant lui-même a confirmé sa présence.",
+    )
+
+    class Meta:
+        unique_together = [("meeting", "user")]
+        ordering = ["meeting", "user__last_name", "user__first_name"]
+        indexes = [
+            models.Index(fields=["meeting", "rsvp_status"]),
+            models.Index(fields=["meeting", "attendance_status"]),
+        ]
+        verbose_name = "Participation à une réunion"
+        verbose_name_plural = "Participations aux réunions"
+
+    def __str__(self):
+        return f"{self.user} → {self.meeting.title} ({self.rsvp_status})"
+
+    @property
+    def is_attended(self) -> bool:
+        """Le participant a-t-il été réellement présent ?"""
+        return self.attendance_status in (
+            self.AttendanceStatus.PRESENT, self.AttendanceStatus.LATE,
+            self.AttendanceStatus.LEFT_EARLY,
+        )
+
+    @property
+    def rsvp_badge_color(self) -> str:
+        return {
+            self.RSVPStatus.INVITED: "amber",
+            self.RSVPStatus.ACCEPTED: "green",
+            self.RSVPStatus.DECLINED: "red",
+            self.RSVPStatus.TENTATIVE: "cyan",
+        }.get(self.rsvp_status, "amber")
+
+    @property
+    def attendance_badge_color(self) -> str:
+        return {
+            self.AttendanceStatus.UNKNOWN: "amber",
+            self.AttendanceStatus.PRESENT: "green",
+            self.AttendanceStatus.ABSENT: "red",
+            self.AttendanceStatus.LATE: "amber",
+            self.AttendanceStatus.LEFT_EARLY: "amber",
+        }.get(self.attendance_status, "amber")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# PR-MEET-AGENDA-LIVE : Ordre du jour structuré (items individuels)
+# ─────────────────────────────────────────────────────────────────────────
+class MeetingAgendaItem(TimeStampedModel):
+    """
+    Un point d'ordre du jour structuré et trackable.
+
+    Contrairement au champ ``ProjectMeeting.agenda`` (texte libre), cette
+    table permet l'édition live pendant la réunion : ajout, suppression,
+    réordonnancement (drag-and-drop via ``position``), marquage du statut
+    (à traiter / en cours / traité / reporté).
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "À traiter"
+        IN_PROGRESS = "IN_PROGRESS", "En cours"
+        DONE = "DONE", "Traité"
+        POSTPONED = "POSTPONED", "Reporté"
+        SKIPPED = "SKIPPED", "Passé"
+
+    meeting = models.ForeignKey(
+        ProjectMeeting, on_delete=models.CASCADE,
+        related_name="agenda_items",
+    )
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="owned_agenda_items",
+        help_text="Personne qui présente / défend ce point",
+    )
+    duration_minutes = models.PositiveIntegerField(
+        default=5,
+        help_text="Durée estimée allouée à ce point (min).",
+    )
+    position = models.PositiveIntegerField(default=0, db_index=True)
+    status = models.CharField(
+        max_length=15, choices=Status.choices,
+        default=Status.PENDING, db_index=True,
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, help_text="Notes prises pendant ce point.")
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="created_agenda_items",
+    )
+
+    class Meta:
+        ordering = ["position", "id"]
+        indexes = [
+            models.Index(fields=["meeting", "position"]),
+            models.Index(fields=["meeting", "status"]),
+        ]
+        verbose_name = "Point d'ordre du jour"
+        verbose_name_plural = "Points d'ordre du jour"
+
+    def __str__(self):
+        return f"{self.position}. {self.title}"
+
+    @property
+    def status_color(self):
+        return {
+            self.Status.PENDING: "amber",
+            self.Status.IN_PROGRESS: "cyan",
+            self.Status.DONE: "green",
+            self.Status.POSTPONED: "red",
+            self.Status.SKIPPED: "gray",
+        }.get(self.status, "amber")
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Module Enregistrement audio + transcription IA (PR-REC-1)
 # ─────────────────────────────────────────────────────────────────────────
 def _recording_storage():
@@ -3592,6 +3776,9 @@ class RecordingAIExtraction(TimeStampedModel):
         PROJECT_MENTION = "project_mention", "Projet mentionné"
         SPRINT_MENTION = "sprint_mention", "Sprint mentionné"
         MILESTONE_MENTION = "milestone_mention", "Jalon mentionné"
+        # PR-MEET-AI-ENRICH : tâches détectées + suggérées
+        TASK_MENTION = "task_mention", "Tâche mentionnée"
+        TASK_SUGGESTION = "task_suggestion", "Suggestion : nouvelle tâche"
 
     recording = models.ForeignKey(
         MeetingRecording, on_delete=models.CASCADE,

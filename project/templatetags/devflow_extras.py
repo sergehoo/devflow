@@ -1,6 +1,9 @@
+import re
 from decimal import Decimal, InvalidOperation
 
+import bleach
 from django import template
+from django.utils.safestring import mark_safe
 
 register = template.Library()
 
@@ -119,6 +122,77 @@ def short_amount(value):
         return f"{sign}{_format_decimal(n / Decimal('1000'), 1)} K"
     # < 1000 : on garde tel quel, sans décimales superflues
     return f"{sign}{_format_decimal(n, 2)}"
+
+
+# ─── PR-MEET-FIX-HTML : rendu sécurisé du HTML utilisateur ───────────────
+# Whitelist large pour autoriser le rich-text saisi dans les notes meeting,
+# CR, décisions, etc. — assez permissif pour les usages métier mais
+# nettoyé contre les XSS (script, on*=, javascript:).
+_SAFE_TAGS = {
+    "a", "abbr", "b", "blockquote", "br", "code", "div", "em",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "hr", "i", "img", "li", "ol", "p", "pre", "q", "s", "small",
+    "span", "strong", "sub", "sup", "table", "tbody", "td", "tfoot",
+    "th", "thead", "tr", "u", "ul",
+}
+_SAFE_ATTRS = {
+    "*": ["class", "id", "title"],
+    "a": ["href", "title", "target", "rel"],
+    "img": ["src", "alt", "title", "width", "height"],
+    "td": ["colspan", "rowspan", "align"],
+    "th": ["colspan", "rowspan", "align", "scope"],
+}
+# Note : on retire `style` volontairement — le rendu est piloté par les
+# classes Tailwind du wrapper (.devflow-prose) côté template, ce qui évite
+# les soucis CSS-injection et le warning NoCssSanitizerWarning de bleach.
+_SAFE_PROTOCOLS = ["http", "https", "mailto", "tel"]
+
+# Détection grossière : le contenu contient-il au moins une balise HTML ?
+_HTML_TAG_RE = re.compile(r"<\s*[a-zA-Z][^>]*>")
+
+
+@register.filter(name="safe_html")
+def safe_html(value):
+    """
+    Rend du HTML utilisateur en le nettoyant via bleach (XSS-safe).
+
+    Usage dans un template :
+
+        {{ meeting.notes|safe_html }}
+
+    Comportement :
+    - Si le texte contient des balises HTML → nettoyage avec whitelist
+      (ul, li, p, strong, em, a, table, etc.) et linkification des URLs.
+    - Si le texte est en clair → conversion naïve des sauts de ligne en
+      <br> pour préserver la mise en forme visuelle.
+
+    XSS bloqué : <script>, on*= (onerror, onclick...), javascript:, data:,
+    iframes, embeds, etc.
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+
+    if _HTML_TAG_RE.search(text):
+        # Cas "rich text" : on autorise les balises whitelisted
+        cleaned = bleach.clean(
+            text,
+            tags=_SAFE_TAGS,
+            attributes=_SAFE_ATTRS,
+            protocols=_SAFE_PROTOCOLS,
+            strip=True,
+            strip_comments=True,
+        )
+        cleaned = bleach.linkify(cleaned, parse_email=False)
+    else:
+        # Cas "texte plain" : escape + linebreaks → <br>
+        escaped = bleach.clean(text, tags=set(), attributes={}, strip=True)
+        cleaned = escaped.replace("\r\n", "\n").replace("\n", "<br>")
+        cleaned = bleach.linkify(cleaned, parse_email=False)
+
+    return mark_safe(cleaned)
 
 
 @register.filter

@@ -98,6 +98,62 @@ class ProjectMeetingDetailView(DevflowDetailView):
         ctx["reviews"] = self.object.project_reviews.select_related(
             "project", "presented_by",
         ).order_by("position", "id")
+
+        # PR-MEET-RSVP : participations + stats RSVP/présence + droits
+        meeting = self.object
+        participations = list(
+            meeting.participations
+            .select_related("user", "attendance_marked_by")
+            .order_by(
+                "user__first_name", "user__last_name", "user__username",
+            )
+        )
+        ctx["participations"] = participations
+
+        user = self.request.user
+        my_p = next(
+            (p for p in participations if p.user_id == user.pk),
+            None,
+        )
+        ctx["my_participation"] = my_p
+
+        # Stats agrégées pour l'encart latéral
+        from collections import Counter
+        rsvp_counts = Counter(p.rsvp_status for p in participations)
+        att_counts = Counter(p.attendance_status for p in participations)
+        ctx["participations_stats"] = {
+            "accepted": rsvp_counts.get("ACCEPTED", 0),
+            "declined": rsvp_counts.get("DECLINED", 0),
+            "tentative": rsvp_counts.get("TENTATIVE", 0),
+            "pending": rsvp_counts.get("INVITED", 0),
+            "present": att_counts.get("PRESENT", 0) + att_counts.get("LATE", 0) + att_counts.get("LEFT_EARLY", 0),
+            "absent": att_counts.get("ABSENT", 0),
+        }
+
+        # Droits de marquage présence (organisateur, créateur, superadmin, RBAC)
+        can_mark = (
+            user.is_superuser
+            or meeting.organizer_id == user.pk
+            or meeting.created_by_id == user.pk
+        )
+        if not can_mark:
+            try:
+                from project.services.rbac import RBACService
+                can_mark = RBACService.can(
+                    user, "meeting.manage", target=meeting,
+                    workspace=meeting.workspace,
+                )
+            except Exception:
+                pass
+        ctx["user_can_mark_attendance"] = can_mark
+
+        # PR-MEET-AGENDA-LIVE : items structurés de l'ordre du jour
+        ctx["agenda_items"] = list(
+            meeting.agenda_items
+            .select_related("owner")
+            .order_by("position", "id")
+        )
+
         return ctx
 
 
@@ -739,6 +795,7 @@ class RecordingConvertSuggestionView(WorkspaceSecurityMixin, DevflowBaseMixin, V
         )
         ext_ids = request.POST.getlist("accept_suggestion")
         created_projects = 0
+        created_tasks = 0
         skipped = 0
         for ext_id in ext_ids:
             ext = recording.ai_extractions.filter(
@@ -760,6 +817,75 @@ class RecordingConvertSuggestionView(WorkspaceSecurityMixin, DevflowBaseMixin, V
                     ext.accepted_at = timezone.now()
                     ext.save(update_fields=["is_accepted", "accepted_at", "updated_at"])
                     created_projects += 1
+
+                elif kind == dm.RecordingAIExtraction.Kind.TASK_SUGGESTION:
+                    # PR-MEET-AI-ENRICH : créer une vraie Task à partir d'une suggestion IA
+                    # Heuristique projet parent : meeting.project > meeting.projects.first()
+                    parent_project = recording.meeting.project
+                    if parent_project is None:
+                        parent_project = recording.meeting.projects.first()
+                    if parent_project is None:
+                        # Pas de projet rattaché → on marque accepté mais on demande
+                        # création manuelle (Task.project est obligatoire).
+                        ext.is_accepted = True
+                        ext.accepted_at = timezone.now()
+                        ext.save(update_fields=[
+                            "is_accepted", "accepted_at", "updated_at",
+                        ])
+                        skipped += 1
+                        continue
+
+                    # Mapping priorité hint → choix Task
+                    priority_map = {
+                        "low": "LOW", "medium": "MEDIUM",
+                        "high": "HIGH", "critical": "CRITICAL",
+                    }
+                    priority = priority_map.get(
+                        (ext.priority_hint or "").lower(), "MEDIUM",
+                    )
+
+                    # Recherche d'un assignee à partir du hint
+                    assignee = None
+                    if ext.assignee_hint:
+                        from project.utils.workspaces import users_in_workspaces
+                        hint = ext.assignee_hint.strip().lower()
+                        qs = users_in_workspaces([recording.workspace_id])
+                        # Match par username/first_name/last_name/full_name
+                        from django.db.models import Q
+                        assignee = qs.filter(
+                            Q(username__icontains=hint)
+                            | Q(first_name__icontains=hint)
+                            | Q(last_name__icontains=hint)
+                            | Q(email__icontains=hint)
+                        ).first()
+
+                    # Création
+                    task_kwargs = {
+                        "workspace": recording.workspace,
+                        "project": parent_project,
+                        "title": ext.title[:200],
+                        "description": ext.description or "",
+                        "priority": priority,
+                        "assignee": assignee,
+                        "created_by": request.user,
+                    }
+                    # Sprint éventuel (du meeting)
+                    if recording.meeting.sprint_id:
+                        task_kwargs["sprint"] = recording.meeting.sprint
+                    try:
+                        new_task = dm.Task.objects.create(**task_kwargs)
+                    except Exception as exc:
+                        logger.warning("Task creation from extraction %s failed: %s", ext_id, exc)
+                        # Fallback : on essaie sans assignee si le champ n'existe pas
+                        task_kwargs.pop("assignee", None)
+                        new_task = dm.Task.objects.create(**task_kwargs)
+                    ext.is_accepted = True
+                    ext.accepted_at = timezone.now()
+                    ext.save(update_fields=[
+                        "is_accepted", "accepted_at", "updated_at",
+                    ])
+                    created_tasks += 1
+
                 else:
                     # Sprint/Milestone : besoin d'un project parent — on
                     # se contente de marquer accepté et l'utilisateur les
@@ -772,8 +898,10 @@ class RecordingConvertSuggestionView(WorkspaceSecurityMixin, DevflowBaseMixin, V
                 logger.warning("convert suggestion %s failed: %s", ext_id, exc)
         if created_projects:
             messages.success(request, f"{created_projects} projet(s) créé(s).")
+        if created_tasks:
+            messages.success(request, f"{created_tasks} tâche(s) créée(s).")
         if skipped:
-            messages.info(request, f"{skipped} suggestion(s) acceptée(s) (création manuelle requise).")
+            messages.info(request, f"{skipped} suggestion(s) acceptée(s) (création manuelle requise — rattachez un projet à la réunion).")
         return redirect("recording_summary",
                         meeting_pk=recording.meeting_id, recording_pk=recording.pk)
 
@@ -807,4 +935,344 @@ class MeetingSendMinutesView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             except Exception as exc:
                 logger.exception("send_minutes_email sync failed: %s", exc)
                 messages.error(request, f"Envoi échoué : {exc}")
+        return redirect("meeting_detail", pk=meeting.pk)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PR-MEET-RSVP : Endpoints RSVP + Présence
+# ─────────────────────────────────────────────────────────────────────
+class _ParticipationMixin(WorkspaceSecurityMixin, DevflowBaseMixin):
+    """Helpers communs aux vues RSVP / Attendance."""
+
+    def _get_meeting(self, request, meeting_pk):
+        from django.http import Http404
+        ws_ids = get_user_workspace_ids(request.user)
+        meeting = (
+            dm.ProjectMeeting.objects
+            .filter(pk=meeting_pk, workspace_id__in=ws_ids)
+            .first()
+        )
+        if meeting is None:
+            raise Http404("Réunion introuvable.")
+        return meeting
+
+    def _user_is_meeting_admin(self, user, meeting) -> bool:
+        """L'utilisateur peut-il modifier la présence des autres ?"""
+        if user.is_superuser:
+            return True
+        if meeting.organizer_id == user.pk:
+            return True
+        if meeting.created_by_id == user.pk:
+            return True
+        # On peut aussi vérifier le rôle RBAC du workspace
+        try:
+            from project.services.rbac import RBACService
+            return RBACService.can(
+                user, "meeting.manage", target=meeting,
+                workspace=meeting.workspace,
+            )
+        except Exception:
+            return False
+
+
+class MeetingRSVPView(_ParticipationMixin, View):
+    """POST /meetings/<pk>/rsvp/ — un participant met à jour SA réponse RSVP."""
+
+    @method_decorator(csrf_protect)
+    def post(self, request, meeting_pk):
+        meeting = self._get_meeting(request, meeting_pk)
+        # Le user doit être dans les participants invités
+        participation = (
+            dm.MeetingParticipation.objects
+            .filter(meeting=meeting, user=request.user)
+            .first()
+        )
+        if participation is None:
+            # Auto-création si l'user est invité mais sans row (cas legacy)
+            if meeting.internal_participants.filter(pk=request.user.pk).exists():
+                participation = dm.MeetingParticipation.objects.create(
+                    meeting=meeting, user=request.user,
+                )
+            else:
+                messages.error(request, "Vous n'êtes pas invité à cette réunion.")
+                return redirect("meeting_detail", pk=meeting.pk)
+
+        new_status = (request.POST.get("rsvp_status") or "").strip().upper()
+        valid = {c[0] for c in dm.MeetingParticipation.RSVPStatus.choices}
+        if new_status not in valid:
+            messages.error(request, "Statut RSVP invalide.")
+            return redirect("meeting_detail", pk=meeting.pk)
+
+        participation.rsvp_status = new_status
+        participation.rsvp_at = timezone.now()
+        note = (request.POST.get("rsvp_note") or "").strip()[:300]
+        if note:
+            participation.rsvp_note = note
+        participation.save(update_fields=[
+            "rsvp_status", "rsvp_at", "rsvp_note", "updated_at",
+        ])
+        messages.success(
+            request,
+            f"Réponse enregistrée : {participation.get_rsvp_status_display()}.",
+        )
+        return redirect("meeting_detail", pk=meeting.pk)
+
+
+class MeetingSelfPresentView(_ParticipationMixin, View):
+    """POST /meetings/<pk>/confirm-presence/ — un participant confirme sa présence."""
+
+    @method_decorator(csrf_protect)
+    def post(self, request, meeting_pk):
+        meeting = self._get_meeting(request, meeting_pk)
+        participation = (
+            dm.MeetingParticipation.objects
+            .filter(meeting=meeting, user=request.user)
+            .first()
+        )
+        if participation is None:
+            messages.error(request, "Vous n'êtes pas invité à cette réunion.")
+            return redirect("meeting_detail", pk=meeting.pk)
+        participation.attendance_status = dm.MeetingParticipation.AttendanceStatus.PRESENT
+        participation.self_confirmed = True
+        participation.attendance_marked_at = timezone.now()
+        participation.save(update_fields=[
+            "attendance_status", "self_confirmed",
+            "attendance_marked_at", "updated_at",
+        ])
+        messages.success(request, "Votre présence est confirmée.")
+        return redirect("meeting_detail", pk=meeting.pk)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# PR-MEET-AGENDA-LIVE : CRUD ordre du jour structuré
+# ─────────────────────────────────────────────────────────────────────
+class _AgendaMixin(WorkspaceSecurityMixin, DevflowBaseMixin):
+    """Helpers communs aux vues CRUD agenda."""
+
+    def _get_meeting(self, request, meeting_pk):
+        from django.http import Http404
+        ws_ids = get_user_workspace_ids(request.user)
+        meeting = (
+            dm.ProjectMeeting.objects
+            .filter(pk=meeting_pk, workspace_id__in=ws_ids)
+            .first()
+        )
+        if meeting is None:
+            raise Http404("Réunion introuvable.")
+        return meeting
+
+    def _get_item(self, request, meeting_pk, item_pk):
+        from django.http import Http404
+        meeting = self._get_meeting(request, meeting_pk)
+        item = meeting.agenda_items.filter(pk=item_pk).first()
+        if item is None:
+            raise Http404("Point d'ordre du jour introuvable.")
+        return meeting, item
+
+
+class MeetingAgendaItemCreateView(_AgendaMixin, View):
+    """POST /meetings/<pk>/agenda/create/ — ajoute un nouveau point."""
+
+    @method_decorator(csrf_protect)
+    def post(self, request, meeting_pk):
+        meeting = self._get_meeting(request, meeting_pk)
+        title = (request.POST.get("title") or "").strip()
+        if not title:
+            messages.error(request, "Le titre du point est obligatoire.")
+            return redirect("meeting_detail", pk=meeting.pk)
+
+        # Position = max + 1
+        last_pos = (
+            meeting.agenda_items
+            .order_by("-position")
+            .values_list("position", flat=True)
+            .first()
+            or 0
+        )
+
+        owner = None
+        owner_id = request.POST.get("owner") or ""
+        if owner_id.isdigit():
+            from project.utils.workspaces import users_in_workspaces
+            owner = users_in_workspaces([meeting.workspace_id]).filter(pk=owner_id).first()
+
+        try:
+            duration = max(0, int(request.POST.get("duration_minutes") or 5))
+        except (ValueError, TypeError):
+            duration = 5
+
+        dm.MeetingAgendaItem.objects.create(
+            meeting=meeting,
+            title=title[:200],
+            description=(request.POST.get("description") or "").strip(),
+            owner=owner,
+            duration_minutes=duration,
+            position=last_pos + 1,
+            created_by=request.user,
+        )
+        messages.success(request, "Point ajouté à l'ordre du jour.")
+        return redirect("meeting_detail", pk=meeting.pk)
+
+
+class MeetingAgendaItemUpdateView(_AgendaMixin, View):
+    """POST /meetings/<pk>/agenda/<item_pk>/update/ — édite titre/description/owner/durée."""
+
+    @method_decorator(csrf_protect)
+    def post(self, request, meeting_pk, item_pk):
+        meeting, item = self._get_item(request, meeting_pk, item_pk)
+
+        changed = []
+        title = (request.POST.get("title") or "").strip()
+        if title and title != item.title:
+            item.title = title[:200]
+            changed.append("title")
+        if "description" in request.POST:
+            item.description = (request.POST.get("description") or "").strip()
+            changed.append("description")
+        if "owner" in request.POST:
+            owner_id = (request.POST.get("owner") or "").strip()
+            if owner_id == "":
+                item.owner = None
+                changed.append("owner")
+            elif owner_id.isdigit():
+                from project.utils.workspaces import users_in_workspaces
+                new_owner = users_in_workspaces([meeting.workspace_id]).filter(pk=owner_id).first()
+                if new_owner:
+                    item.owner = new_owner
+                    changed.append("owner")
+        if "duration_minutes" in request.POST:
+            try:
+                item.duration_minutes = max(0, int(request.POST.get("duration_minutes") or 0))
+                changed.append("duration_minutes")
+            except (ValueError, TypeError):
+                pass
+        if "notes" in request.POST:
+            item.notes = (request.POST.get("notes") or "").strip()
+            changed.append("notes")
+        if "status" in request.POST:
+            new_status = (request.POST.get("status") or "").strip().upper()
+            valid = {c[0] for c in dm.MeetingAgendaItem.Status.choices}
+            if new_status in valid and new_status != item.status:
+                # Marque les dates de transition
+                if (new_status == dm.MeetingAgendaItem.Status.IN_PROGRESS
+                        and not item.started_at):
+                    item.started_at = timezone.now()
+                    changed.append("started_at")
+                if (new_status == dm.MeetingAgendaItem.Status.DONE
+                        and not item.completed_at):
+                    item.completed_at = timezone.now()
+                    changed.append("completed_at")
+                item.status = new_status
+                changed.append("status")
+
+        if changed:
+            changed.append("updated_at")
+            item.save(update_fields=changed)
+            messages.success(request, "Point mis à jour.")
+        else:
+            messages.info(request, "Aucune modification.")
+        return redirect("meeting_detail", pk=meeting.pk)
+
+
+class MeetingAgendaItemDeleteView(_AgendaMixin, View):
+    """POST /meetings/<pk>/agenda/<item_pk>/delete/."""
+
+    @method_decorator(csrf_protect)
+    def post(self, request, meeting_pk, item_pk):
+        meeting, item = self._get_item(request, meeting_pk, item_pk)
+        item.delete()
+        messages.success(request, "Point supprimé.")
+        return redirect("meeting_detail", pk=meeting.pk)
+
+
+class MeetingAgendaReorderView(_AgendaMixin, View):
+    """
+    POST /meetings/<pk>/agenda/reorder/ — réordonne après drag-drop.
+
+    Format du POST : `order=<id1>,<id2>,<id3>...` (positions 1, 2, 3, ...)
+    Retourne JSON.
+    """
+
+    @method_decorator(csrf_protect)
+    def post(self, request, meeting_pk):
+        meeting = self._get_meeting(request, meeting_pk)
+        raw = (request.POST.get("order") or "").strip()
+        if not raw:
+            return JsonResponse({"ok": False, "error": "empty"}, status=400)
+        try:
+            ids = [int(p) for p in raw.split(",") if p.strip().isdigit()]
+        except (ValueError, TypeError):
+            return JsonResponse({"ok": False, "error": "bad_format"}, status=400)
+
+        # Filtre aux items qui appartiennent VRAIMENT à ce meeting
+        items = {
+            i.pk: i for i in meeting.agenda_items.filter(pk__in=ids)
+        }
+        position = 1
+        updated = 0
+        for pk in ids:
+            item = items.get(pk)
+            if item and item.position != position:
+                item.position = position
+                item.save(update_fields=["position", "updated_at"])
+                updated += 1
+            position += 1
+        return JsonResponse({"ok": True, "updated": updated})
+
+
+class MeetingMarkAttendanceView(_ParticipationMixin, View):
+    """
+    POST /meetings/<pk>/attendance/ — l'organisateur marque la présence des participants.
+
+    Format du POST :
+      attendance_<user_id> = PRESENT | ABSENT | LATE | LEFT_EARLY | UNKNOWN
+
+    Toute autre clé est ignorée. Les user_id non listés sont laissés inchangés.
+    """
+
+    @method_decorator(csrf_protect)
+    def post(self, request, meeting_pk):
+        meeting = self._get_meeting(request, meeting_pk)
+        if not self._user_is_meeting_admin(request.user, meeting):
+            messages.error(
+                request,
+                "Seul l'organisateur ou un administrateur peut modifier la "
+                "présence des participants.",
+            )
+            return redirect("meeting_detail", pk=meeting.pk)
+
+        valid = {c[0] for c in dm.MeetingParticipation.AttendanceStatus.choices}
+        now = timezone.now()
+        participations = {
+            p.user_id: p for p in meeting.participations.all()
+        }
+        updated = 0
+        for key, value in request.POST.items():
+            if not key.startswith("attendance_"):
+                continue
+            try:
+                user_id = int(key.removeprefix("attendance_"))
+            except (ValueError, TypeError):
+                continue
+            value = (value or "").strip().upper()
+            if value not in valid:
+                continue
+            p = participations.get(user_id)
+            if p is None:
+                continue
+            if p.attendance_status != value:
+                p.attendance_status = value
+                p.attendance_marked_by = request.user
+                p.attendance_marked_at = now
+                p.save(update_fields=[
+                    "attendance_status", "attendance_marked_by",
+                    "attendance_marked_at", "updated_at",
+                ])
+                updated += 1
+        if updated:
+            messages.success(
+                request, f"Présence mise à jour pour {updated} participant(s).",
+            )
+        else:
+            messages.info(request, "Aucune modification.")
         return redirect("meeting_detail", pk=meeting.pk)
