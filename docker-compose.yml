@@ -328,21 +328,52 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # CRITIQUE : sans ces deux variables, les presigned URLs sont cassees
+      # et la console fait des boucles de redirection derriere le reverse proxy
+      MINIO_SERVER_URL: "https://storage-flow.datarium-dev.com"
+      MINIO_BROWSER_REDIRECT_URL: "https://flow-minio-console.datarium-dev.com"
     volumes:
       - devflowminio_data:/data
     networks:
+      # CRITIQUE : doit etre sur 'proxy' pour que Traefik puisse l'atteindre
       - default
+      - proxy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
-      - "traefik.http.routers.devflowminio.rule=Host(`storage-flow.datarium-dev.com`)"
-      - "traefik.http.routers.devflowminio.entrypoints=websecure"
-      - "traefik.http.routers.devflowminio.tls.certresolver=lets"
-      - "traefik.http.services.devflowminio.loadbalancer.server.port=9000"
+
+      # ─── API S3 (port 9000) ─────────────────────────────────────
+      - "traefik.http.routers.devflowminio-api.rule=Host(`storage-flow.datarium-dev.com`)"
+      - "traefik.http.routers.devflowminio-api.entrypoints=websecure"
+      - "traefik.http.routers.devflowminio-api.tls=true"
+      - "traefik.http.routers.devflowminio-api.tls.certresolver=lets"
+      - "traefik.http.routers.devflowminio-api.service=devflowminio-api"
+      - "traefik.http.services.devflowminio-api.loadbalancer.server.port=9000"
+
+      # ─── Console web (port 9001) ────────────────────────────────
       - "traefik.http.routers.devflowminio-console.rule=Host(`flow-minio-console.datarium-dev.com`)"
       - "traefik.http.routers.devflowminio-console.entrypoints=websecure"
+      - "traefik.http.routers.devflowminio-console.tls=true"
       - "traefik.http.routers.devflowminio-console.tls.certresolver=lets"
+      - "traefik.http.routers.devflowminio-console.service=devflowminio-console"
       - "traefik.http.services.devflowminio-console.loadbalancer.server.port=9001"
+
+      # ─── Redirection HTTP -> HTTPS ──────────────────────────────
+      - "traefik.http.routers.devflowminio-api-http.rule=Host(`storage-flow.datarium-dev.com`)"
+      - "traefik.http.routers.devflowminio-api-http.entrypoints=web"
+      - "traefik.http.routers.devflowminio-api-http.service=devflowminio-api"
+      - "traefik.http.routers.devflowminio-api-http.middlewares=devflowminio-redirect"
+      - "traefik.http.routers.devflowminio-console-http.rule=Host(`flow-minio-console.datarium-dev.com`)"
+      - "traefik.http.routers.devflowminio-console-http.entrypoints=web"
+      - "traefik.http.routers.devflowminio-console-http.service=devflowminio-console"
+      - "traefik.http.routers.devflowminio-console-http.middlewares=devflowminio-redirect"
+      - "traefik.http.middlewares.devflowminio-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.devflowminio-redirect.redirectscheme.permanent=true"
 
 
   ollama:
