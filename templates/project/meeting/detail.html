@@ -23,9 +23,24 @@
                     </p>
                     <h1 class="mt-2 text-3xl lg:text-4xl font-serif text-devtext1">{{ meeting.title }}</h1>
                     <p class="mt-2 text-sm text-devtext2">
-                        <a href="{% url 'project_detail' meeting.project.pk %}" class="hover:text-devaccent">
-                            <i class="fa-solid fa-folder-open"></i> {{ meeting.project.name }}
-                        </a>
+                        {% if meeting.project %}
+                            <a href="{% url 'project_detail' meeting.project.pk %}" class="hover:text-devaccent">
+                                <i class="fa-solid fa-folder-open"></i> {{ meeting.project.name }}
+                            </a>
+                        {% elif meeting.projects.exists %}
+                            <span class="text-devtext3">
+                                <i class="fa-solid fa-folder"></i>
+                                Revue de {{ meeting.projects.count }} projet{{ meeting.projects.count|pluralize }} :
+                                {% for p in meeting.projects.all|slice:":3" %}
+                                    <a href="{% url 'project_detail' p.pk %}" class="hover:text-devaccent">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}
+                                {% endfor %}
+                                {% if meeting.projects.count > 3 %} <span class="text-devtext3">+{{ meeting.projects.count|add:"-3" }}</span>{% endif %}
+                            </span>
+                        {% else %}
+                            <span class="text-devtext3 italic">
+                                <i class="fa-solid fa-calendar"></i> Réunion libre (sans projet)
+                            </span>
+                        {% endif %}
                         {% if meeting.organizer %}· organisée par <strong>{{ meeting.organizer }}</strong>{% endif %}
                         {% if meeting.location %}· 📍 {{ meeting.location }}{% endif %}
                         {% if meeting.meeting_link %}· <a href="{{ meeting.meeting_link }}" target="_blank" class="text-devcyan">🔗 Lien visio</a>{% endif %}
