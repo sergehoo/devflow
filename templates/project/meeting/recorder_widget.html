@@ -268,6 +268,12 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
             this.phase = 'uploading';
             this.uploadProgress = 0;
             this.error = null;
+            // PR-REC-LARGE : log de taille pour debug des gros uploads
+            const blobMB = (blob.size / 1024 / 1024).toFixed(1);
+            console.log(`[recorder] Uploading ${blobMB} MB...`);
+            // On garde la référence du Blob en cas de retry après échec
+            this.savedBlob = blob;
+
             const form = new FormData();
             if (this.recordingId) form.append('recording_id', this.recordingId);
             form.append('audio', new File([blob], 'recording.webm', { type: blob.type }));
@@ -276,14 +282,24 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
             try {
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', `/api/v1/meetings/${meetingId}/recordings/upload/`);
+                // PR-REC-LARGE : timeout 0 = pas de timeout côté navigateur
+                // (on s'aligne sur gunicorn --timeout 900s, soit 15 min).
+                xhr.timeout = 0;
+                xhr.withCredentials = true;
                 const csrftoken = this._getCookie('csrftoken');
                 if (csrftoken) xhr.setRequestHeader('X-CSRFToken', csrftoken);
                 xhr.upload.onprogress = (e) => {
-                    if (e.total) this.uploadProgress = Math.round(e.loaded / e.total * 100);
+                    if (e.total) {
+                        this.uploadProgress = Math.round(e.loaded / e.total * 100);
+                        // Met aussi à jour la durée écoulée pour rassurer l'utilisateur
+                        // (sur un upload de 500 Mo, ça peut prendre 5-10 min)
+                    }
                 };
                 const res = await new Promise((resolve, reject) => {
                     xhr.onload = () => resolve(xhr);
-                    xhr.onerror = () => reject(new Error('Erreur réseau'));
+                    xhr.onerror = () => reject(new Error('Erreur réseau — la connexion a été interrompue.'));
+                    xhr.ontimeout = () => reject(new Error('Délai dépassé — vérifiez votre connexion.'));
+                    xhr.onabort = () => reject(new Error('Upload annulé.'));
                     xhr.send(form);
                 });
                 if (res.status >= 200 && res.status < 300) {

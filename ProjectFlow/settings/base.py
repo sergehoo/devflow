@@ -353,6 +353,31 @@ ASSEMBLYAI_LANGUAGE = os.getenv("ASSEMBLYAI_LANGUAGE", "fr")
 
 # ── Enregistrements de réunion (PR-REC-1) ──────────────────────────
 MAX_RECORDING_UPLOAD_MB = int(os.getenv("MAX_RECORDING_UPLOAD_MB", "600"))
+
+# ── Upload settings durci pour les gros fichiers audio (PR-REC-LARGE) ──
+# Pour un audio de 1h+ (~100-500 Mo), il ne faut PAS charger en mémoire :
+#  * FILE_UPLOAD_MAX_MEMORY_SIZE = 2.5 Mo → Django bascule sur TemporaryFileUploadHandler
+#    qui streame vers /tmp dès que la taille dépasse 2.5 Mo (largement OK pour 1 Mo de form).
+#  * DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_RECORDING_UPLOAD_MB en bytes + 10 Mo de marge
+#    (pour le wrapper multipart). Ne limite QUE les champs non-fichier, mais
+#    on garde une marge pour les hooks future.
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv(
+    "FILE_UPLOAD_MAX_MEMORY_SIZE", str(2 * 1024 * 1024),  # 2 Mo
+))
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv(
+    "DATA_UPLOAD_MAX_MEMORY_SIZE",
+    str((MAX_RECORDING_UPLOAD_MB + 10) * 1024 * 1024),
+))
+# Ordre des handlers : Temporary EN PREMIER pour forcer le streaming disque
+# dès l'octet 1 (au lieu d'attendre que MemoryFileUploadHandler bascule).
+# Avantage : aucun risque de saturation RAM si plusieurs uploads concurrents.
+FILE_UPLOAD_HANDLERS = [
+    "django.core.files.uploadhandler.TemporaryFileUploadHandler",
+]
+# Répertoire pour les uploads temporaires (par défaut /tmp ; en Docker on
+# peut le pointer vers un volume rapide si /tmp est petit).
+FILE_UPLOAD_TEMP_DIR = os.getenv("FILE_UPLOAD_TEMP_DIR", None) or None
+FILE_UPLOAD_PERMISSIONS = 0o644
 SPEAKER_SAMPLE_DURATION_SEC = int(os.getenv("SPEAKER_SAMPLE_DURATION_SEC", "8"))
 # Secret pour signer les URLs audio (HMAC). Si vide → fallback sur SECRET_KEY.
 RECORDING_AUDIO_TOKEN_SECRET = os.getenv("RECORDING_AUDIO_TOKEN_SECRET", "")
@@ -382,6 +407,40 @@ STORAGES = {
 }
 
 if MINIO_RECORDINGS_BUCKET and MINIO_ENDPOINT:
+    # ── Multipart upload pour les gros fichiers (>1h d'audio = ~100-500 Mo) ──
+    # Sans cette config, boto3 envoie tout en un seul PUT et risque de timeout
+    # côté serveur HTTP (gunicorn) avant que la requête finisse.
+    # Avec multipart : on découpe en chunks de 50 Mo uploadés en parallèle,
+    # chaque chunk dure quelques secondes — pas de timeout possible.
+    try:
+        from boto3.s3.transfer import TransferConfig
+        _RECORDING_TRANSFER_CONFIG = TransferConfig(
+            multipart_threshold=int(os.getenv(
+                "S3_MULTIPART_THRESHOLD", str(20 * 1024 * 1024),  # 20 Mo
+            )),
+            multipart_chunksize=int(os.getenv(
+                "S3_MULTIPART_CHUNKSIZE", str(50 * 1024 * 1024),  # 50 Mo
+            )),
+            max_concurrency=int(os.getenv("S3_MAX_CONCURRENCY", "4")),
+            use_threads=True,
+        )
+    except ImportError:
+        _RECORDING_TRANSFER_CONFIG = None
+
+    # Timeouts boto3 généreux pour les très gros uploads (multipart parts)
+    try:
+        from botocore.config import Config as _BotoConfig
+        _RECORDING_CLIENT_CONFIG = _BotoConfig(
+            connect_timeout=int(os.getenv("AWS_S3_CONNECT_TIMEOUT", "30")),
+            read_timeout=int(os.getenv("AWS_S3_READ_TIMEOUT", "600")),  # 10 min
+            retries={
+                "max_attempts": int(os.getenv("AWS_S3_MAX_ATTEMPTS", "5")),
+                "mode": "standard",
+            },
+        )
+    except Exception:
+        _RECORDING_CLIENT_CONFIG = None
+
     STORAGES["recordings"] = {
         "BACKEND": "storages.backends.s3.S3Storage",
         "OPTIONS": {
@@ -396,6 +455,11 @@ if MINIO_RECORDINGS_BUCKET and MINIO_ENDPOINT:
             "file_overwrite": False,
             "querystring_auth": True,
             "object_parameters": {},     # PAS de ServerSideEncryption sur MinIO standalone
+            # ── Multipart + timeouts (PR-REC-LARGE) ─────────────────
+            **({"transfer_config": _RECORDING_TRANSFER_CONFIG}
+               if _RECORDING_TRANSFER_CONFIG else {}),
+            **({"client_config": _RECORDING_CLIENT_CONFIG}
+               if _RECORDING_CLIENT_CONFIG else {}),
         },
     }
 # Sinon : _recording_storage() retombera sur le default storage.
