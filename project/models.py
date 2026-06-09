@@ -3637,6 +3637,41 @@ class MeetingRecording(TimeStampedModel):
             self.Status.COMPLETED, self.Status.FAILED, self.Status.CANCELLED,
         }
 
+    # PR-REC-UX : progression % par étape pour l'affichage UI
+    # On expose 2 propriétés : progress_percent (0-100) et progress_label
+    # (texte court). Les vues htmx les utilisent pour la barre de progression.
+    _PROGRESS_TABLE = {
+        Status.DRAFT: (0, "En attente"),
+        Status.UPLOADING: (5, "Envoi de l'audio"),
+        Status.UPLOADED: (15, "Audio reçu"),
+        Status.TRANSCRIBING: (35, "Transcription IA"),
+        Status.DIARIZING: (55, "Détection des voix"),
+        Status.WAITING_SPEAKER_MAPPING: (70, "Identification des voix (humain)"),
+        Status.GENERATING_SUMMARY: (88, "Génération du compte-rendu"),
+        Status.COMPLETED: (100, "Terminé"),
+        Status.FAILED: (100, "Échec"),
+        Status.CANCELLED: (100, "Annulé"),
+    }
+
+    @property
+    def progress_percent(self) -> int:
+        return self._PROGRESS_TABLE.get(self.status, (0, ""))[0]
+
+    @property
+    def progress_label(self) -> str:
+        return self._PROGRESS_TABLE.get(self.status, (0, "—"))[1]
+
+    @property
+    def progress_color(self) -> str:
+        """Couleur Tailwind pour la barre selon état."""
+        if self.status == self.Status.FAILED:
+            return "devred"
+        if self.status == self.Status.CANCELLED:
+            return "devamber"
+        if self.status == self.Status.COMPLETED:
+            return "devgreen"
+        return "devaccent"
+
 
 class SpeakerSegment(TimeStampedModel):
     """

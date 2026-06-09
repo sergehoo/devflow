@@ -154,6 +154,12 @@ class ProjectMeetingDetailView(DevflowDetailView):
             .order_by("position", "id")
         )
 
+        # PR-REC-UX : limite d'upload audio (affichée dans le widget)
+        from django.conf import settings
+        ctx["MAX_RECORDING_UPLOAD_MB"] = getattr(
+            settings, "MAX_RECORDING_UPLOAD_MB", 600,
+        )
+
         return ctx
 
 

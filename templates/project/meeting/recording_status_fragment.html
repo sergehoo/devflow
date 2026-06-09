@@ -1,45 +1,112 @@
 {# Fragment HTML retourné par polling htmx (toutes les 3s). #}
-<div class="pipeline-status">
-{% if recording.status == "transcribing" %}
-    <div class="rounded-xl border border-devborder bg-devbg3/40 p-3 text-sm">
-        <i class="fa-solid fa-microphone"></i> Transcription AssemblyAI en cours…
+{% load humanize %}
+<div class="pipeline-status space-y-3">
+
+    {# ── Barre de progression globale ────────────────────────────── #}
+    {% with pct=recording.progress_percent label=recording.progress_label %}
+    <div class="rounded-2xl border border-devborder bg-devbg3/30 p-4">
+        <div class="flex items-center justify-between text-xs text-devtext3 mb-2">
+            <span class="font-medium text-devtext1">
+                {% if recording.status == "failed" %}
+                    <i class="fa-solid fa-triangle-exclamation text-devred"></i>
+                {% elif recording.status == "completed" %}
+                    <i class="fa-solid fa-circle-check text-devgreen"></i>
+                {% elif recording.status == "waiting_speaker_mapping" %}
+                    <i class="fa-solid fa-user-check text-devaccent"></i>
+                {% else %}
+                    <div class="inline-block w-3 h-3 border-2 border-{{ recording.progress_color }} border-r-transparent rounded-full animate-spin mr-1"></div>
+                {% endif %}
+                {{ label }}
+            </span>
+            <span class="font-mono font-bold text-devtext1">{{ pct }} %</span>
+        </div>
+        <div class="w-full bg-devbg2 rounded-full h-2 overflow-hidden">
+            <div class="bg-{{ recording.progress_color }} h-2 rounded-full transition-all duration-500"
+                 style="width: {{ pct }}%"></div>
+        </div>
+
+        {# Mini-jalons : checkpoints des étapes franchies #}
+        <div class="mt-3 grid grid-cols-5 gap-1 text-[10px] text-devtext3">
+            {% with current=recording.progress_percent %}
+            <div class="text-center {% if current >= 15 %}text-devtext1 font-medium{% endif %}">
+                <div class="h-1 rounded {% if current >= 15 %}bg-{{ recording.progress_color }}{% else %}bg-devbg2{% endif %} mb-1"></div>
+                Upload
+            </div>
+            <div class="text-center {% if current >= 35 %}text-devtext1 font-medium{% endif %}">
+                <div class="h-1 rounded {% if current >= 35 %}bg-{{ recording.progress_color }}{% else %}bg-devbg2{% endif %} mb-1"></div>
+                Transcript.
+            </div>
+            <div class="text-center {% if current >= 55 %}text-devtext1 font-medium{% endif %}">
+                <div class="h-1 rounded {% if current >= 55 %}bg-{{ recording.progress_color }}{% else %}bg-devbg2{% endif %} mb-1"></div>
+                Voix
+            </div>
+            <div class="text-center {% if current >= 70 %}text-devtext1 font-medium{% endif %}">
+                <div class="h-1 rounded {% if current >= 70 %}bg-{{ recording.progress_color }}{% else %}bg-devbg2{% endif %} mb-1"></div>
+                Mapping
+            </div>
+            <div class="text-center {% if current >= 88 %}text-devtext1 font-medium{% endif %}">
+                <div class="h-1 rounded {% if current >= 88 %}bg-{{ recording.progress_color }}{% else %}bg-devbg2{% endif %} mb-1"></div>
+                Synthèse
+            </div>
+            {% endwith %}
+        </div>
+
+        {# Détails temporels #}
+        {% if recording.started_at %}
+        <div class="mt-2 text-[11px] text-devtext3">
+            Lancé {{ recording.started_at|naturaltime }}
+            {% if recording.duration_seconds %}
+                · Durée audio : {% widthratio recording.duration_seconds 60 1 %} min
+            {% endif %}
+            {% if recording.transcription_provider %}
+                · Transcription : {{ recording.transcription_provider }}
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
-{% elif recording.status == "diarizing" %}
-    <div class="rounded-xl border border-devborder bg-devbg3/40 p-3 text-sm">
-        <i class="fa-solid fa-users"></i> Détection des voix…
-    </div>
-{% elif recording.status == "waiting_speaker_mapping" %}
+    {% endwith %}
+
+    {# ── CTA contextuel selon l'étape ─────────────────────────────── #}
+    {% if recording.status == "waiting_speaker_mapping" %}
     <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm flex items-center justify-between">
         <span class="text-emerald-700 dark:text-emerald-300">
-            <strong>✓ Voix détectées !</strong> Identifiez chaque speaker.
+            <strong><i class="fa-solid fa-check"></i> Voix détectées !</strong>
+            Identifiez chaque speaker pour finaliser le compte-rendu.
         </span>
         <a href="{% url 'recording_speakers' meeting_pk=recording.meeting_id recording_pk=recording.pk %}"
            class="btn-main text-xs">
             Identifier les voix →
         </a>
     </div>
-{% elif recording.status == "generating_summary" %}
-    <div class="rounded-xl border border-devborder bg-devbg3/40 p-3 text-sm">
-        <i class="fa-solid fa-pen-nib"></i> Génération du compte-rendu IA…
-    </div>
-{% elif recording.status == "completed" %}
+    {% elif recording.status == "completed" %}
     <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm flex items-center justify-between">
         <span class="text-emerald-700 dark:text-emerald-300">
-            <strong>✓ Compte-rendu prêt !</strong>
+            <strong><i class="fa-solid fa-check"></i> Compte-rendu prêt !</strong>
         </span>
         <a href="{% url 'recording_summary' meeting_pk=recording.meeting_id recording_pk=recording.pk %}"
            class="btn-main text-xs">
             Voir le résumé →
         </a>
     </div>
-{% elif recording.status == "failed" %}
+    {% elif recording.status == "failed" %}
     <div class="rounded-xl border border-devred/40 bg-devred/10 p-3 text-sm text-devred">
-        <strong>Échec :</strong> {{ recording.error_message|default:"Erreur inconnue" }}
+        <strong>Échec :</strong>
+        {{ recording.error_message|default:"Erreur inconnue. Consultez les logs Celery." }}
+        <div class="mt-2 flex gap-2">
+            <form method="post" action="{% url 'recording_regenerate_summary' recording.pk %}" class="inline">
+                {% csrf_token %}
+                <button class="btn-soft text-xs">
+                    <i class="fa-solid fa-arrows-rotate"></i> Réessayer la synthèse
+                </button>
+            </form>
+            <form method="post" action="{% url 'recording_delete' recording.pk %}" class="inline"
+                  onsubmit="return confirm('Supprimer cet enregistrement ?');">
+                {% csrf_token %}
+                <button class="btn-soft text-xs text-devred">
+                    <i class="fa-solid fa-trash"></i> Supprimer
+                </button>
+            </form>
+        </div>
     </div>
-{% else %}
-    <div class="rounded-xl border border-devborder bg-devbg3/40 p-3 text-sm">
-        <div class="inline-block w-3 h-3 border-2 border-devaccent border-r-transparent rounded-full animate-spin mr-2"></div>
-        {{ recording.get_status_display }}
-    </div>
-{% endif %}
+    {% endif %}
 </div>

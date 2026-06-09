@@ -32,12 +32,32 @@
                     J'ai informé les participants et j'assume la responsabilité.
                 </label>
             </div>
-            <button type="button" @click="startRecording()"
-                    :disabled="!consentAck"
-                    class="btn-main"
-                    :class="!consentAck ? 'opacity-50 cursor-not-allowed' : ''">
-                <i class="fa-solid fa-circle"></i> Démarrer l'enregistrement
-            </button>
+
+            <div class="flex flex-wrap gap-2">
+                <button type="button" @click="startRecording()"
+                        :disabled="!consentAck"
+                        class="btn-main"
+                        :class="!consentAck ? 'opacity-50 cursor-not-allowed' : ''">
+                    <i class="fa-solid fa-circle"></i> Démarrer l'enregistrement
+                </button>
+
+                {# ── PR-REC-UX : import d'un fichier audio existant ── #}
+                <button type="button" @click="$refs.audioFile.click()"
+                        :disabled="!consentAck"
+                        class="btn-soft"
+                        :class="!consentAck ? 'opacity-50 cursor-not-allowed' : ''"
+                        title="Uploader un fichier audio déjà enregistré (mp3, wav, m4a, ogg, webm…)">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Importer un audio
+                </button>
+                <input type="file" x-ref="audioFile" class="hidden"
+                       accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.flac,.aac,.opus"
+                       @change="handleFileUpload($event)">
+            </div>
+
+            <p class="text-[11px] text-devtext3">
+                Astuce : si l'enregistrement live échoue, vous pouvez uploader directement
+                un fichier audio (max {{ MAX_RECORDING_UPLOAD_MB|default:600 }} Mo, ~10-20h selon le format).
+            </p>
         </div>
     </template>
 
@@ -124,6 +144,73 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
 
         init() {
             // Si on a déjà un recording en processing, le polling htmx se déclenche automatiquement.
+        },
+
+        // ── PR-REC-UX : Upload d'un fichier audio existant ─────────────
+        async handleFileUpload(event) {
+            this.error = null;
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            if (!this.consentAck) {
+                this.error = "Cochez d'abord le consentement RGPD.";
+                event.target.value = '';
+                return;
+            }
+
+            // Limite côté client (UX) — la vraie limite vient du serveur
+            const MAX_MB = {{ MAX_RECORDING_UPLOAD_MB|default:600 }};
+            const sizeMB = file.size / 1024 / 1024;
+            if (sizeMB > MAX_MB) {
+                this.error = `Fichier trop volumineux (${sizeMB.toFixed(0)} Mo). Maximum : ${MAX_MB} Mo.`;
+                event.target.value = '';
+                return;
+            }
+
+            // Validation type audio
+            const okType = file.type.startsWith('audio/')
+                || /\.(mp3|wav|m4a|ogg|webm|flac|aac|opus|oga)$/i.test(file.name);
+            if (!okType) {
+                this.error = `Type de fichier non audio : ${file.type || file.name}`;
+                event.target.value = '';
+                return;
+            }
+
+            // Estimation durée (best-effort, l'audio API peut échouer sur certains formats)
+            try {
+                const dur = await this._estimateDuration(file);
+                this.durationMs = dur * 1000;
+            } catch {
+                this.durationMs = 0;  // le backend recalculera depuis le fichier
+            }
+
+            // On utilise le File comme Blob direct (pas de re-encode)
+            this._uploadFromFile(file);
+            event.target.value = '';  // reset l'input pour réuploader le même fichier si besoin
+        },
+
+        _estimateDuration(file) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const audio = document.createElement('audio');
+                    audio.preload = 'metadata';
+                    const url = URL.createObjectURL(file);
+                    audio.onloadedmetadata = () => {
+                        URL.revokeObjectURL(url);
+                        resolve(audio.duration || 0);
+                    };
+                    audio.onerror = () => {
+                        URL.revokeObjectURL(url);
+                        reject(new Error('audio metadata error'));
+                    };
+                    audio.src = url;
+                } catch (e) { reject(e); }
+            });
+        },
+
+        async _uploadFromFile(file) {
+            // Reset état recorder pour éviter les artefacts d'un précédent enregistrement
+            this._chunks = [];
+            await this._upload(file);
         },
 
         async startRecording() {
@@ -276,8 +363,12 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
 
             const form = new FormData();
             if (this.recordingId) form.append('recording_id', this.recordingId);
-            form.append('audio', new File([blob], 'recording.webm', { type: blob.type }));
-            form.append('duration_seconds', String(this.durationMs / 1000));
+            // PR-REC-UX : conserve le vrai filename si on a importé un fichier
+            const audioFile = (blob instanceof File && blob.name)
+                ? blob
+                : new File([blob], 'recording.webm', { type: blob.type || 'audio/webm' });
+            form.append('audio', audioFile);
+            form.append('duration_seconds', String((this.durationMs / 1000) || 0));
             form.append('consent_acknowledged', String(this.consentAck));
             try {
                 const xhr = new XMLHttpRequest();
