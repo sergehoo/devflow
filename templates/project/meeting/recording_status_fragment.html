@@ -1,7 +1,6 @@
 {# Fragment HTML retourné par polling htmx (toutes les 3s). #}
 {% load humanize %}
-{# PR-REC-LIVE : data-pipeline-final + data-recording-status permettent
-   au JS du widget d'arrêter le polling automatiquement en état terminal. #}
+
 <div class="pipeline-status space-y-3"
      data-recording-status="{{ recording.status }}"
      data-pipeline-final="{% if recording.status in 'completed,failed,cancelled' %}true{% else %}false{% endif %}">
