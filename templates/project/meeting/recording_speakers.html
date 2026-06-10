@@ -37,13 +37,21 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       {% for sp in speakers %}
-      <div class="rounded-2xl border border-devborder bg-devbg2 p-4">
+      {# PR-REC-VOICEPRINT : pré-mapping IA non confirmé = a un mapped_participant
+         mais is_confirmed=False. On affiche un badge distinctif. #}
+      {% with is_ai_suggested=sp.mapped_participant_id|yesno:"yes,no" %}
+      <div class="rounded-2xl border {% if sp.mapped_participant_id and not sp.is_confirmed %}border-devaccent/50 bg-devaccent/5{% else %}border-devborder bg-devbg2{% endif %} p-4">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-base font-semibold text-devtext1">
             <i class="fa-solid fa-user-circle"></i>
             {{ sp.speaker_label }}
             {% if sp.is_confirmed %}
               <span class="ml-2 text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/15 text-emerald-500 px-2 py-0.5 rounded-full">Confirmé</span>
+            {% elif sp.mapped_participant_id %}
+              <span class="ml-2 text-[10px] font-semibold uppercase tracking-wider bg-devaccent/20 text-devaccent px-2 py-0.5 rounded-full"
+                    title="L'IA a reconnu cette voix grâce aux mappings précédents — vérifiez avant de confirmer">
+                <i class="fa-solid fa-sparkles"></i> Suggéré IA
+              </span>
             {% endif %}
           </h3>
           <span class="text-[11px] text-devtext3">
@@ -61,7 +69,12 @@
         <p class="text-xs text-devtext3 italic mb-3">Extrait audio non disponible</p>
         {% endif %}
 
-        <label class="block text-xs text-devtext2 mb-1">Associer à :</label>
+        <label class="block text-xs text-devtext2 mb-1">
+          Associer à :
+          {% if sp.mapped_participant_id and not sp.is_confirmed %}
+            <span class="text-[10px] text-devaccent">— pré-rempli par IA, à vérifier</span>
+          {% endif %}
+        </label>
         <select name="speaker_{{ sp.speaker_label }}"
                 class="w-full rounded-lg border border-devborder bg-devbg3 px-3 py-1.5 text-sm text-devtext1">
           <option value="">— Sélectionner —</option>
@@ -73,6 +86,7 @@
           {% endfor %}
         </select>
       </div>
+      {% endwith %}
       {% empty %}
       <div class="col-span-2 rounded-2xl border border-devborder bg-devbg2 p-6 text-center text-devtext3">
         Aucune voix détectée — le pipeline est peut-être encore en cours.

@@ -95,17 +95,25 @@
     </template>
 
     {# ── État: processing (htmx polling) ─── #}
-    <template x-if="phase === 'processing' && recordingId">
-        <div hx-get="" :hx-get="`/recordings/${recordingId}/status-fragment/`"
-             hx-trigger="load delay:1s, every 3s"
-             hx-swap="innerHTML"
-             class="text-sm text-devtext2">
-            <div class="flex items-center gap-2">
-                <div class="spinner-border w-4 h-4 inline-block animate-spin border-2 border-devaccent border-r-transparent rounded-full"></div>
-                Pipeline IA en cours…
+    {#
+       PR-REC-LIVE : on utilise x-show (PAS x-if) pour que htmx puisse
+       scanner l'élément dès le chargement initial de la page. Et on
+       force htmx.process() après chaque changement de phase pour que
+       le polling démarre IMMÉDIATEMENT après upload, sans reload.
+    #}
+    <div x-show="phase === 'processing' && recordingId"
+         x-ref="processingPanel"
+         x-cloak
+         class="text-sm text-devtext2">
+        <div id="recording-status-container"
+             :data-recording-id="recordingId">
+            {# Placeholder remplacé par htmx au 1er poll. #}
+            <div class="flex items-center gap-2 rounded-xl border border-devborder bg-devbg3/40 p-3">
+                <div class="w-3 h-3 border-2 border-devaccent border-r-transparent rounded-full animate-spin"></div>
+                Démarrage du pipeline IA…
             </div>
         </div>
-    </template>
+    </div>
 
     {# ── Erreur ─── #}
     <template x-if="error">
@@ -143,7 +151,74 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
         _rafId: null,
 
         init() {
-            // Si on a déjà un recording en processing, le polling htmx se déclenche automatiquement.
+            // PR-REC-LIVE : si on arrive sur la page avec un recording déjà
+            // en cours de processing (ex: refresh navigateur), on relance
+            // automatiquement le polling pour afficher l'état actuel.
+            if (this.recordingId && this.phase === 'processing') {
+                this._startStatusPolling();
+            }
+        },
+
+        // ── PR-REC-LIVE : Polling JS pur du status fragment ────────────
+        // (Plus fiable que htmx sur DOM dynamique Alpine — htmx.process()
+        //  ne marche pas toujours sur les nœuds créés par x-if/x-show.)
+        _statusPollTimer: null,
+        _statusPollAttempts: 0,
+
+        _startStatusPolling() {
+            this._stopStatusPolling();
+            this._statusPollAttempts = 0;
+            // Premier appel immédiat
+            this._fetchStatusFragment();
+            // Puis toutes les 3 secondes
+            this._statusPollTimer = setInterval(
+                () => this._fetchStatusFragment(),
+                3000,
+            );
+        },
+
+        _stopStatusPolling() {
+            if (this._statusPollTimer) {
+                clearInterval(this._statusPollTimer);
+                this._statusPollTimer = null;
+            }
+        },
+
+        async _fetchStatusFragment() {
+            if (!this.recordingId) {
+                this._stopStatusPolling();
+                return;
+            }
+            this._statusPollAttempts++;
+            try {
+                const url = `/recordings/${this.recordingId}/status-fragment/`;
+                const resp = await fetch(url, {
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (!resp.ok) {
+                    // 404/403/500 → on essaie quelques fois puis on stop
+                    if (this._statusPollAttempts > 5) this._stopStatusPolling();
+                    return;
+                }
+                const html = await resp.text();
+                const container = document.getElementById('recording-status-container');
+                if (container) {
+                    container.innerHTML = html;
+                    // Détection d'état terminal pour arrêter le polling :
+                    // on inspecte le HTML retourné pour 'completed' ou 'failed'
+                    // (les CTA contiennent ces classes/textes).
+                    if (/data-pipeline-final="true"/i.test(html)
+                        || /completed|failed|cancelled/i.test(
+                            container.querySelector('[data-recording-status]')?.dataset?.recordingStatus || ''
+                        )) {
+                        this._stopStatusPolling();
+                    }
+                }
+            } catch (err) {
+                console.warn('[recorder] status poll failed:', err);
+                if (this._statusPollAttempts > 10) this._stopStatusPolling();
+            }
         },
 
         // ── PR-REC-UX : Upload d'un fichier audio existant ─────────────
@@ -398,6 +473,9 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
                     this.recordingId = data.recording_id;
                     this.savedBlob = null;
                     this.phase = 'processing';
+                    // PR-REC-LIVE : démarre le polling JS pur (plus fiable
+                    // qu'htmx sur DOM créé dynamiquement par Alpine).
+                    this._startStatusPolling();
                 } else {
                     let detail;
                     try { detail = JSON.parse(res.responseText).detail; }

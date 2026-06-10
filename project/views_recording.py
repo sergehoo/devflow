@@ -58,6 +58,19 @@ class SpeakerMappingView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
         for u in [recording.meeting.organizer, recording.meeting.created_by]:
             if u and u not in users:
                 users.append(u)
+
+        # PR-REC-VOICEPRINT : ajoute aussi les users avec un voiceprint
+        # existant dans le workspace (pour proposer des matches même si
+        # ils ne sont pas dans internal_participants du meeting actuel).
+        try:
+            from project.services.recording.voiceprint import suggest_users_by_frequency
+            known_voice_users = suggest_users_by_frequency(recording.workspace, limit=30)
+            for u in known_voice_users:
+                if u and u not in users:
+                    users.append(u)
+        except Exception:
+            pass
+
         participants_list = [
             {
                 "id": str(u.pk),

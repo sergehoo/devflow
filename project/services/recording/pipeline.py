@@ -52,6 +52,20 @@ def process_recording(recording_id: int) -> None:
         diarization.aggregate_speakers_from_segments(recording)
         diarization.extract_speaker_samples(recording)
 
+        # PR-REC-VOICEPRINT : pré-suggère les users connus pour chaque
+        # speaker détecté en se basant sur les voiceprints du workspace.
+        # No-op si Resemblyzer n'est pas installé.
+        try:
+            from project.services.recording.voiceprint import auto_suggest_speakers
+            n_suggested = auto_suggest_speakers(recording)
+            if n_suggested:
+                logger.info(
+                    "recording=%s pre-mapped %d speaker(s) via voiceprint",
+                    recording.pk, n_suggested,
+                )
+        except Exception as exc:
+            logger.warning("voiceprint auto-suggest failed: %s", exc)
+
         recording.status = dm.MeetingRecording.Status.WAITING_SPEAKER_MAPPING
         recording.save(update_fields=["status", "updated_at"])
 

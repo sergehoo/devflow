@@ -59,28 +59,49 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-devborder">
-                    {% for m in items %}
-                    <tr class="hover:bg-devbg3/40">
-                        <td class="px-6 py-3">
-                            <a href="{% url 'meeting_detail' m.pk %}" class="font-medium text-devtext1 hover:text-devaccent">
-                                {{ m.title }}
-                            </a>
-                            {% if m.organizer %}<div class="text-[11px] text-devtext3">par {{ m.organizer }}</div>{% endif %}
-                        </td>
-                        <td class="px-6 py-3 text-xs text-devtext2">{{ m.project.name }}</td>
-                        <td class="px-6 py-3"><span class="badge b-cyan">{{ m.get_meeting_type_display }}</span></td>
-                        <td class="px-6 py-3 text-xs text-devtext2">
-                            {{ m.scheduled_at|date:"d/m/Y H:i" }}
-                            <div class="text-[10px] text-devtext3">{{ m.duration_label }}</div>
-                        </td>
-                        <td class="px-6 py-3 text-center text-devtext2">{{ m.participants_count }}</td>
-                        <td class="px-6 py-3">
-                            <span class="badge b-{{ m.status_color }}">{{ m.get_status_display }}</span>
-                        </td>
-                        <td class="px-6 py-3 text-right">
-                            <a href="{% url 'meeting_detail' m.pk %}" class="btn-soft text-xs">Ouvrir</a>
-                        </td>
-                    </tr>
+                    {% load humanize %}
+                    {# PR-MEET-SORT : séparateur visuel "À venir" / "Passées".
+                       Le queryset annote is_past — on insère un header
+                       quand on passe de 0 à 1. #}
+                    {% regroup items by is_past as bucket_list %}
+                    {% for bucket in bucket_list %}
+                        <tr class="bg-devbg3/60">
+                            <td colspan="7" class="px-6 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-devtext3">
+                                {% if bucket.grouper == 0 %}
+                                    <i class="fa-solid fa-calendar-plus text-devaccent"></i>
+                                    À venir · {{ bucket.list|length }} réunion{{ bucket.list|length|pluralize }}
+                                {% else %}
+                                    <i class="fa-solid fa-calendar-check text-devtext3"></i>
+                                    Passées · {{ bucket.list|length }} réunion{{ bucket.list|length|pluralize }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% for m in bucket.list %}
+                        <tr class="hover:bg-devbg3/40 {% if bucket.grouper == 0 and forloop.first %}bg-devaccent/5{% endif %}">
+                            <td class="px-6 py-3">
+                                <a href="{% url 'meeting_detail' m.pk %}" class="font-medium text-devtext1 hover:text-devaccent">
+                                    {{ m.title }}
+                                </a>
+                                {% if m.organizer %}<div class="text-[11px] text-devtext3">par {{ m.organizer }}</div>{% endif %}
+                            </td>
+                            <td class="px-6 py-3 text-xs text-devtext2">{{ m.project.name }}</td>
+                            <td class="px-6 py-3"><span class="badge b-cyan">{{ m.get_meeting_type_display }}</span></td>
+                            <td class="px-6 py-3 text-xs text-devtext2">
+                                {{ m.scheduled_at|date:"d/m/Y H:i" }}
+                                <div class="text-[10px] text-devtext3">
+                                    {{ m.duration_label }}
+                                    · {% if bucket.grouper == 0 %}dans {{ m.scheduled_at|timeuntil:now }}{% else %}il y a {{ m.scheduled_at|timesince:now }}{% endif %}
+                                </div>
+                            </td>
+                            <td class="px-6 py-3 text-center text-devtext2">{{ m.participants_count }}</td>
+                            <td class="px-6 py-3">
+                                <span class="badge b-{{ m.status_color }}">{{ m.get_status_display }}</span>
+                            </td>
+                            <td class="px-6 py-3 text-right">
+                                <a href="{% url 'meeting_detail' m.pk %}" class="btn-soft text-xs">Ouvrir</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
                     {% empty %}
                     <tr>
                         <td colspan="7" class="px-6 py-12 text-center text-devtext3">

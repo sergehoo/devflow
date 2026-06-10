@@ -75,8 +75,10 @@ def map_speaker_to_participant(
         display_name=(participant.get_full_name() or participant.get_username()),
     )
 
-    # PR-MEET-5 : créer / MAJ la WorkspaceVoicePrint pour ce user
-    # → permet la diarisation automatique sur les futures réunions.
+    # PR-MEET-5 + PR-REC-VOICEPRINT : créer / MAJ la WorkspaceVoicePrint
+    # pour ce user. On garde le compteur ET on update l'embedding pour
+    # permettre la reconnaissance vocale automatique sur les futures
+    # réunions.
     try:
         detected = dm.DetectedSpeaker.objects.filter(
             recording=recording, speaker_label=speaker_label,
@@ -97,6 +99,10 @@ def map_speaker_to_participant(
                 "last_detected_speaker", "mappings_count", "last_seen_at",
                 "updated_at",
             ])
+        # Met à jour l'embedding vocal (no-op si Resemblyzer pas installé)
+        if detected and detected.sample_audio:
+            from project.services.recording.voiceprint import update_voiceprint
+            update_voiceprint(recording.workspace, participant, detected.sample_audio)
     except Exception as exc:
         logger.warning("voiceprint update failed: %s", exc)
 

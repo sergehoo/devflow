@@ -160,6 +160,9 @@ weasyprint==66.0
 django-storages[s3]>=1.14
 python-docx>=1.1
 pydub>=0.25
+# PR-REC-VOICEPRINT : reconnaissance vocale (optionnel — fallback statistique
+# sans la lib). Pèse ~60 Mo (modèle + torch CPU). Décommenter pour activer.
+# Resemblyzer>=0.1.4
 webencodings==0.5.1
 websockets==15.0.1
 whitenoise==6.11.0

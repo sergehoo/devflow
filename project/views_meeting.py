@@ -42,11 +42,46 @@ class ProjectMeetingListView(DevflowListView):
     paginate_by = 20
 
     def get_queryset(self):
+        # PR-MEET-SORT : on trie d'abord par "futur vs passé" (futur en
+        # haut), puis par distance à maintenant (la plus proche d'abord
+        # dans chaque bucket).
+        #
+        #   1. is_past=0 (futures) — triées par scheduled_at ASC
+        #   2. is_past=1 (passées) — triées par scheduled_at DESC
+        #
+        # Astuce SQL : on utilise une `offset_from_now` qui est toujours
+        # positive et croissante quand on s'éloigne de maintenant, peu
+        # importe le sens. Combiné avec is_past, ça nous donne le bon ordre.
+        from django.db.models import (
+            Case, When, F, Value, IntegerField, DurationField,
+            ExpressionWrapper,
+        )
+        now = timezone.now()
         qs = (
             super().get_queryset()
             .select_related("project", "organizer", "sprint", "workspace")
             .prefetch_related("internal_participants")
-            .order_by("-scheduled_at")
+            .annotate(
+                is_past=Case(
+                    When(scheduled_at__lt=now, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                ),
+                offset_from_now=Case(
+                    When(
+                        scheduled_at__gte=now,
+                        then=ExpressionWrapper(
+                            F("scheduled_at") - now,
+                            output_field=DurationField(),
+                        ),
+                    ),
+                    default=ExpressionWrapper(
+                        now - F("scheduled_at"),
+                        output_field=DurationField(),
+                    ),
+                ),
+            )
+            .order_by("is_past", "offset_from_now")
         )
         project_id = self.request.GET.get("project")
         meeting_type = self.request.GET.get("type")
@@ -66,6 +101,9 @@ class ProjectMeetingListView(DevflowListView):
         ctx["current_type"] = self.request.GET.get("type", "")
         ctx["current_status"] = self.request.GET.get("status", "")
         ctx["current_project"] = self.request.GET.get("project", "")
+        # PR-MEET-SORT : moment "maintenant" pour qu'on puisse marquer
+        # visuellement la séparation futur/passé dans le template
+        ctx["now"] = timezone.now()
         return ctx
 
 
