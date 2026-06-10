@@ -60,9 +60,7 @@
                 </thead>
                 <tbody class="divide-y divide-devborder">
                     {% load humanize %}
-                    {# PR-MEET-SORT : séparateur visuel "À venir" / "Passées".
-                       Le queryset annote is_past — on insère un header
-                       quand on passe de 0 à 1. #}
+         
                     {% regroup items by is_past as bucket_list %}
                     {% for bucket in bucket_list %}
                         <tr class="bg-devbg3/60">
