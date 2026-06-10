@@ -95,12 +95,7 @@
     </template>
 
     {# ── État: processing (htmx polling) ─── #}
-    {#
-       PR-REC-LIVE : on utilise x-show (PAS x-if) pour que htmx puisse
-       scanner l'élément dès le chargement initial de la page. Et on
-       force htmx.process() après chaque changement de phase pour que
-       le polling démarre IMMÉDIATEMENT après upload, sans reload.
-    #}
+   
     <div x-show="phase === 'processing' && recordingId"
          x-ref="processingPanel"
          x-cloak
