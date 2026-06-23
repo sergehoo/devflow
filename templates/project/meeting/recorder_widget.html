@@ -18,6 +18,33 @@
         </div>
     </div>
 
+    {# ── PR-REC-PERSIST : Bannière de récupération d'un enregistrement interrompu ── #}
+    <div x-show="phase === 'idle' && recoveredSession" x-cloak
+         class="rounded-xl border border-devamber/40 bg-devamber/10 p-4 text-sm space-y-3">
+        <div class="flex items-start gap-2">
+            <i class="fa-solid fa-clock-rotate-left text-devamber mt-1"></i>
+            <div class="flex-1">
+                <div class="font-semibold text-devtext1">Enregistrement précédent récupéré</div>
+                <p class="text-xs text-devtext2 mt-1">
+                    Un enregistrement de
+                    <strong x-text="formatDuration(recoveredSession?.durationMs || 0)"></strong>
+                    a été retrouvé localement
+                    (<span x-text="((recoveredSession?.sizeBytes || 0) / 1024 / 1024).toFixed(1)"></span> Mo,
+                    sauvegardé <span x-text="recoveredSession?.savedAgo || ''"></span>).
+                    Voulez-vous l'envoyer ou le supprimer ?
+                </p>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <button type="button" @click="uploadRecoveredSession()" class="btn-main text-xs">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Envoyer cet enregistrement
+            </button>
+            <button type="button" @click="discardRecoveredSession()" class="btn-soft text-xs">
+                <i class="fa-solid fa-trash"></i> Supprimer
+            </button>
+        </div>
+    </div>
+
     {# ── État: idle ─── #}
     <template x-if="phase === 'idle'">
         <div class="space-y-3">
@@ -134,6 +161,8 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
         error: null,
         recordingId: existingRecordingId,
         savedBlob: null,
+        // PR-REC-PERSIST : session récupérée depuis IndexedDB après refresh
+        recoveredSession: null,
 
         _mediaRecorder: null,
         _stream: null,
@@ -144,6 +173,9 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
         _audioCtx: null,
         _analyser: null,
         _rafId: null,
+        // PR-REC-PERSIST : timer de sauvegarde périodique en IndexedDB
+        _autosaveTimer: null,
+        _beforeUnloadHandler: null,
 
         init() {
             // PR-REC-LIVE : si on arrive sur la page avec un recording déjà
@@ -151,6 +183,158 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
             // automatiquement le polling pour afficher l'état actuel.
             if (this.recordingId && this.phase === 'processing') {
                 this._startStatusPolling();
+                return;
+            }
+            // PR-REC-PERSIST : sinon, on cherche un enregistrement interrompu
+            // (page rafraîchie pendant la capture) dans IndexedDB.
+            this._checkForRecoveredSession();
+        },
+
+        // ────────────────────────────────────────────────────────────
+        // PR-REC-PERSIST : Persistance IndexedDB
+        // ────────────────────────────────────────────────────────────
+        async _openDB() {
+            return new Promise((resolve, reject) => {
+                if (!('indexedDB' in window)) {
+                    reject(new Error('IndexedDB not supported'));
+                    return;
+                }
+                const req = indexedDB.open('devflow_recordings', 1);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('pending')) {
+                        db.createObjectStore('pending', { keyPath: 'meetingId' });
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        },
+
+        async _saveSession() {
+            // Sauvegarde l'état actuel de l'enregistrement (chunks + meta)
+            // dans IndexedDB. Appelé périodiquement pendant la capture.
+            if (!this._chunks || this._chunks.length === 0) return;
+            try {
+                const db = await this._openDB();
+                const blob = new Blob(this._chunks, {
+                    type: (this._mediaRecorder && this._mediaRecorder.mimeType)
+                        || 'audio/webm',
+                });
+                const sessionData = {
+                    meetingId: String(meetingId),
+                    blob: blob,
+                    durationMs: this.durationMs,
+                    savedAt: Date.now(),
+                    mimeType: blob.type,
+                    sizeBytes: blob.size,
+                };
+                const tx = db.transaction('pending', 'readwrite');
+                tx.objectStore('pending').put(sessionData);
+                await new Promise((resolve, reject) => {
+                    tx.oncomplete = resolve;
+                    tx.onerror = () => reject(tx.error);
+                });
+                db.close();
+            } catch (e) {
+                console.warn('[recorder] autosave failed:', e);
+            }
+        },
+
+        async _checkForRecoveredSession() {
+            try {
+                const db = await this._openDB();
+                const tx = db.transaction('pending', 'readonly');
+                const req = tx.objectStore('pending').get(String(meetingId));
+                const session = await new Promise((resolve, reject) => {
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+                db.close();
+                if (session && session.blob && session.blob.size > 0) {
+                    // Format human-friendly du temps écoulé depuis la sauvegarde
+                    const secAgo = Math.round((Date.now() - session.savedAt) / 1000);
+                    let savedAgo;
+                    if (secAgo < 60) savedAgo = `il y a ${secAgo} sec`;
+                    else if (secAgo < 3600) savedAgo = `il y a ${Math.round(secAgo / 60)} min`;
+                    else if (secAgo < 86400) savedAgo = `il y a ${Math.round(secAgo / 3600)} h`;
+                    else savedAgo = `il y a ${Math.round(secAgo / 86400)} j`;
+                    this.recoveredSession = {
+                        blob: session.blob,
+                        durationMs: session.durationMs || 0,
+                        sizeBytes: session.sizeBytes || session.blob.size,
+                        mimeType: session.mimeType || 'audio/webm',
+                        savedAgo: savedAgo,
+                    };
+                }
+            } catch (e) {
+                // IndexedDB pas dispo / corrompu → on ignore silencieusement
+                console.warn('[recorder] cannot check recovered session:', e);
+            }
+        },
+
+        async _clearSession() {
+            try {
+                const db = await this._openDB();
+                const tx = db.transaction('pending', 'readwrite');
+                tx.objectStore('pending').delete(String(meetingId));
+                await new Promise((resolve, reject) => {
+                    tx.oncomplete = resolve;
+                    tx.onerror = () => reject(tx.error);
+                });
+                db.close();
+            } catch (e) {
+                console.warn('[recorder] clear session failed:', e);
+            }
+        },
+
+        // ── Actions sur la session récupérée ──────────────────────────
+        async uploadRecoveredSession() {
+            if (!this.recoveredSession || !this.recoveredSession.blob) return;
+            this.consentAck = true;  // le user a déjà consenti la 1re fois
+            this.durationMs = this.recoveredSession.durationMs;
+            const blob = this.recoveredSession.blob;
+            this.recoveredSession = null;
+            await this._upload(blob);
+            // Nettoie IndexedDB seulement si upload réussi
+            if (!this.error) {
+                await this._clearSession();
+            }
+        },
+
+        async discardRecoveredSession() {
+            if (!confirm("Supprimer définitivement cet enregistrement local ?")) return;
+            await this._clearSession();
+            this.recoveredSession = null;
+        },
+
+        // ── Hooks autosave + beforeunload ─────────────────────────────
+        _startAutosave() {
+            this._stopAutosave();
+            // Sauvegarde toutes les 30s — compromis entre sécurité et perf I/O
+            this._autosaveTimer = setInterval(
+                () => this._saveSession(),
+                30000,
+            );
+            // Avertissement avant fermeture/refresh accidentel
+            this._beforeUnloadHandler = (e) => {
+                if (this.phase === 'recording' || this.phase === 'uploading') {
+                    e.preventDefault();
+                    e.returnValue = "Un enregistrement est en cours — il sera sauvegardé localement, mais préférez Arrêter d'abord.";
+                    return e.returnValue;
+                }
+            };
+            window.addEventListener('beforeunload', this._beforeUnloadHandler);
+        },
+
+        _stopAutosave() {
+            if (this._autosaveTimer) {
+                clearInterval(this._autosaveTimer);
+                this._autosaveTimer = null;
+            }
+            if (this._beforeUnloadHandler) {
+                window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+                this._beforeUnloadHandler = null;
             }
         },
 
@@ -281,6 +465,11 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
             // Reset état recorder pour éviter les artefacts d'un précédent enregistrement
             this._chunks = [];
             await this._upload(file);
+            // Une fois l'upload OK, on supprime toute trace de session locale
+            // (un fichier importé n'a rien à voir avec un record interrompu).
+            if (!this.error) {
+                await this._clearSession();
+            }
         },
 
         async startRecording() {
@@ -312,6 +501,8 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
             }, 200);
             this._setupAudioLevel();
             this.phase = 'recording';
+            // PR-REC-PERSIST : démarre l'autosave + beforeunload warning
+            this._startAutosave();
         },
 
         pauseRecording() {
@@ -336,7 +527,32 @@ window.devflowRecorderWidget = function(meetingId, existingRecordingId) {
             const blob = await this._finalize();
             if (!blob) return;
             this.savedBlob = blob;
+            // PR-REC-PERSIST : sauvegarde le blob complet en IndexedDB juste
+            // avant l'upload (au cas où l'upload échouerait, on garde la trace).
+            try {
+                const db = await this._openDB();
+                const tx = db.transaction('pending', 'readwrite');
+                tx.objectStore('pending').put({
+                    meetingId: String(meetingId),
+                    blob: blob,
+                    durationMs: this.durationMs,
+                    savedAt: Date.now(),
+                    mimeType: blob.type || 'audio/webm',
+                    sizeBytes: blob.size,
+                });
+                await new Promise((resolve, reject) => {
+                    tx.oncomplete = resolve;
+                    tx.onerror = () => reject(tx.error);
+                });
+                db.close();
+            } catch (e) { /* best-effort */ }
+            // L'autosave périodique n'est plus utile une fois l'enregistrement arrêté
+            this._stopAutosave();
             await this._upload(blob);
+            // Si l'upload a réussi (pas d'erreur), on peut nettoyer IndexedDB
+            if (!this.error) {
+                await this._clearSession();
+            }
         },
 
         async retryUpload() {

@@ -37,8 +37,7 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       {% for sp in speakers %}
-      {# PR-REC-VOICEPRINT : pré-mapping IA non confirmé = a un mapped_participant
-         mais is_confirmed=False. On affiche un badge distinctif. #}
+      
       {% with is_ai_suggested=sp.mapped_participant_id|yesno:"yes,no" %}
       <div class="rounded-2xl border {% if sp.mapped_participant_id and not sp.is_confirmed %}border-devaccent/50 bg-devaccent/5{% else %}border-devborder bg-devbg2{% endif %} p-4">
         <div class="flex items-center justify-between mb-3">
