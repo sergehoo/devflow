@@ -1,6 +1,6 @@
 
-{% with _meth_raw=project_obj.methodology|default_if_none:"" %}
-{% with mcode=_meth_raw|lower ppk=project_obj.pk %}
+{% with meth_raw=project_obj.methodology|default_if_none:"" %}
+{% with mcode=meth_raw|lower ppk=project_obj.pk %}
 <section class="rounded-2xl border border-devaccent/30 bg-devaccent/5 p-4 lg:p-5">
   <div class="flex items-center justify-between gap-3 flex-wrap">
     <div class="flex items-center gap-3">
