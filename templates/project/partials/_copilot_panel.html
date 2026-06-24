@@ -1,0 +1,202 @@
+{# Panel copilote IA flottant — inclure dans n'importe quelle page projet.
+   Alpine x-data="copilotPanel({{ project.pk }})" et @click="copilotOpen = true"
+   sur le bouton parent qui le déclenche.
+   Le wrapper parent doit déclarer x-data="{ copilotOpen: false }". #}
+<div x-show="copilotOpen" x-cloak x-transition
+     class="fixed inset-y-0 right-0 w-full sm:w-[440px] z-50 bg-devbg2 border-l border-devborder shadow-2xl flex flex-col"
+     x-data="copilotPanel({{ project_obj.pk|default:project.pk }})"
+     x-init="init()"
+     @keydown.escape.window="copilotOpen = false">
+
+  {# Header #}
+  <div class="flex items-center justify-between p-4 border-b border-devborder">
+    <div class="flex items-center gap-2">
+      <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-devaccent to-devcyan flex items-center justify-center text-white">
+        <i class="fa-solid fa-robot"></i>
+      </div>
+      <div>
+        <p class="text-sm font-semibold text-devtext1">Copilote IA</p>
+        <p class="text-[10px] text-devtext3">
+          Spécialisé {{ project_obj.methodology|default:project.methodology|default:"—" }}
+        </p>
+      </div>
+    </div>
+    <div class="flex items-center gap-1">
+      <button type="button" @click="clearHistory()" class="btn-soft text-xs"
+              title="Effacer la conversation">
+        <i class="fa-solid fa-broom"></i>
+      </button>
+      <button type="button" @click="copilotOpen = false" class="btn-soft text-xs">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+  </div>
+
+  {# Messages #}
+  <div class="flex-1 overflow-y-auto p-4 space-y-3" x-ref="messagesContainer">
+    <template x-if="history.length === 0">
+      <div class="text-center text-devtext3 text-xs py-12">
+        <i class="fa-solid fa-sparkles text-2xl text-devaccent mb-2 block"></i>
+        <p class="font-medium text-sm text-devtext1 mb-3">Posez-moi vos questions ou demandes</p>
+        <div class="space-y-1.5 text-left max-w-xs mx-auto">
+          <button type="button" @click="askPrompt('Crée-moi le prochain sprint avec une durée de 2 semaines')"
+                  class="block w-full text-left text-[11px] rounded-lg border border-devborder/40 bg-devbg3/40 p-2 hover:bg-devbg3 transition-colors">
+            <span class="text-devaccent">Crée-moi</span> le prochain sprint
+          </button>
+          <button type="button" @click="askPrompt('Quels sont les risques actuels du projet ?')"
+                  class="block w-full text-left text-[11px] rounded-lg border border-devborder/40 bg-devbg3/40 p-2 hover:bg-devbg3 transition-colors">
+            <span class="text-devaccent">Quels sont</span> les risques actuels ?
+          </button>
+          <button type="button" @click="askPrompt('Qui est surchargé dans l\'équipe ?')"
+                  class="block w-full text-left text-[11px] rounded-lg border border-devborder/40 bg-devbg3/40 p-2 hover:bg-devbg3 transition-colors">
+            <span class="text-devaccent">Qui est</span> surchargé dans l'équipe ?
+          </button>
+          <button type="button" @click="askPrompt('Analyse la santé globale du projet')"
+                  class="block w-full text-left text-[11px] rounded-lg border border-devborder/40 bg-devbg3/40 p-2 hover:bg-devbg3 transition-colors">
+            <span class="text-devaccent">Analyse</span> la santé globale du projet
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <template x-for="(msg, idx) in history" :key="idx">
+      <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+        <div :class="msg.role === 'user'
+                     ? 'max-w-[85%] rounded-2xl rounded-br-md bg-devaccent text-white px-3 py-2 text-sm'
+                     : 'max-w-[90%] rounded-2xl rounded-bl-md bg-devbg3 text-devtext1 px-3 py-2 text-sm'">
+          <div x-text="msg.content" class="whitespace-pre-wrap"></div>
+          <template x-if="msg.tool_executed">
+            <div class="mt-1.5 inline-flex items-center gap-1 text-[10px] bg-devgreen/20 text-devgreen px-2 py-0.5 rounded-full">
+              <i class="fa-solid fa-check"></i>
+              <span x-text="msg.tool_executed"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <div x-show="loading" class="flex justify-start">
+      <div class="rounded-2xl rounded-bl-md bg-devbg3 px-3 py-2 text-sm">
+        <span class="inline-flex gap-1">
+          <span class="w-2 h-2 bg-devaccent rounded-full animate-bounce" style="animation-delay: 0ms;"></span>
+          <span class="w-2 h-2 bg-devaccent rounded-full animate-bounce" style="animation-delay: 150ms;"></span>
+          <span class="w-2 h-2 bg-devaccent rounded-full animate-bounce" style="animation-delay: 300ms;"></span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  {# Input #}
+  <div class="p-3 border-t border-devborder">
+    <form @submit.prevent="send()" class="flex gap-2">
+      <input type="text" x-model="input" required
+             placeholder="Posez votre question ou demandez une action…"
+             :disabled="loading"
+             class="flex-1 rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+      <button type="submit" :disabled="loading || !input.trim()"
+              class="btn-main text-xs"
+              :class="loading || !input.trim() ? 'opacity-50' : ''">
+        <i class="fa-solid fa-paper-plane"></i>
+      </button>
+    </form>
+    <p class="text-[10px] text-devtext3 mt-2">
+      <i class="fa-solid fa-shield-halved"></i>
+      Toutes les actions IA sont auditées dans le journal.
+    </p>
+  </div>
+</div>
+
+<script>
+window.copilotPanel = function(projectId) {
+  const STORAGE_KEY = `devflow:copilot:project:${projectId}`;
+  return {
+    input: '',
+    loading: false,
+    history: [],
+
+    init() {
+      // Restaure l'historique depuis localStorage (par projet)
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) this.history = JSON.parse(stored) || [];
+      } catch {}
+      this.$watch('history', () => this.persistHistory());
+    },
+
+    persistHistory() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.history.slice(-50)));
+      } catch {}
+    },
+
+    clearHistory() {
+      if (!confirm("Effacer la conversation locale ?")) return;
+      this.history = [];
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    },
+
+    askPrompt(text) {
+      this.input = text;
+      this.send();
+    },
+
+    async send() {
+      const text = (this.input || '').trim();
+      if (!text || this.loading) return;
+      this.history.push({ role: 'user', content: text });
+      this.input = '';
+      this.loading = true;
+      this.scrollBottom();
+
+      try {
+        const url = `/projects/${projectId}/copilot/chat/`;
+        const csrftoken = this._csrf();
+        const resp = await fetch(url, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken,
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          body: JSON.stringify({
+            message: text,
+            history: this.history.slice(-10).map(m => ({
+              role: m.role, content: m.content,
+            })),
+          }),
+        });
+        const data = await resp.json();
+        const message = data.message || (data.error ? `Erreur : ${data.error}` : '—');
+        const entry = { role: 'assistant', content: message };
+        if (data.type === 'tool_result' && data.tool_name) {
+          entry.tool_executed = data.tool_name;
+        } else if (data.type === 'tool_error') {
+          entry.tool_executed = `${data.tool_name} (échec)`;
+        }
+        this.history.push(entry);
+      } catch (err) {
+        this.history.push({
+          role: 'assistant',
+          content: `Erreur réseau : ${err.message}`,
+        });
+      } finally {
+        this.loading = false;
+        this.scrollBottom();
+      }
+    },
+
+    scrollBottom() {
+      this.$nextTick(() => {
+        const el = this.$refs.messagesContainer;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    },
+
+    _csrf() {
+      const m = document.cookie.match(/(^|;)\s*csrftoken\s*=\s*([^;]+)/);
+      return m ? m[2] : '';
+    },
+  };
+};
+</script>

@@ -1,0 +1,126 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Kanban · {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6">
+
+  <section class="rounded-[28px] border border-devborder bg-devbg2 p-6 lg:p-8">
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devcyan">
+          <i class="fa-solid fa-columns"></i> Kanban Workspace
+        </p>
+        <h1 class="mt-2 text-2xl font-serif text-devtext1">{{ project.name }}</h1>
+      </div>
+      <div class="flex gap-2">
+        <a href="{% url 'project_methodology_dashboard' pk=project.pk %}" class="btn-soft text-xs">
+          <i class="fa-solid fa-chart-line"></i> Dashboard
+        </a>
+        <a href="{% url 'project_detail' pk=project.pk %}" class="btn-soft text-xs">
+          <i class="fa-solid fa-arrow-left"></i> Projet
+        </a>
+      </div>
+    </div>
+  </section>
+
+  {# ─── 4 KPIs Kanban ─────────────────────────────────────────── #}
+  <section class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div class="rounded-2xl border border-devcyan/40 bg-devcyan/5 p-4">
+      <p class="text-[10px] uppercase tracking-wider text-devtext3">{{ kpi_wip.label }}</p>
+      <span class="text-2xl font-bold text-devtext1">{{ kpi_wip.value }}</span>
+      <span class="text-xs text-devtext3 ml-1">{{ kpi_wip.unit }}</span>
+    </div>
+    <div class="rounded-2xl border border-devborder bg-devbg2 p-4">
+      <p class="text-[10px] uppercase tracking-wider text-devtext3">{{ kpi_cycle_time.label }}</p>
+      <span class="text-2xl font-bold text-devtext1">{{ kpi_cycle_time.value }}</span>
+      <span class="text-xs text-devtext3 ml-1">{{ kpi_cycle_time.unit }}</span>
+    </div>
+    <div class="rounded-2xl border border-devborder bg-devbg2 p-4">
+      <p class="text-[10px] uppercase tracking-wider text-devtext3">{{ kpi_lead_time.label }}</p>
+      <span class="text-2xl font-bold text-devtext1">{{ kpi_lead_time.value }}</span>
+      <span class="text-xs text-devtext3 ml-1">{{ kpi_lead_time.unit }}</span>
+    </div>
+    <div class="rounded-2xl border border-devborder bg-devbg2 p-4">
+      <p class="text-[10px] uppercase tracking-wider text-devtext3">{{ kpi_throughput.label }}</p>
+      <span class="text-2xl font-bold text-devtext1">{{ kpi_throughput.value }}</span>
+      <span class="text-xs text-devtext3 ml-1">{{ kpi_throughput.unit }}</span>
+    </div>
+  </section>
+
+  {# ─── Board Kanban dynamique (colonnes depuis MethodologyStatus) ─── #}
+  {% if columns %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6 overflow-x-auto">
+    <h2 class="text-base font-semibold text-devtext1 mb-4">
+      <i class="fa-solid fa-th"></i> Board
+    </h2>
+    <div class="flex gap-3 min-w-max pb-2">
+      {% for col in columns %}
+        <div class="w-72 shrink-0 rounded-xl {% if col.over_wip %}border-2 border-devred bg-devred/5{% else %}border border-devborder bg-devbg3/30{% endif %} p-3">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full"
+                    style="background: {{ col.status.color|default:'#94a3b8' }};"></span>
+              <span class="text-sm font-medium text-devtext1">{{ col.status.name }}</span>
+            </div>
+            <div class="text-xs">
+              <span class="text-devtext1 font-bold">{{ col.count }}</span>
+              {% if col.status.wip_limit %}
+                <span class="text-devtext3"> / {{ col.status.wip_limit }}</span>
+                {% if col.over_wip %}<span class="text-devred ml-1">⚠</span>{% endif %}
+              {% endif %}
+            </div>
+          </div>
+          <div class="space-y-2 max-h-96 overflow-y-auto">
+            {% for task in col.tasks %}
+              <a href="{% url 'task_detail' task.pk %}"
+                 class="block rounded-md bg-devbg2 p-2.5 text-xs hover:bg-devbg3 transition-all">
+                <div class="font-medium text-devtext1 line-clamp-2">{{ task.title }}</div>
+                <div class="mt-1.5 flex items-center gap-1.5 text-[10px] text-devtext3">
+                  {% if task.priority %}
+                    <span class="badge b-{% if task.priority == 'HIGH' or task.priority == 'CRITICAL' %}red{% elif task.priority == 'MEDIUM' %}amber{% else %}cyan{% endif %}">{{ task.priority|first }}</span>
+                  {% endif %}
+                  {% if task.assignee %}<span>@{{ task.assignee.username|truncatechars:12 }}</span>{% endif %}
+                </div>
+              </a>
+            {% empty %}
+              <p class="text-[11px] text-devtext3 italic text-center py-3">—</p>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% else %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-8 text-center">
+    <i class="fa-solid fa-columns text-3xl text-devtext3 mb-3"></i>
+    <p class="text-sm text-devtext2">
+      Le projet n'a pas de méthodologie Kanban configurée.
+    </p>
+  </section>
+  {% endif %}
+
+  {# ─── Cumulative Flow Diagram ─────────────────────────────────── #}
+  {% if kpi_cfd.series %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-chart-area"></i> Distribution actuelle
+    </h2>
+    <div class="space-y-2">
+      {% for point in kpi_cfd.series %}
+        <div class="flex items-center gap-3 text-xs">
+          <span class="w-32 text-devtext2">{{ point.x }}</span>
+          <div class="flex-1 bg-devbg3 rounded h-4">
+            <div class="bg-devcyan h-4 rounded transition-all"
+                 style="width: {% widthratio point.y 50 100 %}%; max-width: 100%;"></div>
+          </div>
+          <span class="w-12 text-right font-mono">{{ point.y }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}

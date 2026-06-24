@@ -1,5 +1,6 @@
 {% extends "layout/base.html" %}
 {% load humanize %}
+{% load devflow_extras %}
 
 {% block title %}Tâche — {{ item.title }}{% endblock %}
 {% block page_title %}{{ item.title }}{% endblock %}
@@ -62,8 +63,11 @@
                 </div>
 
                 {% if item.description %}
-                <div class="mt-4 max-w-4xl text-sm leading-7 text-[var(--text2)]">
-                    {{ item.description|linebreaks }}
+                <div class="mt-4 max-w-4xl text-sm leading-7 text-[var(--text2)]
+                            [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
+                            [&_li]:my-1 [&_p]:my-2 [&_strong]:text-[var(--text1)]
+                            [&_a]:text-devaccent [&_a]:underline">
+                    {{ item.description|safe_html }}
                 </div>
                 {% endif %}
             </div>

@@ -1,3 +1,4 @@
+import html
 import re
 from decimal import Decimal, InvalidOperation
 
@@ -174,6 +175,14 @@ def safe_html(value):
     text = str(value).strip()
     if not text:
         return ""
+
+    # PR-FIX-HTMLENTITIES : décode les entités HTML AVANT le sanitize.
+    # Sans cela, un texte copié depuis Word/Pages contenant "&Eacute;quipe"
+    # s'afficherait littéralement comme "&Eacute;quipe" au lieu d'"Équipe".
+    # html.unescape() gère toutes les entités nommées (&Eacute;, &nbsp;, &amp;…)
+    # et numériques (&#233;, &#x00E9;). On l'applique une seule fois — pas
+    # de double-décodage qui pourrait casser un "&amp;amp;" légitime.
+    text = html.unescape(text)
 
     if _HTML_TAG_RE.search(text):
         # Cas "rich text" : on autorise les balises whitelisted

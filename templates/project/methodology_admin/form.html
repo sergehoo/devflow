@@ -1,0 +1,72 @@
+{% extends "layout/base.html" %}
+
+{% block title %}{% if methodology %}Éditer {{ methodology.name }}{% else %}Nouvelle méthodologie{% endif %}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+  <section class="rounded-[28px] border border-devborder bg-devbg2 p-6 lg:p-8">
+    <h1 class="text-2xl font-serif text-devtext1">
+      {% if methodology %}Éditer {{ methodology.name }}{% else %}Nouvelle méthodologie{% endif %}
+    </h1>
+    <p class="text-sm text-devtext3 mt-1">
+      Définissez les propriétés de la méthodologie. Les statuts, rôles, cérémonies
+      et KPIs sont configurables ensuite depuis la page de détail.
+    </p>
+  </section>
+
+  <form method="post" class="space-y-4">
+    {% csrf_token %}
+    <section class="rounded-2xl border border-devborder bg-devbg2 p-6 space-y-3">
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-devtext3 mb-1">Nom *</label>
+        <input type="text" name="name" required maxlength="100"
+               value="{{ methodology.name|default:'' }}"
+               class="w-full rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-devtext3 mb-1">Famille</label>
+        <select name="family"
+                class="w-full rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+          {% for code, label in family_choices %}
+            <option value="{{ code }}" {% if methodology.family == code %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-devtext3 mb-1">Description</label>
+        <textarea name="description" rows="4"
+                  class="w-full rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm">{{ methodology.description|default:'' }}</textarea>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-devtext3 mb-1">Icône FontAwesome</label>
+          <input type="text" name="icon" maxlength="50"
+                 placeholder="fa-flag-checkered"
+                 value="{{ methodology.icon|default:'' }}"
+                 class="w-full rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm font-mono">
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-devtext3 mb-1">Couleur accent (#hex)</label>
+          <input type="text" name="accent_color" maxlength="7"
+                 placeholder="#7c6ff7"
+                 value="{{ methodology.accent_color|default:'' }}"
+                 class="w-full rounded-[12px] border border-devborder bg-devbg3 px-3 py-2 text-sm font-mono">
+        </div>
+      </div>
+      {% if methodology %}
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="is_active"
+               {% if methodology.is_active %}checked{% endif %}>
+        Active
+      </label>
+      {% endif %}
+    </section>
+    <div class="flex justify-end gap-2">
+      <a href="{% url 'methodology_admin_list' %}" class="btn-soft text-xs">Annuler</a>
+      <button class="btn-main text-xs">
+        <i class="fa-solid fa-floppy-disk"></i> Enregistrer
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

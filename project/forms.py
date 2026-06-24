@@ -451,6 +451,9 @@ class ProjectForm(BaseStyledModelForm):
 
             "category",
 
+            # PR4-METHODO : choix obligatoire de la méthodologie
+            "methodology",
+
             "team",
 
             "teams",
@@ -548,6 +551,17 @@ class ProjectForm(BaseStyledModelForm):
             self.fields["category"].empty_label = "Sélectionner une catégorie"
 
             self.fields["category"].help_text = "Permet de classer le projet par typologie."
+
+        # PR4-METHODO : méthodologie OBLIGATOIRE à la création
+        if "methodology" in self.fields:
+            self.fields["methodology"].required = True
+            self.fields["methodology"].label = "Méthodologie de gestion"
+            self.fields["methodology"].help_text = (
+                "Détermine workflow, statuts, rôles, cérémonies, KPIs et "
+                "l'assistant IA dédié au projet. Choisissez avec soin — "
+                "vous pouvez en changer ensuite mais cela peut nécessiter "
+                "une re-configuration."
+            )
 
         # Filtrage des équipes selon le workspace courant
         ws = self.current_workspace

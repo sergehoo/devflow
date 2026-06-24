@@ -1,0 +1,153 @@
+{% extends "layout/base.html" %}
+
+{% block title %}{{ methodology.name }} · Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+
+  <section class="rounded-[28px] border border-devborder bg-devbg2 p-6 lg:p-8">
+    <div class="flex items-start justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <span class="w-12 h-12 rounded-lg flex items-center justify-center text-2xl"
+              style="background: {{ methodology.accent_color|default:'#7c6ff7' }}20; color: {{ methodology.accent_color|default:'#7c6ff7' }};">
+          <i class="fa-solid {{ methodology.icon|default:'fa-flag' }}"></i>
+        </span>
+        <div>
+          <h1 class="text-2xl font-serif text-devtext1">{{ methodology.name }}</h1>
+          <p class="text-xs text-devtext3 mt-0.5">
+            {{ methodology.get_family_display }} ·
+            {% if methodology.is_system %}<span class="text-devaccent">Système</span>
+            {% elif methodology.workspace %}{{ methodology.workspace.name }}
+            {% else %}Globale{% endif %}
+          </p>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        {% if can_edit %}
+          <a href="{% url 'methodology_admin_update' pk=methodology.pk %}" class="btn-soft text-xs">
+            <i class="fa-solid fa-pen-to-square"></i> Éditer
+          </a>
+        {% endif %}
+        <a href="{% url 'methodology_admin_list' %}" class="btn-soft text-xs">
+          <i class="fa-solid fa-arrow-left"></i> Liste
+        </a>
+      </div>
+    </div>
+    {% if methodology.description %}
+    <p class="text-sm text-devtext2 mt-4">{{ methodology.description }}</p>
+    {% endif %}
+  </section>
+
+  {# ─── Sous-sections en accordéon ───────────────────────────── #}
+
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-circle"></i> Statuts ({{ statuses.count }})
+    </h2>
+    <div class="space-y-1.5 mb-4">
+      {% for s in statuses %}
+        <div class="flex items-center gap-3 text-sm py-1.5 px-3 rounded bg-devbg3/40">
+          <span class="w-3 h-3 rounded-full" style="background: {{ s.color|default:'#94a3b8' }};"></span>
+          <span class="font-medium text-devtext1">{{ s.name }}</span>
+          <span class="text-[11px] text-devtext3">({{ s.code }})</span>
+          <span class="badge b-cyan text-[9px]">{{ s.get_category_display }}</span>
+          {% if s.is_initial %}<span class="badge b-green text-[9px]">Initial</span>{% endif %}
+          {% if s.is_final %}<span class="badge b-amber text-[9px]">Final</span>{% endif %}
+          {% if s.wip_limit %}<span class="text-[10px] text-devtext3 ml-auto">WIP : {{ s.wip_limit }}</span>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    {% if can_edit %}
+    <form method="post" action="{% url 'methodology_admin_add_status' pk=methodology.pk %}"
+          class="grid grid-cols-1 md:grid-cols-5 gap-2 mt-3">
+      {% csrf_token %}
+      <input type="text" name="name" placeholder="Nom du statut" required
+             class="md:col-span-2 rounded-[10px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+      <select name="category" class="rounded-[10px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+        <option value="todo">À faire</option>
+        <option value="wip">En cours</option>
+        <option value="review">Revue</option>
+        <option value="done">Terminé</option>
+        <option value="blocked">Bloqué</option>
+        <option value="cancelled">Annulé</option>
+      </select>
+      <input type="text" name="color" placeholder="#hex" maxlength="7"
+             class="rounded-[10px] border border-devborder bg-devbg3 px-3 py-2 text-sm font-mono">
+      <button class="btn-main text-xs"><i class="fa-solid fa-plus"></i> Ajouter</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-users"></i> Rôles ({{ roles.count }})
+    </h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+      {% for r in roles %}
+        <div class="rounded p-3 bg-devbg3/40">
+          <div class="font-medium text-sm">{{ r.name }} {% if r.is_required %}<span class="badge b-amber text-[9px]">REQUIS</span>{% endif %}</div>
+          <div class="text-[11px] text-devtext3 mt-0.5">{{ r.description|truncatechars:120 }}</div>
+        </div>
+      {% endfor %}
+    </div>
+    {% if can_edit %}
+    <form method="post" action="{% url 'methodology_admin_add_role' pk=methodology.pk %}"
+          class="grid grid-cols-1 md:grid-cols-4 gap-2 mt-3">
+      {% csrf_token %}
+      <input type="text" name="name" placeholder="Nom du rôle" required
+             class="md:col-span-2 rounded-[10px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+      <input type="text" name="description" placeholder="Description courte"
+             class="rounded-[10px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+      <button class="btn-main text-xs"><i class="fa-solid fa-plus"></i> Ajouter</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-chart-line"></i> KPIs ({{ kpis.count }})
+    </h2>
+    <div class="space-y-1.5 mb-4">
+      {% for k in kpis %}
+        <div class="flex items-center gap-3 text-sm py-1.5 px-3 rounded bg-devbg3/40">
+          <span class="font-medium text-devtext1">{{ k.name }}</span>
+          <span class="text-[11px] text-devtext3">{{ k.unit }}</span>
+          <span class="badge b-cyan text-[9px]">{{ k.get_chart_type_display }}</span>
+          {% if k.is_pinned %}<span class="text-devaccent">★</span>{% endif %}
+          <span class="text-[10px] text-devtext3 ml-auto font-mono">{{ k.compute_strategy }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    {% if can_edit %}
+    <form method="post" action="{% url 'methodology_admin_add_kpi' pk=methodology.pk %}"
+          class="grid grid-cols-1 md:grid-cols-5 gap-2 mt-3">
+      {% csrf_token %}
+      <input type="text" name="name" placeholder="Nom KPI" required
+             class="md:col-span-2 rounded-[10px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+      <input type="text" name="compute_strategy" placeholder="ex: velocity" required
+             class="rounded-[10px] border border-devborder bg-devbg3 px-3 py-2 text-sm font-mono">
+      <input type="text" name="unit" placeholder="Unité (jours, %)"
+             class="rounded-[10px] border border-devborder bg-devbg3 px-3 py-2 text-sm">
+      <button class="btn-main text-xs"><i class="fa-solid fa-plus"></i> Ajouter</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-calendar-check"></i> Cérémonies ({{ ceremonies.count }})
+    </h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {% for c in ceremonies %}
+        <div class="rounded p-3 bg-devbg3/40">
+          <div class="font-medium text-sm">{{ c.name }}</div>
+          <div class="text-[11px] text-devtext3 mt-0.5">
+            {{ c.get_cadence_display }} · {{ c.default_duration_min }} min
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+</div>
+{% endblock %}

@@ -5087,6 +5087,745 @@ class AdminCase(TimeStampedModel, SoftDeleteModel):
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# PR1-METHODO — Moteur de gestion multi-méthodologies (data-driven)
+# ════════════════════════════════════════════════════════════════════════════
+# Permet à DevFlow de gérer simultanément Scrum, Kanban, Waterfall, Prince2,
+# PMBOK, SAFe, DevOps, Lean, Hybride et toute méthodologie personnalisée.
+#
+# Modèles introduits :
+#   * Methodology         — la méthodologie (système ou custom par workspace)
+#   * MethodologyStatus   — un statut de tâche/livrable
+#   * MethodologyRole     — un rôle métier (PO, SM, PM, Sponsor, ...)
+#   * MethodologyCeremony — une cérémonie type (Sprint Planning, Daily, ...)
+#   * MethodologyKPI      — un indicateur affiché au dashboard
+#   * MethodologyArtifact — un document type généré par l'IA (User Story, WBS...)
+#
+# Coexistence avec l'existant : on garde ``Project.methodology`` (TextChoices)
+# pour rétro-compatibilité. Une migration data (PR3) mappera les codes
+# existants ("SCRUM", "KANBAN", ...) vers des objets Methodology seedés.
+class Methodology(TimeStampedModel):
+    """
+    Définit une méthodologie de gestion de projet (Scrum, Kanban, ...).
+
+    Une méthodologie est soit :
+      - SYSTÈME (workspace=None, is_system=True) — fournie par DevFlow,
+        non modifiable par les workspaces ;
+      - CUSTOM (workspace=X, is_system=False) — créée par un admin pour
+        son workspace, librement modifiable.
+
+    Le champ ``code`` est unique pour permettre le mapping avec
+    ``Project.methodology`` (CharField) existant.
+    """
+
+    class Family(models.TextChoices):
+        AGILE = "agile", "Agile / Itératif"
+        SEQUENTIAL = "sequential", "Séquentiel / Linéaire"
+        HYBRID = "hybrid", "Hybride"
+        LEAN = "lean", "Lean / Flow-based"
+        FORMAL = "formal", "Formel / Gouvernance"
+        CUSTOM = "custom", "Personnalisé"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name="methodologies",
+        help_text="NULL = méthodologie système (visible par tous les workspaces).",
+    )
+    code = models.SlugField(
+        max_length=50, unique=True,
+        help_text="Identifiant stable (ex : 'scrum', 'kanban', 'waterfall').",
+    )
+    name = models.CharField(max_length=100)
+    family = models.CharField(
+        max_length=20, choices=Family.choices, default=Family.AGILE,
+        db_index=True,
+    )
+    description = models.TextField(blank=True)
+    icon = models.CharField(
+        max_length=50, blank=True,
+        help_text="Classe FontAwesome ou nom court (ex : 'fa-flag-checkered').",
+    )
+    accent_color = models.CharField(
+        max_length=7, blank=True,
+        help_text="Couleur hex pour la pastille (#1d4ed8...).",
+    )
+    is_system = models.BooleanField(
+        default=False,
+        help_text="True = fournie par DevFlow, non modifiable.",
+    )
+    is_active = models.BooleanField(default=True)
+    config = models.JSONField(
+        default=dict, blank=True,
+        help_text=(
+            "Bag de settings : { 'has_sprints': true, 'has_phases': false, "
+            "'has_wip_limits': true, 'requires_estimation': true, ... }"
+        ),
+    )
+
+    class Meta:
+        ordering = ["family", "name"]
+        verbose_name = "Méthodologie"
+        verbose_name_plural = "Méthodologies"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workspace", "name"],
+                name="uniq_methodology_per_workspace_name",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["workspace", "is_active"]),
+            models.Index(fields=["family", "is_active"]),
+        ]
+
+    def __str__(self):
+        scope = "Système" if self.is_system else (self.workspace.name if self.workspace else "Global")
+        return f"{self.name} ({scope})"
+
+
+class MethodologyStatus(TimeStampedModel):
+    """
+    Un statut applicable aux Task/BacklogItem dans une méthodologie donnée.
+
+    Chaque statut est rattaché à une ``category`` standardisée (todo/wip/done)
+    pour que les KPIs et burndowns puissent agréger correctement quelle que
+    soit la méthodologie.
+    """
+
+    class Category(models.TextChoices):
+        TODO = "todo", "À faire"
+        WIP = "wip", "En cours"
+        REVIEW = "review", "Revue"
+        DONE = "done", "Terminé"
+        BLOCKED = "blocked", "Bloqué"
+        CANCELLED = "cancelled", "Annulé"
+
+    methodology = models.ForeignKey(
+        Methodology, on_delete=models.CASCADE, related_name="statuses",
+    )
+    code = models.SlugField(
+        max_length=50,
+        help_text="Identifiant local à la méthodologie (ex : 'in_review').",
+    )
+    name = models.CharField(max_length=80)
+    category = models.CharField(
+        max_length=20, choices=Category.choices, db_index=True,
+    )
+    color = models.CharField(
+        max_length=7, blank=True,
+        help_text="#hex pour le badge dans l'UI.",
+    )
+    position = models.PositiveIntegerField(default=0, db_index=True)
+    is_initial = models.BooleanField(
+        default=False,
+        help_text="True = statut par défaut à la création d'un objet.",
+    )
+    is_final = models.BooleanField(
+        default=False,
+        help_text="True = statut terminal (compte pour 'completed').",
+    )
+    wip_limit = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Limite WIP (Kanban). Null = pas de limite.",
+    )
+
+    class Meta:
+        ordering = ["methodology", "position", "name"]
+        verbose_name = "Statut méthodologie"
+        verbose_name_plural = "Statuts méthodologie"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["methodology", "code"],
+                name="uniq_status_per_methodology",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["methodology", "position"]),
+            models.Index(fields=["methodology", "category"]),
+        ]
+
+    def __str__(self):
+        return f"{self.methodology.code}.{self.code}"
+
+
+class MethodologyRole(TimeStampedModel):
+    """
+    Un rôle métier dans une méthodologie (Product Owner, Scrum Master,
+    Project Manager, Sponsor, Quality Assurance, ...).
+
+    Distinct du RBAC : un rôle méthodologie est un poste fonctionnel
+    attribué à un User dans le contexte d'un projet. Les permissions
+    techniques restent gérées par le RBAC central (PR23).
+    """
+
+    methodology = models.ForeignKey(
+        Methodology, on_delete=models.CASCADE, related_name="roles",
+    )
+    code = models.SlugField(max_length=50)
+    name = models.CharField(max_length=80)
+    description = models.TextField(blank=True)
+    is_required = models.BooleanField(
+        default=False,
+        help_text="True = le projet ne peut pas démarrer sans ce rôle pourvu.",
+    )
+    max_holders = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Nombre maximum de titulaires (Scrum Master = 1, Dev = N).",
+    )
+    suggested_rbac_role = models.CharField(
+        max_length=50, blank=True,
+        help_text="Rôle RBAC suggéré (ex : 'project_manager').",
+    )
+
+    class Meta:
+        ordering = ["methodology", "name"]
+        verbose_name = "Rôle méthodologie"
+        verbose_name_plural = "Rôles méthodologie"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["methodology", "code"],
+                name="uniq_role_per_methodology",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.methodology.code}.{self.code}"
+
+
+class MethodologyCeremony(TimeStampedModel):
+    """
+    Une cérémonie / réunion type d'une méthodologie.
+
+    Sert de template pour créer rapidement des `MeetingSeries` adaptées
+    (Sprint Planning, Daily Standup, Sprint Review, Sprint Retrospective,
+    Sprint Demo, Backlog Refinement, COPIL, Steering Committee...).
+    """
+
+    class Cadence(models.TextChoices):
+        ONCE = "once", "Unique (au démarrage)"
+        DAILY = "daily", "Quotidienne"
+        WEEKLY = "weekly", "Hebdomadaire"
+        BIWEEKLY = "biweekly", "Bi-hebdo"
+        MONTHLY = "monthly", "Mensuelle"
+        PER_SPRINT = "per_sprint", "Par sprint"
+        PER_PHASE = "per_phase", "Par phase"
+        PER_MILESTONE = "per_milestone", "Par jalon"
+        ON_DEMAND = "on_demand", "À la demande"
+
+    methodology = models.ForeignKey(
+        Methodology, on_delete=models.CASCADE, related_name="ceremonies",
+    )
+    code = models.SlugField(max_length=50)
+    name = models.CharField(max_length=80)
+    description = models.TextField(blank=True)
+    cadence = models.CharField(
+        max_length=20, choices=Cadence.choices, default=Cadence.PER_SPRINT,
+    )
+    default_duration_min = models.PositiveIntegerField(
+        default=30,
+        help_text="Durée standard en minutes.",
+    )
+    template_agenda = models.TextField(
+        blank=True,
+        help_text="Ordre du jour template (markdown).",
+    )
+    required_role_codes = models.JSONField(
+        default=list, blank=True,
+        help_text="Rôles obligatoirement présents (ex : ['scrum_master', 'po']).",
+    )
+    position = models.PositiveIntegerField(default=0, db_index=True)
+
+    class Meta:
+        ordering = ["methodology", "position", "name"]
+        verbose_name = "Cérémonie méthodologie"
+        verbose_name_plural = "Cérémonies méthodologie"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["methodology", "code"],
+                name="uniq_ceremony_per_methodology",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.methodology.code}.{self.code}"
+
+
+class MethodologyKPI(TimeStampedModel):
+    """
+    Un indicateur clé associé à une méthodologie, affiché sur le dashboard
+    projet via une stratégie de calcul (``compute_strategy``).
+
+    Le ``compute_strategy`` est un identifiant qui pointe vers une fonction
+    dans le registre ``project.services.methodology.kpis``. Cela permet
+    d'ajouter de nouveaux KPIs sans modifier le modèle.
+    """
+
+    class ChartType(models.TextChoices):
+        NUMBER = "number", "Nombre simple"
+        GAUGE = "gauge", "Jauge"
+        BAR = "bar", "Bar chart"
+        LINE = "line", "Line chart"
+        STACKED_BAR = "stacked_bar", "Bar empilé"
+        PIE = "pie", "Pie chart"
+        BURNDOWN = "burndown", "Burndown"
+        BURNUP = "burnup", "Burnup"
+        CUMULATIVE_FLOW = "cumulative_flow", "Cumulative Flow Diagram"
+        GANTT = "gantt", "Gantt"
+        SPARKLINE = "sparkline", "Sparkline"
+
+    methodology = models.ForeignKey(
+        Methodology, on_delete=models.CASCADE, related_name="kpis",
+    )
+    code = models.SlugField(max_length=50)
+    name = models.CharField(max_length=80)
+    description = models.TextField(blank=True)
+    unit = models.CharField(
+        max_length=20, blank=True,
+        help_text="Ex : 'story_points', 'days', '%', 'tickets'.",
+    )
+    chart_type = models.CharField(
+        max_length=20, choices=ChartType.choices, default=ChartType.NUMBER,
+    )
+    compute_strategy = models.CharField(
+        max_length=80,
+        help_text="Identifiant de la stratégie de calcul (ex : 'velocity').",
+    )
+    target_value = models.FloatField(null=True, blank=True)
+    is_pinned = models.BooleanField(
+        default=False,
+        help_text="True = KPI affiché en gros / en haut du dashboard.",
+    )
+    position = models.PositiveIntegerField(default=0, db_index=True)
+
+    class Meta:
+        ordering = ["methodology", "-is_pinned", "position"]
+        verbose_name = "KPI méthodologie"
+        verbose_name_plural = "KPIs méthodologie"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["methodology", "code"],
+                name="uniq_kpi_per_methodology",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.methodology.code}.{self.code}"
+
+
+class MethodologyWorkflow(TimeStampedModel):
+    """
+    Un workflow nommé regroupant un ensemble de transitions autorisées
+    entre statuts pour une catégorie d'objet (Task, Story, Epic,
+    Deliverable, ...) dans une méthodologie donnée.
+
+    Un projet peut référencer un workflow via son ``Methodology`` —
+    plusieurs workflows peuvent coexister (ex : un workflow simple
+    pour les tâches dev, un workflow strict pour les livrables QA).
+    """
+
+    class AppliesTo(models.TextChoices):
+        TASK = "task", "Tâche"
+        STORY = "story", "User Story"
+        EPIC = "epic", "Epic"
+        FEATURE = "feature", "Feature"
+        BUG = "bug", "Bug"
+        DELIVERABLE = "deliverable", "Livrable"
+        PHASE = "phase", "Phase"
+        MILESTONE = "milestone", "Jalon"
+        RISK = "risk", "Risque"
+        ANY = "any", "Tout objet"
+
+    methodology = models.ForeignKey(
+        Methodology, on_delete=models.CASCADE, related_name="workflows",
+    )
+    code = models.SlugField(max_length=50)
+    name = models.CharField(max_length=80)
+    description = models.TextField(blank=True)
+    applies_to = models.CharField(
+        max_length=20, choices=AppliesTo.choices, default=AppliesTo.TASK,
+        db_index=True,
+    )
+    is_default = models.BooleanField(
+        default=False,
+        help_text="Workflow par défaut pour cette catégorie d'objet.",
+    )
+
+    class Meta:
+        ordering = ["methodology", "applies_to", "name"]
+        verbose_name = "Workflow méthodologie"
+        verbose_name_plural = "Workflows méthodologie"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["methodology", "code"],
+                name="uniq_workflow_per_methodology",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["methodology", "applies_to"]),
+        ]
+
+    def __str__(self):
+        return f"{self.methodology.code}.{self.code}"
+
+
+class WorkflowTransition(TimeStampedModel):
+    """
+    Une transition autorisée entre deux ``MethodologyStatus`` dans un
+    workflow donné.
+
+    Peut être :
+      - Manuelle (un utilisateur la déclenche)
+      - Auto-trigger : déclenchée par un événement système
+        (ex : ``on_pr_merged``, ``on_all_subtasks_done``, ``on_review_approved``)
+
+    Validation : ``WorkflowEngine.can_transition(task, target, user)``
+    vérifie que :
+      1. La transition est définie dans le workflow
+      2. ``user`` possède au moins un des ``required_role_codes``
+      3. Les conditions ``conditions_json`` sont remplies
+    """
+
+    class AutoTrigger(models.TextChoices):
+        NONE = "none", "—"
+        PR_MERGED = "on_pr_merged", "PR mergée"
+        PR_OPENED = "on_pr_opened", "PR ouverte"
+        ALL_SUBTASKS_DONE = "on_all_subtasks_done", "Toutes sous-tâches DONE"
+        REVIEW_APPROVED = "on_review_approved", "Revue approuvée"
+        DEADLINE_PASSED = "on_deadline_passed", "Échéance dépassée"
+        BLOCKED_RESOLVED = "on_blocked_resolved", "Bloqueur résolu"
+        BUDGET_EXCEEDED = "on_budget_exceeded", "Budget dépassé"
+
+    workflow = models.ForeignKey(
+        MethodologyWorkflow, on_delete=models.CASCADE,
+        related_name="transitions",
+    )
+    from_status = models.ForeignKey(
+        MethodologyStatus, on_delete=models.CASCADE,
+        related_name="outgoing_transitions",
+    )
+    to_status = models.ForeignKey(
+        MethodologyStatus, on_delete=models.CASCADE,
+        related_name="incoming_transitions",
+    )
+    label = models.CharField(
+        max_length=80, blank=True,
+        help_text="Libellé du bouton (ex : 'Démarrer', 'Soumettre à revue').",
+    )
+    required_role_codes = models.JSONField(
+        default=list, blank=True,
+        help_text="Liste de codes de MethodologyRole autorisés (ex : ['po', 'sm']). Vide = tout user du projet.",
+    )
+    requires_comment = models.BooleanField(
+        default=False,
+        help_text="True = l'utilisateur doit saisir un commentaire pour transitionner.",
+    )
+    auto_trigger = models.CharField(
+        max_length=30, choices=AutoTrigger.choices, default=AutoTrigger.NONE,
+        db_index=True,
+    )
+    conditions_json = models.JSONField(
+        default=dict, blank=True,
+        help_text=(
+            "Conditions structurées vérifiées au runtime "
+            "(ex : {'min_estimate': 1, 'requires_assignee': true})."
+        ),
+    )
+
+    class Meta:
+        ordering = ["workflow", "from_status", "to_status"]
+        verbose_name = "Transition workflow"
+        verbose_name_plural = "Transitions workflow"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow", "from_status", "to_status"],
+                name="uniq_transition_per_workflow",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["workflow", "auto_trigger"]),
+        ]
+
+    def __str__(self):
+        return f"{self.from_status} → {self.to_status}"
+
+
+class AIActionLog(TimeStampedModel):
+    """
+    Trace d'une action exécutée par le copilote IA pour le compte d'un user
+    (PR16-METHODO).
+
+    Permet l'audit, le debug et l'undo. Chaque tool-call est loggé
+    AVANT exécution (avec status=PENDING) puis update avec le résultat.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "En cours"
+        SUCCESS = "SUCCESS", "Succès"
+        FAILED = "FAILED", "Échec"
+        DENIED = "DENIED", "Refusé (permissions)"
+        UNDONE = "UNDONE", "Annulé par user"
+
+    workspace = models.ForeignKey(
+        "Workspace", on_delete=models.CASCADE, related_name="ai_action_logs",
+    )
+    project = models.ForeignKey(
+        "Project", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="ai_action_logs",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="ai_actions",
+    )
+    tool_name = models.CharField(max_length=80, db_index=True)
+    arguments = models.JSONField(default=dict, blank=True)
+    user_message = models.TextField(
+        blank=True,
+        help_text="Le message original du user qui a déclenché ce call.",
+    )
+    status = models.CharField(
+        max_length=15, choices=Status.choices, default=Status.PENDING,
+        db_index=True,
+    )
+    result = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True)
+    duration_ms = models.PositiveIntegerField(default=0)
+    affected_object_type = models.CharField(max_length=50, blank=True)
+    affected_object_id = models.PositiveBigIntegerField(null=True, blank=True)
+    is_reversible = models.BooleanField(default=False)
+    undone_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Action IA (audit)"
+        verbose_name_plural = "Actions IA (audit)"
+        indexes = [
+            models.Index(fields=["workspace", "-created_at"]),
+            models.Index(fields=["project", "-created_at"]),
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["tool_name", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.tool_name}({self.status}) by {self.user}"
+
+
+class ProjectTemplate(TimeStampedModel):
+    """
+    Template de projet sectoriel (PR14-METHODO).
+
+    Contient une structure type (phases, tâches, jalons, risques) à appliquer
+    automatiquement à la création d'un projet. Rattaché à une méthodologie
+    par défaut, sectorisé pour faciliter la sélection.
+    """
+
+    class Sector(models.TextChoices):
+        IT = "it", "Informatique / Tech"
+        CONSTRUCTION = "construction", "Construction / BTP"
+        INDUSTRY = "industry", "Industrie / Production"
+        HEALTH = "health", "Santé / Recherche"
+        FINANCE = "finance", "Finance / Banque"
+        ADMINISTRATION = "administration", "Administration / Public"
+        EDUCATION = "education", "Éducation / Formation"
+        MARKETING = "marketing", "Marketing / Communication"
+        OTHER = "other", "Autre"
+
+    name = models.CharField(max_length=120)
+    sector = models.CharField(
+        max_length=20, choices=Sector.choices, db_index=True,
+    )
+    sub_sector = models.CharField(
+        max_length=80, blank=True,
+        help_text="Ex : 'ERP', 'Mobile App', 'Bâtiment', 'Hôpital'.",
+    )
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=50, blank=True)
+    methodology = models.ForeignKey(
+        "Methodology", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="templates",
+        help_text="Méthodologie par défaut appliquée à partir de ce template.",
+    )
+    estimated_duration_days = models.PositiveIntegerField(
+        default=90,
+        help_text="Durée typique en jours pour un projet de ce template.",
+    )
+    estimated_budget = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+    )
+    default_phases = models.JSONField(
+        default=list, blank=True,
+        help_text="[{'name': 'Étude', 'duration_days': 15, 'description': '...'}]",
+    )
+    default_milestones = models.JSONField(
+        default=list, blank=True,
+        help_text="[{'name': 'Validation cadrage', 'offset_days': 15}]",
+    )
+    default_risks = models.JSONField(
+        default=list, blank=True,
+        help_text="[{'title': '...', 'category': '...', 'probability': 3, 'impact': 4}]",
+    )
+    default_tasks = models.JSONField(
+        default=list, blank=True,
+        help_text="[{'title': '...', 'phase': '...', 'duration_days': 5}]",
+    )
+    is_system = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    usage_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sector", "name"]
+        verbose_name = "Template projet"
+        verbose_name_plural = "Templates projet"
+        indexes = [
+            models.Index(fields=["sector", "is_active"]),
+            models.Index(fields=["methodology", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_sector_display()})"
+
+
+class ProjectArtifact(TimeStampedModel):
+    """
+    Un artefact généré pour un projet (PR13-METHODO).
+
+    Conserve l'historique : chaque génération crée une nouvelle version
+    (``version`` incrémenté). On peut retrouver l'évolution d'un même
+    artifact_code sur un projet.
+    """
+
+    project = models.ForeignKey(
+        "Project", on_delete=models.CASCADE, related_name="artifacts",
+    )
+    methodology_artifact = models.ForeignKey(
+        "MethodologyArtifact", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="instances",
+    )
+    artifact_code = models.SlugField(max_length=50, db_index=True)
+    title = models.CharField(max_length=120)
+    content = models.TextField(blank=True)
+    template_kind = models.CharField(max_length=20, default="markdown")
+    version = models.PositiveIntegerField(default=1)
+    ai_provider = models.CharField(max_length=40, blank=True)
+    ai_prompt_used = models.TextField(blank=True)
+    generated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="artifacts_generated",
+    )
+    is_current = models.BooleanField(
+        default=True,
+        help_text="True = version courante affichée. False = historique.",
+    )
+    file = models.FileField(
+        upload_to="devflow/artifacts/", null=True, blank=True,
+        help_text="Pour les artefacts binaires (docx, pdf, csv).",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Artefact projet"
+        verbose_name_plural = "Artefacts projet"
+        indexes = [
+            models.Index(fields=["project", "artifact_code"]),
+            models.Index(fields=["project", "is_current"]),
+        ]
+
+    def __str__(self):
+        return f"{self.project.name} · {self.title} v{self.version}"
+
+
+class MethodologyAIProfile(TimeStampedModel):
+    """
+    Profil IA spécialisé pour une méthodologie (PR9-METHODO).
+
+    Contient le persona, le system prompt et les capacités. Quand un user
+    discute avec le copilote sur un projet, le ``MethodologyAIService``
+    injecte automatiquement ce prompt avant son message pour que l'IA
+    adopte la bonne personnalité (Scrum Master virtuel, Kanban Coach,
+    PM Waterfall, etc.).
+    """
+
+    methodology = models.OneToOneField(
+        "Methodology", on_delete=models.CASCADE, related_name="ai_profile",
+    )
+    persona = models.CharField(
+        max_length=200,
+        help_text="Une phrase pour décrire la personnalité (ex : 'Scrum Master virtuel agile et bienveillant').",
+    )
+    system_prompt = models.TextField(
+        help_text="Prompt système complet (instructions, format, ton).",
+    )
+    capabilities = models.JSONField(
+        default=list, blank=True,
+        help_text="Liste de capacités/tools déclarées (ex : ['create_backlog', 'estimate_stories']).",
+    )
+    tone = models.CharField(
+        max_length=30, blank=True,
+        help_text="Ton recommandé (ex : 'directive', 'coach', 'analytical').",
+    )
+    examples = models.JSONField(
+        default=list, blank=True,
+        help_text="Few-shot examples : [{'user': '...', 'assistant': '...'}].",
+    )
+
+    class Meta:
+        verbose_name = "Profil IA méthodologie"
+        verbose_name_plural = "Profils IA méthodologie"
+
+    def __str__(self):
+        return f"AI Profile · {self.methodology.code}"
+
+
+class MethodologyArtifact(TimeStampedModel):
+    """
+    Un document type qu'on peut générer pour un projet de cette méthodologie
+    (User Story, Epic, WBS, Risk Register, Business Case, Project Charter, ...).
+
+    Le champ ``ai_prompt_key`` pointe vers une entrée de ``AIPromptTemplate``
+    (PR21) qui contient le prompt système et les variables attendues.
+    """
+
+    class TemplateKind(models.TextChoices):
+        MARKDOWN = "markdown", "Markdown"
+        DOCX = "docx", "Word (.docx)"
+        PDF = "pdf", "PDF"
+        JSON = "json", "JSON structuré"
+        CSV = "csv", "CSV"
+
+    methodology = models.ForeignKey(
+        Methodology, on_delete=models.CASCADE, related_name="artifacts",
+    )
+    code = models.SlugField(max_length=50)
+    name = models.CharField(max_length=80)
+    description = models.TextField(blank=True)
+    template_kind = models.CharField(
+        max_length=20, choices=TemplateKind.choices,
+        default=TemplateKind.MARKDOWN,
+    )
+    ai_prompt_key = models.CharField(
+        max_length=80,
+        help_text="Clé du AIPromptTemplate à utiliser pour générer ce doc.",
+    )
+    is_recommended = models.BooleanField(
+        default=False,
+        help_text="True = artefact mis en avant dans l'UI projet.",
+    )
+    position = models.PositiveIntegerField(default=0, db_index=True)
+
+    class Meta:
+        ordering = ["methodology", "-is_recommended", "position"]
+        verbose_name = "Artefact méthodologie"
+        verbose_name_plural = "Artefacts méthodologie"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["methodology", "code"],
+                name="uniq_artifact_per_methodology",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.methodology.code}.{self.code}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # Phase 3 — Budget V2
 # ════════════════════════════════════════════════════════════════════════════
 # Snapshots de budget (baseline & forecast) + persistance des runs IA pour

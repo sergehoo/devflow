@@ -1,0 +1,163 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Scrum · {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6">
+
+  <section class="rounded-[28px] border border-devborder bg-devbg2 p-6 lg:p-8">
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+          <i class="fa-solid fa-rotate"></i> Scrum Workspace
+        </p>
+        <h1 class="mt-2 text-2xl font-serif text-devtext1">{{ project.name }}</h1>
+      </div>
+      <div class="flex gap-2">
+        <a href="{% url 'project_methodology_dashboard' pk=project.pk %}" class="btn-soft text-xs">
+          <i class="fa-solid fa-chart-line"></i> Dashboard
+        </a>
+        <a href="{% url 'project_detail' pk=project.pk %}" class="btn-soft text-xs">
+          <i class="fa-solid fa-arrow-left"></i> Projet
+        </a>
+      </div>
+    </div>
+  </section>
+
+  {# ─── 3 KPIs Scrum en haut ───────────────────────────────────── #}
+  <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="rounded-2xl border border-devaccent/40 bg-devaccent/5 p-5">
+      <p class="text-[11px] uppercase tracking-wider text-devtext3">{{ kpi_velocity.label }}</p>
+      <div class="mt-1 flex items-baseline gap-2">
+        <span class="text-3xl font-bold text-devtext1">{{ kpi_velocity.value }}</span>
+        <span class="text-xs text-devtext3">{{ kpi_velocity.unit }}</span>
+      </div>
+    </div>
+    <div class="rounded-2xl border border-devborder bg-devbg2 p-5">
+      <p class="text-[11px] uppercase tracking-wider text-devtext3">{{ kpi_burndown.label }}</p>
+      <div class="mt-1 flex items-baseline gap-2">
+        <span class="text-3xl font-bold text-devtext1">{{ kpi_burndown.value }}</span>
+        <span class="text-xs text-devtext3">{{ kpi_burndown.unit }}</span>
+      </div>
+      {% if kpi_burndown.extra.total %}
+      <div class="mt-2 w-full bg-devbg3 rounded-full h-2">
+        <div class="bg-devaccent h-2 rounded-full"
+             style="width: {% widthratio kpi_burndown.extra.remaining kpi_burndown.extra.total 100 %}%"></div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="rounded-2xl border border-devborder bg-devbg2 p-5">
+      <p class="text-[11px] uppercase tracking-wider text-devtext3">{{ kpi_success_rate.label }}</p>
+      <div class="mt-1 flex items-baseline gap-2">
+        <span class="text-3xl font-bold text-devtext1">{{ kpi_success_rate.value }}</span>
+        <span class="text-xs text-devtext3">%</span>
+      </div>
+    </div>
+  </section>
+
+  {# ─── Sprint actif ──────────────────────────────────────────── #}
+  {% if active_sprint %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-[11px] uppercase tracking-wider text-devaccent">Sprint actif</p>
+        <h2 class="text-xl font-semibold text-devtext1">{{ active_sprint.name }} #{{ active_sprint.number }}</h2>
+        {% if active_sprint.goal %}<p class="text-sm text-devtext2 mt-1 italic">"{{ active_sprint.goal }}"</p>{% endif %}
+      </div>
+      <div class="text-xs text-devtext3 text-right">
+        {% if active_sprint.start_date and active_sprint.end_date %}
+          {{ active_sprint.start_date|date:"d/m" }} → {{ active_sprint.end_date|date:"d/m" }}
+        {% endif %}
+        <div class="mt-1 badge b-{% if active_sprint.status == 'ACTIVE' %}green{% else %}cyan{% endif %}">{{ active_sprint.get_status_display }}</div>
+      </div>
+    </div>
+
+    {# Mini kanban du sprint #}
+    {% if sprint_items %}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">
+      {% for status_label in 'TODO IN_PROGRESS REVIEW DONE'|split:' ' %}
+        <div class="rounded-xl bg-devbg3/40 p-3">
+          <p class="text-[10px] uppercase tracking-wider text-devtext3 mb-2">{{ status_label }}</p>
+          {% for item in sprint_items %}
+            {% if item.status == status_label %}
+              <div class="rounded-md bg-devbg2 p-2 mb-1.5 text-xs">
+                <div class="text-devtext1 font-medium truncate">{{ item.title|truncatechars:40 }}</div>
+                {% if item.assignee %}<div class="text-[10px] text-devtext3">@{{ item.assignee.username }}</div>{% endif %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+  {% else %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6 text-center">
+    <i class="fa-solid fa-rotate text-3xl text-devtext3 mb-3"></i>
+    <p class="text-sm text-devtext2">Aucun sprint actif.</p>
+    <a href="{% url 'sprint_create' %}?project={{ project.pk }}" class="btn-main text-xs mt-3 inline-block">
+      <i class="fa-solid fa-plus"></i> Créer un sprint
+    </a>
+  </section>
+  {% endif %}
+
+  {# ─── Product Backlog ─────────────────────────────────────────── #}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-list-ol"></i> Product Backlog ({{ backlog_items|length }} items)
+    </h2>
+    <div class="space-y-2">
+      {% for item in backlog_items %}
+        <div class="rounded-xl border border-devborder/40 bg-devbg3/30 p-3 flex items-center gap-3">
+          <span class="badge b-cyan text-[10px]">{{ item.get_item_type_display }}</span>
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-sm text-devtext1 truncate">{{ item.title }}</div>
+            <div class="text-[10px] text-devtext3">
+              {% if item.story_points %}{{ item.story_points }} SP · {% endif %}
+              Rank #{{ item.rank|default:'—' }}
+              · {{ item.get_status_display|default:item.status }}
+            </div>
+          </div>
+        </div>
+      {% empty %}
+        <p class="text-sm text-devtext3 italic">Backlog vide. Ajoutez des user stories.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ─── Historique sprints ──────────────────────────────────────── #}
+  {% if all_sprints %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-clock-rotate-left"></i> Sprints récents
+    </h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-xs text-devtext3 uppercase tracking-wider">
+          <tr>
+            <th class="text-left py-2">Sprint</th>
+            <th class="text-left py-2">Statut</th>
+            <th class="text-right py-2">SP planifiés</th>
+            <th class="text-right py-2">SP complétés</th>
+            <th class="text-right py-2">Vélocité</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-devborder">
+          {% for s in all_sprints %}
+            <tr>
+              <td class="py-2 font-medium">{{ s.name }}</td>
+              <td class="py-2"><span class="badge b-cyan text-[10px]">{{ s.get_status_display }}</span></td>
+              <td class="py-2 text-right text-devtext2">{{ s.total_story_points|default:0 }}</td>
+              <td class="py-2 text-right text-devtext2">{{ s.completed_story_points|default:0 }}</td>
+              <td class="py-2 text-right font-mono text-devaccent">{{ s.velocity_completed|default:0 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}

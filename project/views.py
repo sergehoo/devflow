@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import OrderedDict
 from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
+
+logger = logging.getLogger(__name__)
 
 from django import forms
 from django.conf import settings as django_settings
@@ -3574,6 +3577,27 @@ class ProjectCreateView(DevflowCreateView):
                         },
                     )
 
+                # PR4-METHODO : applique automatiquement la configuration
+                # de la méthodologie choisie (statuts, rôles, cérémonies,
+                # KPIs, artefacts, phases si Waterfall, etc.).
+                # Best-effort : un échec ne doit pas bloquer la création.
+                try:
+                    from project.services.ai.services.methodology_postprocess import (
+                        MethodologyPostProcessor,
+                    )
+                    result = MethodologyPostProcessor.run(obj, actor=self.request.user)
+                    if result.get("items_created"):
+                        messages.info(
+                            self.request,
+                            f"Configuration {obj.get_methodology_display()} appliquée : "
+                            f"{result['items_created']} élément(s) initialisé(s).",
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "MethodologyPostProcessor failed for project %s: %s",
+                        obj.pk, exc,
+                    )
+
                 self.object = obj
 
         except ValidationError as e:
@@ -3986,10 +4010,19 @@ def sprint_status_update(request):
 @login_required
 @require_POST
 def task_status_update(request):
+    """
+    Change le statut d'une tâche.
+
+    P5-METHODO : si le projet a une méthodologie typée avec workflow,
+    on délègue à ``WorkflowEngine.apply_transition()`` qui valide les
+    transitions autorisées + rôles requis + écrit l'audit log.
+    Sinon, fallback sur le comportement legacy (changement libre).
+    """
     try:
         payload = json.loads(request.body.decode("utf-8"))
         task_id = payload.get("task_id")
         status = payload.get("status")
+        comment = payload.get("comment", "")
 
         allowed_statuses = {
             dm.Task.Status.TODO,
@@ -4004,17 +4037,44 @@ def task_status_update(request):
             return JsonResponse({"success": False, "message": "Statut invalide."}, status=400)
 
         # SECURITY (Phase 0): scoper la tâche aux workspaces du user
-        # pour éviter qu'un utilisateur ne modifie la tâche d'un autre tenant.
         user_workspace_ids = get_user_workspace_ids(request.user)
         task = get_object_or_404(
             dm.Task,
             pk=task_id,
             workspace_id__in=user_workspace_ids,
         )
+
+        # P5-METHODO : tente la transition via le Workflow Engine.
+        # Si pas de workflow configuré → fallback legacy.
+        try:
+            from project.services.methodology.workflow_engine import (
+                WorkflowEngine, TransitionError,
+            )
+            target_code = status.lower()
+            ok, reason = WorkflowEngine.can_transition(task, target_code, request.user)
+            if ok:
+                WorkflowEngine.apply_transition(
+                    task, target_code, request.user, comment=comment,
+                )
+                return JsonResponse({"success": True, "status": task.status,
+                                     "via_workflow": True})
+            elif "non autorisée" in (reason or "") or "Rôle insuffisant" in (reason or ""):
+                # Refus explicite du workflow → on bloque
+                return JsonResponse({
+                    "success": False, "message": reason,
+                    "via_workflow": True,
+                }, status=403)
+            # Sinon (statut courant introuvable, etc.) → on tombe sur le legacy
+        except TransitionError as exc:
+            return JsonResponse({"success": False, "message": str(exc)}, status=400)
+        except Exception as exc:
+            logger.warning("WorkflowEngine fallback for task %s: %s", task_id, exc)
+
+        # Fallback legacy : changement direct sans validation workflow
         task.status = status
         task.save(update_fields=["status", "updated_at"])
-
-        return JsonResponse({"success": True, "status": task.status})
+        return JsonResponse({"success": True, "status": task.status,
+                             "via_workflow": False})
     except Exception as exc:
         return JsonResponse({"success": False, "message": str(exc)}, status=400)
 

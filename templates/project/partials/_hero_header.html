@@ -1,3 +1,4 @@
+{% load devflow_extras %}
 <section class="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-soft">
     <div class="absolute inset-0 bg-[linear-gradient(135deg,rgba(124,111,247,0.10)_0%,rgba(14,165,201,0.06)_45%,transparent_100%)]"></div>
     <div class="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--accent-bg)] blur-3xl"></div>
@@ -71,8 +72,11 @@
                 </div>
 
                 {% if project_obj.description %}
-                <div class="mt-5 max-w-4xl prose prose-sm max-w-none text-sm leading-6 text-[var(--text2)] prose-p:my-0 prose-headings:my-0 prose-strong:text-[var(--text1)] prose-ul:my-2 prose-ol:my-2">
-                    {{ project_obj.description|safe }}
+                <div class="mt-5 max-w-4xl prose prose-sm max-w-none text-sm leading-6 text-[var(--text2)] prose-p:my-0 prose-headings:my-0 prose-strong:text-[var(--text1)] prose-ul:my-2 prose-ol:my-2
+                            [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
+                            [&_li]:my-1 [&_p]:my-2
+                            [&_a]:text-devaccent [&_a]:underline">
+                    {{ project_obj.description|safe_html }}
                 </div>
                 {% endif %}
             </div>

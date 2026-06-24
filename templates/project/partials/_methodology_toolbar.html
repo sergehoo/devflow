@@ -1,0 +1,50 @@
+{# Barre d'outils méthodologie — à inclure dans project/detail.html.
+   Affiche dashboard + workspace adapté + copilote selon project.methodology. #}
+{% with mcode=project_obj.methodology|default:project.methodology|lower %}
+<section class="rounded-2xl border border-devaccent/30 bg-devaccent/5 p-4 lg:p-5">
+  <div class="flex items-center justify-between gap-3 flex-wrap">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-lg bg-devaccent/20 text-devaccent flex items-center justify-center text-lg">
+        <i class="fa-solid fa-{% if mcode == 'scrum' %}rotate{% elif mcode == 'kanban' %}columns{% elif mcode == 'waterfall' %}water{% else %}cubes{% endif %}"></i>
+      </div>
+      <div>
+        <p class="text-[10px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+          Méthodologie : {{ mcode|upper }}
+        </p>
+        <p class="text-xs text-devtext3">
+          Outils dédiés à cette méthodologie · IA spécialisée disponible
+        </p>
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      {% with pk=project_obj.pk|default:project.pk %}
+        <a href="{% url 'project_methodology_dashboard' pk=pk %}"
+           class="btn-soft text-xs">
+          <i class="fa-solid fa-chart-line"></i> Dashboard
+        </a>
+        {% if mcode == 'scrum' %}
+          <a href="{% url 'project_scrum_workspace' pk=pk %}" class="btn-main text-xs">
+            <i class="fa-solid fa-rotate"></i> Workspace Scrum
+          </a>
+        {% elif mcode == 'kanban' %}
+          <a href="{% url 'project_kanban_workspace' pk=pk %}" class="btn-main text-xs">
+            <i class="fa-solid fa-columns"></i> Workspace Kanban
+          </a>
+        {% elif mcode == 'waterfall' %}
+          <a href="{% url 'project_waterfall_workspace' pk=pk %}" class="btn-main text-xs">
+            <i class="fa-solid fa-water"></i> Workspace Waterfall
+          </a>
+        {% endif %}
+        <button type="button" @click="copilotOpen = true" class="btn-soft text-xs"
+                title="Ouvrir le copilote IA spécialisé pour ce projet">
+          <i class="fa-solid fa-robot"></i> Copilote IA
+        </button>
+        <a href="{% url 'project_copilot_logs' pk=pk %}"
+           class="btn-soft text-xs" title="Historique des actions IA">
+          <i class="fa-solid fa-clipboard-list"></i>
+        </a>
+      {% endwith %}
+    </div>
+  </div>
+</section>
+{% endwith %}

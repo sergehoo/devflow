@@ -14,12 +14,19 @@
 {% endblock %}
 
 {% block content %}
-    
+
 {% if methodology_partial %}
 <div class="mb-6">
     {% include methodology_partial %}
 </div>
 {% endif %}
+
+{# P1-METHODO-UX : barre d'outils méthodologie (Dashboard / Workspace / Copilote) #}
+<div x-data="{ copilotOpen: false }">
+    <div class="mb-6">
+        {% include "project/partials/_methodology_toolbar.html" %}
+    </div>
+    {% include "project/partials/_copilot_panel.html" %}
 
 <div x-data="{
     tab: '{{ active_tab|default:'planification' }}',
@@ -182,4 +189,5 @@
 </div>
     {% include "project/partials/_document_modal.html" %}
 </div>
+</div>{# fin wrapper copilotOpen / P1-METHODO-UX #}
 {% endblock %}

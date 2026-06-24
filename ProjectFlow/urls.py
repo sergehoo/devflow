@@ -126,6 +126,53 @@ urlpatterns = [
     path("projects/<int:pk>/delete/", ProjectDeleteView.as_view(), name="project_delete"),
     path("projects/<int:pk>/archive/", ProjectArchiveView.as_view(), name="project_archive"),
 
+    # PR5-PR8 — Workspaces méthodologie (dashboard + Scrum/Kanban/Waterfall)
+    path("projects/<int:pk>/dashboard/",
+         _meth_views.ProjectMethodologyDashboardView.as_view(),
+         name="project_methodology_dashboard"),
+    path("projects/<int:pk>/scrum/",
+         _meth_views.ProjectScrumWorkspaceView.as_view(),
+         name="project_scrum_workspace"),
+    path("projects/<int:pk>/kanban/",
+         _meth_views.ProjectKanbanWorkspaceView.as_view(),
+         name="project_kanban_workspace"),
+    path("projects/<int:pk>/waterfall/",
+         _meth_views.ProjectWaterfallWorkspaceView.as_view(),
+         name="project_waterfall_workspace"),
+    # PR16-19 — Copilote IA conversationnel
+    path("projects/<int:pk>/copilot/chat/",
+         _meth_views.ProjectCopilotAPIView.as_view(),
+         name="project_copilot_chat"),
+    path("projects/<int:pk>/copilot/logs/",
+         _meth_views.ProjectCopilotLogView.as_view(),
+         name="project_copilot_logs"),
+
+    # PR20-21 — Admin méthodologies custom
+    path("admin/methodologies/",
+         _meth_admin.MethodologyListView.as_view(),
+         name="methodology_admin_list"),
+    path("admin/methodologies/create/",
+         _meth_admin.MethodologyCreateView.as_view(),
+         name="methodology_admin_create"),
+    path("admin/methodologies/<int:pk>/",
+         _meth_admin.MethodologyDetailView.as_view(),
+         name="methodology_admin_detail"),
+    path("admin/methodologies/<int:pk>/update/",
+         _meth_admin.MethodologyUpdateView.as_view(),
+         name="methodology_admin_update"),
+    path("admin/methodologies/<int:pk>/delete/",
+         _meth_admin.MethodologyDeleteView.as_view(),
+         name="methodology_admin_delete"),
+    path("admin/methodologies/<int:pk>/statuses/add/",
+         _meth_admin.MethodologyAddStatusView.as_view(),
+         name="methodology_admin_add_status"),
+    path("admin/methodologies/<int:pk>/roles/add/",
+         _meth_admin.MethodologyAddRoleView.as_view(),
+         name="methodology_admin_add_role"),
+    path("admin/methodologies/<int:pk>/kpis/add/",
+         _meth_admin.MethodologyAddKPIView.as_view(),
+         name="methodology_admin_add_kpi"),
+
     path("project-budgets/create/", ProjectBudgetCreateView.as_view(), name="project_budget_create"),
     path("project-budgets/<int:pk>/update/", ProjectBudgetUpdateView.as_view(), name="project_budget_update"),
     path("project-budgets/<int:pk>/", ProjectBudgetDetailView.as_view(), name="project_budget_detail"),
@@ -521,6 +568,8 @@ from project.views_ai_genesis import (  # noqa: E402
     ProjectGenesisView,
 )
 from project import views_recording as _recording_views  # noqa: E402
+from project import views_methodology as _meth_views  # noqa: E402  # PR5-METHODO
+from project import views_methodology_admin as _meth_admin  # noqa: E402  # PR20-21
 from project import views_meeting as _meeting_dashboard_view  # noqa: E402
 from project.views_ai_chat import (  # noqa: E402
     AIChatCloseSessionView,

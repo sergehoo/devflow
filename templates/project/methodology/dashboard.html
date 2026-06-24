@@ -1,0 +1,187 @@
+{% extends "layout/base.html" %}
+{% load humanize %}
+
+{% block title %}Dashboard · {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6">
+
+  {# ─── Header ─────────────────────────────────────────────────── #}
+  <section class="rounded-[28px] border border-devborder bg-devbg2 p-6 lg:p-8">
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">
+          {% if methodology %}
+            <i class="fa-solid {{ methodology.icon|default:'fa-flag' }}"></i>
+            Méthodologie : {{ methodology.name }} · {{ methodology.get_family_display }}
+          {% else %}
+            <i class="fa-solid fa-circle-question"></i>
+            Méthodologie non définie
+          {% endif %}
+        </p>
+        <h1 class="mt-2 text-2xl font-serif text-devtext1">{{ project.name }}</h1>
+        {% if methodology %}
+          <p class="text-sm text-devtext3 mt-1">{{ methodology.description }}</p>
+        {% endif %}
+      </div>
+      <div class="flex gap-2">
+        <a href="{% url 'project_detail' pk=project.pk %}" class="btn-soft text-xs">
+          <i class="fa-solid fa-arrow-left"></i> Retour projet
+        </a>
+        {% if methodology and methodology.code == 'scrum' %}
+          <a href="{% url 'project_scrum_workspace' pk=project.pk %}" class="btn-main text-xs">
+            <i class="fa-solid fa-rotate"></i> Scrum Workspace
+          </a>
+        {% elif methodology and methodology.code == 'kanban' %}
+          <a href="{% url 'project_kanban_workspace' pk=project.pk %}" class="btn-main text-xs">
+            <i class="fa-solid fa-columns"></i> Kanban Workspace
+          </a>
+        {% elif methodology and methodology.code == 'waterfall' %}
+          <a href="{% url 'project_waterfall_workspace' pk=project.pk %}" class="btn-main text-xs">
+            <i class="fa-solid fa-water"></i> Waterfall Workspace
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  {# ─── Grille KPIs dynamiques ──────────────────────────────────── #}
+  {% if computed_kpis %}
+  <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for entry in computed_kpis %}
+      {% with kpi=entry.kpi result=entry.result %}
+      <div class="rounded-2xl border {% if kpi.is_pinned %}border-devaccent/40 bg-devaccent/5{% else %}border-devborder bg-devbg2{% endif %} p-5 {% if kpi.is_pinned %}lg:col-span-1{% endif %}">
+        <div class="flex items-start justify-between mb-3">
+          <div>
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-devtext3">{{ kpi.name }}</p>
+            {% if kpi.description %}
+              <p class="text-[11px] text-devtext3 mt-0.5">{{ kpi.description|truncatechars:60 }}</p>
+            {% endif %}
+          </div>
+          {% if result.trend == "up" %}
+            <span class="text-devgreen text-xs"><i class="fa-solid fa-arrow-trend-up"></i></span>
+          {% elif result.trend == "down" %}
+            <span class="text-devred text-xs"><i class="fa-solid fa-arrow-trend-down"></i></span>
+          {% endif %}
+        </div>
+
+        {# Rendu adaptatif selon chart_type #}
+        {% if kpi.chart_type == "number" or kpi.chart_type == "gauge" %}
+          <div class="flex items-baseline gap-2">
+            <span class="text-3xl font-bold text-devtext1">{{ result.value }}</span>
+            <span class="text-xs text-devtext3">{{ kpi.unit }}</span>
+          </div>
+          {% if kpi.target_value and kpi.chart_type == "gauge" %}
+            <div class="mt-3 w-full bg-devbg3 rounded-full h-2">
+              <div class="bg-devaccent h-2 rounded-full"
+                   style="width: {% widthratio result.value kpi.target_value 100 %}%"></div>
+            </div>
+            <p class="text-[10px] text-devtext3 mt-1">Cible : {{ kpi.target_value }} {{ kpi.unit }}</p>
+          {% endif %}
+        {% elif kpi.chart_type == "bar" or kpi.chart_type == "line" or kpi.chart_type == "burndown" %}
+          <div class="flex items-baseline gap-2 mb-3">
+            <span class="text-2xl font-bold text-devtext1">{{ result.value }}</span>
+            <span class="text-xs text-devtext3">{{ kpi.unit }}</span>
+          </div>
+          <div class="h-24 flex items-end gap-1">
+            {% for point in result.series|slice:":12" %}
+              <div class="flex-1 bg-devaccent/40 hover:bg-devaccent transition-all rounded-t"
+                   style="height: {% widthratio point.y 100 100 %}%; min-height: 4px;"
+                   title="{{ point.x }}: {{ point.y }}"></div>
+            {% endfor %}
+          </div>
+          <div class="flex justify-between text-[9px] text-devtext3 mt-1">
+            {% if result.series %}
+              <span>{{ result.series.0.x }}</span>
+              <span>{{ result.series|last|default:'' }}</span>
+            {% endif %}
+          </div>
+        {% elif kpi.chart_type == "cumulative_flow" or kpi.chart_type == "stacked_bar" %}
+          <div class="space-y-2 mt-2">
+            {% for point in result.series %}
+              <div class="flex items-center gap-2 text-xs">
+                <span class="w-24 text-devtext3 truncate">{{ point.x }}</span>
+                <div class="flex-1 bg-devbg3 rounded h-3">
+                  <div class="bg-devaccent h-3 rounded"
+                       style="width: {% widthratio point.y 50 100 %}%; max-width: 100%;"></div>
+                </div>
+                <span class="w-10 text-right font-mono">{{ point.y }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% elif kpi.chart_type == "gantt" %}
+          <div class="space-y-1.5 mt-2 max-h-48 overflow-y-auto">
+            {% for bar in result.extra.bars|slice:":15" %}
+              <div class="flex items-center gap-2 text-[11px]">
+                <span class="w-32 text-devtext2 truncate">{{ bar.name }}</span>
+                <div class="flex-1 bg-devbg3 rounded h-3 relative overflow-hidden">
+                  <div class="absolute inset-y-0 left-0 bg-devaccent/60 h-full rounded"
+                       style="width: {{ bar.progress }}%;"></div>
+                </div>
+                <span class="w-12 text-right text-devtext3">{{ bar.progress|floatformat:0 }}%</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-xl font-semibold text-devtext1">{{ result.value }} <span class="text-xs text-devtext3">{{ kpi.unit }}</span></div>
+        {% endif %}
+
+        <p class="text-[10px] text-devtext3 mt-3">{{ result.label }}</p>
+      </div>
+      {% endwith %}
+    {% endfor %}
+  </section>
+  {% else %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-8 text-center">
+    <i class="fa-solid fa-chart-line text-3xl text-devtext3 mb-3"></i>
+    <p class="text-sm text-devtext2">Aucun KPI configuré pour cette méthodologie.</p>
+    {% if not methodology %}
+      <p class="text-xs text-devtext3 mt-2">
+        Le projet n'a pas de méthodologie typée — éditez le projet pour en choisir une.
+      </p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {# ─── Cérémonies de la méthodologie ───────────────────────────── #}
+  {% if methodology and methodology.ceremonies.exists %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-calendar-check"></i> Cérémonies recommandées
+    </h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {% for c in methodology.ceremonies.all %}
+        <div class="rounded-xl border border-devborder/40 bg-devbg3/40 p-3">
+          <div class="flex items-center justify-between">
+            <span class="font-medium text-sm text-devtext1">{{ c.name }}</span>
+            <span class="badge b-cyan text-[10px]">{{ c.get_cadence_display }}</span>
+          </div>
+          <p class="text-xs text-devtext3 mt-1">
+            {{ c.description|truncatechars:120 }}
+            {% if c.default_duration_min %} · {{ c.default_duration_min }} min{% endif %}
+          </p>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# ─── Artefacts générables par l'IA ───────────────────────────── #}
+  {% if methodology and methodology.artifacts.exists %}
+  <section class="rounded-2xl border border-devborder bg-devbg2 p-6">
+    <h2 class="text-base font-semibold text-devtext1 mb-3">
+      <i class="fa-solid fa-file-alt"></i> Artefacts disponibles
+    </h2>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+      {% for a in methodology.artifacts.all %}
+        <div class="rounded-xl border {% if a.is_recommended %}border-devaccent/30 bg-devaccent/5{% else %}border-devborder/40 bg-devbg3/30{% endif %} p-3">
+          <div class="text-xs font-medium text-devtext1">{{ a.name }}</div>
+          <div class="text-[10px] text-devtext3 mt-1">{{ a.get_template_kind_display }}{% if a.is_recommended %} · ★{% endif %}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}

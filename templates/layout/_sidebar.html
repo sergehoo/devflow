@@ -309,6 +309,10 @@
         <a class="nav-subitem {% if current_url == 'invoice_list' or current_url == 'invoice_detail' or current_url == 'invoice_create' or current_url == 'invoice_update' or current_url == 'invoice_print' %}lenk-active{% endif %}" href="{% url 'invoice_list' %}">Factures</a>
         <a class="nav-subitem {% if current_url == 'invoice_client_list' or current_url == 'invoice_client_detail' or current_url == 'invoice_client_create' or current_url == 'invoice_client_update' %}lenk-active{% endif %}" href="{% url 'invoice_client_list' %}">Clients</a>
         <a class="nav-subitem {% if current_url == 'workspace_branding' %}lenk-active{% endif %}" href="{% url 'workspace_branding' %}">Identité &amp; papier en-tête</a>
+        {% if request.user.is_superuser %}
+        <a class="nav-subitem {% if current_url in 'methodology_admin_list methodology_admin_detail methodology_admin_create methodology_admin_update' %}lenk-active{% endif %}"
+           href="{% url 'methodology_admin_list' %}">Méthodologies</a>
+        {% endif %}
       </div>
     </details>
     {% endif %}{# fin RBAC billing.view #}

@@ -1,0 +1,60 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Méthodologies · Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+  <section class="rounded-[28px] border border-devborder bg-devbg2 p-6 lg:p-8">
+    <div class="flex items-start justify-between">
+      <div>
+        <p class="text-[11px] uppercase tracking-[0.22em] text-devaccent">
+          <i class="fa-solid fa-cubes"></i> Configuration des méthodologies
+        </p>
+        <h1 class="mt-2 text-2xl font-serif text-devtext1">Méthodologies disponibles</h1>
+        <p class="text-sm text-devtext3 mt-1">
+          Méthodologies système (Scrum, Kanban, Waterfall, …) et personnalisées.
+        </p>
+      </div>
+      {% if can_create %}
+      <a href="{% url 'methodology_admin_create' %}" class="btn-main text-xs">
+        <i class="fa-solid fa-plus"></i> Nouvelle méthodologie
+      </a>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for m in methodologies %}
+      <a href="{% url 'methodology_admin_detail' pk=m.pk %}"
+         class="rounded-2xl border {% if m.is_system %}border-devaccent/30 bg-devaccent/5{% else %}border-devborder bg-devbg2{% endif %} p-5 hover:bg-devbg3/40 transition-colors">
+        <div class="flex items-start gap-3">
+          <span class="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
+                style="background: {{ m.accent_color|default:'#7c6ff7' }}20; color: {{ m.accent_color|default:'#7c6ff7' }};">
+            <i class="fa-solid {{ m.icon|default:'fa-flag' }}"></i>
+          </span>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="font-semibold text-devtext1">{{ m.name }}</span>
+              {% if m.is_system %}
+                <span class="badge b-cyan text-[9px]">SYSTÈME</span>
+              {% endif %}
+              {% if not m.is_active %}
+                <span class="badge b-amber text-[9px]">Inactif</span>
+              {% endif %}
+            </div>
+            <p class="text-[11px] text-devtext3 mt-1">{{ m.get_family_display }}</p>
+            <p class="text-xs text-devtext2 mt-2 line-clamp-2">{{ m.description|truncatechars:150 }}</p>
+            <div class="mt-3 flex flex-wrap gap-2 text-[10px] text-devtext3">
+              <span>{{ m.statuses.count }} statuts</span>
+              <span>· {{ m.roles.count }} rôles</span>
+              <span>· {{ m.kpis.count }} KPIs</span>
+            </div>
+          </div>
+        </div>
+      </a>
+    {% empty %}
+      <p class="col-span-3 text-center text-devtext3 italic py-8">Aucune méthodologie.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}
