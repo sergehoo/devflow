@@ -1,8 +1,6 @@
-{# Barre d'outils méthodologie — à inclure dans project/detail.html.
-   Le projet est accessible via ``project_obj`` (convention DevflowDetailView).
-   On normalise la valeur en minuscules pour matcher les codes Methodology. #}
+
 {% with _meth_raw=project_obj.methodology|default_if_none:"" %}
-{% with mcode=_meth_raw|lower _ppk=project_obj.pk %}
+{% with mcode=_meth_raw|lower ppk=project_obj.pk %}
 <section class="rounded-2xl border border-devaccent/30 bg-devaccent/5 p-4 lg:p-5">
   <div class="flex items-center justify-between gap-3 flex-wrap">
     <div class="flex items-center gap-3">
@@ -19,20 +17,20 @@
       </div>
     </div>
     <div class="flex flex-wrap gap-2">
-      <a href="{% url 'project_methodology_dashboard' pk=_ppk %}"
+      <a href="{% url 'project_methodology_dashboard' pk=ppk %}"
          class="btn-soft text-xs">
         <i class="fa-solid fa-chart-line"></i> Dashboard
       </a>
       {% if mcode == 'scrum' %}
-        <a href="{% url 'project_scrum_workspace' pk=_ppk %}" class="btn-main text-xs">
+        <a href="{% url 'project_scrum_workspace' pk=ppk %}" class="btn-main text-xs">
           <i class="fa-solid fa-rotate"></i> Workspace Scrum
         </a>
       {% elif mcode == 'kanban' %}
-        <a href="{% url 'project_kanban_workspace' pk=_ppk %}" class="btn-main text-xs">
+        <a href="{% url 'project_kanban_workspace' pk=ppk %}" class="btn-main text-xs">
           <i class="fa-solid fa-columns"></i> Workspace Kanban
         </a>
       {% elif mcode == 'waterfall' %}
-        <a href="{% url 'project_waterfall_workspace' pk=_ppk %}" class="btn-main text-xs">
+        <a href="{% url 'project_waterfall_workspace' pk=ppk %}" class="btn-main text-xs">
           <i class="fa-solid fa-water"></i> Workspace Waterfall
         </a>
       {% endif %}
@@ -40,7 +38,7 @@
               title="Ouvrir le copilote IA spécialisé pour ce projet">
         <i class="fa-solid fa-robot"></i> Copilote IA
       </button>
-      <a href="{% url 'project_copilot_logs' pk=_ppk %}"
+      <a href="{% url 'project_copilot_logs' pk=ppk %}"
          class="btn-soft text-xs" title="Historique des actions IA">
         <i class="fa-solid fa-clipboard-list"></i>
       </a>
