@@ -8791,13 +8791,20 @@ class InvoiceDetailView(DevflowDetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         invoice = self.object
-        ctx["lines"] = invoice.lines.all().order_by("position", "id")
+        lines = list(invoice.lines.all().order_by("position", "id"))
+        ctx["lines"] = lines
         ctx["payments"] = invoice.payments.all().order_by("-received_at")
         ctx["payment_form"] = InvoicePaymentForm(
             current_workspace=invoice.workspace,
             initial={"invoice": invoice.pk},
         )
         ctx["remaining"] = invoice.remaining_due
+
+        # PR-INV-AJAX : sérialise lignes + totaux pour l'éditeur inline
+        from project.views_invoice_ajax import _serialize_line, _serialize_totals
+        ctx["lines_json"] = json.dumps([_serialize_line(l) for l in lines])
+        ctx["totals_json"] = json.dumps(_serialize_totals(invoice))
+        ctx["is_editable"] = (invoice.status == "DRAFT")
         return ctx
 
 

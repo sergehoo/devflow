@@ -525,6 +525,7 @@ from project.views_ai_genesis import (  # noqa: E402
 from project import views_recording as _recording_views  # noqa: E402
 from project import views_methodology as _meth_views  # noqa: E402  # PR5-METHODO
 from project import views_methodology_admin as _meth_admin  # noqa: E402  # PR20-21
+from project import views_invoice_ajax as _inv_ajax  # noqa: E402  # PR-INV-AJAX
 from project import views_meeting as _meeting_dashboard_view  # noqa: E402
 from project.views_ai_chat import (  # noqa: E402
     AIChatCloseSessionView,
@@ -839,6 +840,20 @@ urlpatterns += [
     path("projects/<int:pk>/copilot/logs/",
          _meth_views.ProjectCopilotLogView.as_view(),
          name="project_copilot_logs"),
+
+    # PR-INV-AJAX — Édition AJAX des lignes de facture (sans reload)
+    path("billing/invoices/<int:pk>/lines.json",
+         _inv_ajax.InvoiceLinesView.as_view(),
+         name="invoice_lines_ajax"),
+    path("billing/lines/<int:pk>.json",
+         _inv_ajax.InvoiceLineDetailView.as_view(),
+         name="invoice_line_detail_ajax"),
+    path("billing/invoices/<int:pk>/lines/reorder.json",
+         _inv_ajax.InvoiceLinesReorderView.as_view(),
+         name="invoice_lines_reorder_ajax"),
+    path("billing/invoices/<int:pk>/totals.json",
+         _inv_ajax.InvoiceTotalsView.as_view(),
+         name="invoice_totals_ajax"),
 
     # Admin méthodologies custom
     path("admin/methodologies/",

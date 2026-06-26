@@ -54,55 +54,308 @@
         </div>
     </section>
 
-    <!-- Lignes -->
-    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+    <!-- ─── PR-INV-AJAX : Lignes éditables inline ─── -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft"
+             x-data="invoiceLinesEditor({{ invoice.pk }}, {{ is_editable|yesno:'true,false' }})"
+             x-init="init({{ lines_json|safe }}, {{ totals_json|safe }})">
+
         <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-semibold text-[var(--text1)]">Lignes de facture</h2>
-            <a href="{% url 'invoice_line_create' %}?invoice={{ invoice.pk }}" class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white"><i class="fa-solid fa-plus"></i> Ajouter une ligne</a>
+            <div>
+                <h2 class="text-lg font-semibold text-[var(--text1)]">Lignes de facture</h2>
+                <p class="text-[11px] text-[var(--text3)]"
+                   x-show="!isEditable">
+                    <i class="fa-solid fa-lock"></i> Édition désactivée — la facture est en statut <strong x-text="totals.status_display"></strong>.
+                </p>
+                <p class="text-[11px] text-[var(--text3)]" x-show="isEditable && !saving && !error">
+                    <i class="fa-solid fa-circle-info"></i> Modifications sauvegardées automatiquement. Tab/Entrée pour valider.
+                </p>
+                <p class="text-[11px] text-emerald-500" x-show="lastSavedAt" x-cloak>
+                    <i class="fa-solid fa-check"></i> Enregistré <span x-text="lastSavedAt"></span>
+                </p>
+                <p class="text-[11px] text-red-500" x-show="error" x-cloak>
+                    <i class="fa-solid fa-triangle-exclamation"></i> <span x-text="error"></span>
+                </p>
+            </div>
+            <button type="button" @click="addLine()"
+                    x-show="isEditable"
+                    :disabled="saving"
+                    class="inline-flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                <i class="fa-solid fa-plus"></i> Ajouter une ligne
+            </button>
         </div>
+
         <table class="min-w-full text-sm">
             <thead class="bg-[var(--bg3)] text-[var(--text3)] uppercase text-[11px] tracking-wide">
                 <tr>
-                    <th class="px-4 py-2 text-left">Type</th>
-                    <th class="px-4 py-2 text-left">Libellé</th>
-                    <th class="px-4 py-2 text-right">Qté</th>
-                    <th class="px-4 py-2 text-right">PU HT</th>
-                    <th class="px-4 py-2 text-right">Total HT</th>
-                    <th class="px-4 py-2 text-right">Actions</th>
+                    <th class="px-3 py-2 text-left w-32">Type</th>
+                    <th class="px-3 py-2 text-left">Libellé · Description</th>
+                    <th class="px-3 py-2 text-right w-24">Qté</th>
+                    <th class="px-3 py-2 text-right w-32">PU HT</th>
+                    <th class="px-3 py-2 text-right w-32">Total HT</th>
+                    <th class="px-3 py-2 text-right w-20"></th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-[var(--border)]">
-            {% for line in lines %}
-                <tr>
-                    <td class="px-4 py-3 text-xs text-[var(--text3)]">{{ line.get_line_type_display }}</td>
-                    <td class="px-4 py-3">
-                        <div class="text-[var(--text1)]">{{ line.label }}</div>
-                        {% if line.description %}<div class="text-[11px] text-[var(--text3)]">{{ line.description|truncatechars:120 }}</div>{% endif %}
-                    </td>
-                    <td class="px-4 py-3 text-right">{{ line.quantity|floatformat:2 }}</td>
-                    <td class="px-4 py-3 text-right">{{ line.unit_price|floatformat:2 }}</td>
-                    <td class="px-4 py-3 text-right font-medium">{{ line.total_amount|floatformat:2 }}</td>
-                    <td class="px-4 py-3 text-right text-xs">
-                        <a href="{% url 'invoice_line_update' line.pk %}" class="text-[var(--text3)] hover:text-[var(--accent)]"><i class="fa-solid fa-pen"></i></a>
-                        <form method="post" action="{% url 'invoice_line_delete' line.pk %}" class="inline" onsubmit="return confirm('Supprimer ?');">{% csrf_token %}
-                            <button class="text-red-500"><i class="fa-solid fa-trash"></i></button>
-                        </form>
+            <tbody class="divide-y divide-[var(--border)]" id="invoice-lines-tbody">
+                <template x-for="line in lines" :key="line.id">
+                    <tr :data-line-id="line.id"
+                        :class="line._dirty ? 'bg-amber-500/5' : ''">
+                        <td class="px-3 py-2">
+                            <select x-model="line.line_type"
+                                    @change="patchLine(line, 'line_type', line.line_type)"
+                                    :disabled="!isEditable"
+                                    class="w-full rounded-lg border border-[var(--border)] bg-[var(--bg3)] px-2 py-1 text-xs">
+                                <option value="SERVICE">Prestation</option>
+                                <option value="TIME">Régie / Heures</option>
+                                <option value="EXPENSE">Frais</option>
+                                <option value="MILESTONE">Jalon</option>
+                                <option value="DISCOUNT">Remise</option>
+                                <option value="OTHER">Autre</option>
+                            </select>
+                        </td>
+                        <td class="px-3 py-2">
+                            <input type="text" x-model="line.label"
+                                   @blur="patchLine(line, 'label', line.label)"
+                                   @keydown.enter.prevent="$event.target.blur()"
+                                   :disabled="!isEditable"
+                                   placeholder="Libellé"
+                                   class="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm text-[var(--text1)] hover:border-[var(--border)] focus:border-[var(--accent)] focus:bg-[var(--bg3)] focus:outline-none">
+                            <input type="text" x-model="line.description"
+                                   @blur="patchLine(line, 'description', line.description)"
+                                   @keydown.enter.prevent="$event.target.blur()"
+                                   :disabled="!isEditable"
+                                   placeholder="Description (optionnelle)"
+                                   class="mt-1 w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-[11px] text-[var(--text3)] hover:border-[var(--border)] focus:border-[var(--accent)] focus:bg-[var(--bg3)] focus:outline-none">
+                        </td>
+                        <td class="px-3 py-2 text-right">
+                            <input type="number" step="0.01" min="0"
+                                   x-model="line.quantity"
+                                   @blur="patchLine(line, 'quantity', line.quantity)"
+                                   @keydown.enter.prevent="$event.target.blur()"
+                                   :disabled="!isEditable"
+                                   class="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-right text-sm text-[var(--text1)] hover:border-[var(--border)] focus:border-[var(--accent)] focus:bg-[var(--bg3)] focus:outline-none">
+                        </td>
+                        <td class="px-3 py-2 text-right">
+                            <input type="number" step="0.01" min="0"
+                                   x-model="line.unit_price"
+                                   @blur="patchLine(line, 'unit_price', line.unit_price)"
+                                   @keydown.enter.prevent="$event.target.blur()"
+                                   :disabled="!isEditable"
+                                   class="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-right text-sm text-[var(--text1)] hover:border-[var(--border)] focus:border-[var(--accent)] focus:bg-[var(--bg3)] focus:outline-none">
+                        </td>
+                        <td class="px-3 py-2 text-right font-medium text-[var(--text1)]"
+                            x-text="formatAmount(line.total_amount)"></td>
+                        <td class="px-3 py-2 text-right">
+                            <button type="button" x-show="isEditable"
+                                    @click="deleteLine(line)"
+                                    :disabled="saving"
+                                    class="text-red-500 hover:text-red-700 disabled:opacity-50"
+                                    title="Supprimer la ligne">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </template>
+                <tr x-show="lines.length === 0" x-cloak>
+                    <td colspan="6" class="px-4 py-10 text-center text-[var(--text3)] text-sm">
+                        <i class="fa-solid fa-file-invoice text-2xl block mb-2 text-[var(--text3)]"></i>
+                        Aucune ligne. Cliquez sur <strong>Ajouter une ligne</strong> pour démarrer.
                     </td>
                 </tr>
-            {% empty %}
-                <tr><td colspan="6" class="px-4 py-10 text-center text-[var(--text3)]">Aucune ligne. Ajoutez-en une ou générez automatiquement depuis le projet.</td></tr>
-            {% endfor %}
             </tbody>
+
             <tfoot class="bg-[var(--bg3)]">
-                <tr><td colspan="4" class="px-4 py-2 text-right font-semibold text-[var(--text2)]">Sous-total HT</td><td class="px-4 py-2 text-right font-semibold">{{ invoice.subtotal_ht|floatformat:2 }}</td><td></td></tr>
-                {% if invoice.discount_amount %}
-                <tr><td colspan="4" class="px-4 py-2 text-right text-[var(--text2)]">Remise</td><td class="px-4 py-2 text-right">-{{ invoice.discount_amount|floatformat:2 }}</td><td></td></tr>
-                {% endif %}
-                <tr><td colspan="4" class="px-4 py-2 text-right text-[var(--text2)]">TVA ({{ invoice.tax_rate }}%)</td><td class="px-4 py-2 text-right">{{ invoice.tax_amount|floatformat:2 }}</td><td></td></tr>
-                <tr><td colspan="4" class="px-4 py-2 text-right text-base font-bold text-[var(--text1)]">Total TTC</td><td class="px-4 py-2 text-right text-base font-bold text-[var(--accent)]">{{ invoice.total_ttc|floatformat:2 }} {{ invoice.currency }}</td><td></td></tr>
+                <tr>
+                    <td colspan="4" class="px-3 py-2 text-right font-semibold text-[var(--text2)]">Sous-total HT</td>
+                    <td class="px-3 py-2 text-right font-semibold" x-text="formatAmount(totals.subtotal_ht)"></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td colspan="4" class="px-3 py-2 text-right text-[var(--text2)]">
+                        Remise
+                        <input type="number" step="0.01" min="0"
+                               x-model="totals.discount_amount"
+                               @blur="patchTotal('discount_amount', totals.discount_amount)"
+                               :disabled="!isEditable"
+                               class="ml-2 w-20 rounded-lg border border-transparent bg-transparent px-2 py-1 text-right text-xs text-[var(--text1)] hover:border-[var(--border)] focus:border-[var(--accent)] focus:bg-[var(--bg2)] focus:outline-none">
+                    </td>
+                    <td class="px-3 py-2 text-right">
+                        <span x-show="parseFloat(totals.discount_amount || 0) > 0">-<span x-text="formatAmount(totals.discount_amount)"></span></span>
+                        <span x-show="parseFloat(totals.discount_amount || 0) <= 0" class="text-[var(--text3)]">—</span>
+                    </td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td colspan="4" class="px-3 py-2 text-right text-[var(--text2)]">
+                        TVA (
+                        <input type="number" step="0.01" min="0" max="100"
+                               x-model="totals.tax_rate"
+                               @blur="patchTotal('tax_rate', totals.tax_rate)"
+                               :disabled="!isEditable"
+                               class="w-16 rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-right text-xs text-[var(--text1)] hover:border-[var(--border)] focus:border-[var(--accent)] focus:bg-[var(--bg2)] focus:outline-none">
+                        %)
+                    </td>
+                    <td class="px-3 py-2 text-right" x-text="formatAmount(totals.tax_amount)"></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td colspan="4" class="px-3 py-2 text-right text-base font-bold text-[var(--text1)]">Total TTC</td>
+                    <td class="px-3 py-2 text-right text-base font-bold text-[var(--accent)]">
+                        <span x-text="formatAmount(totals.total_ttc)"></span>
+                        <span x-text="totals.currency" class="text-xs"></span>
+                    </td>
+                    <td></td>
+                </tr>
             </tfoot>
         </table>
     </section>
+
+<script>
+window.invoiceLinesEditor = function(invoiceId, isEditable) {
+    return {
+        invoiceId: invoiceId,
+        isEditable: isEditable,
+        lines: [],
+        totals: {
+            subtotal_ht: "0", discount_amount: "0", tax_rate: "0",
+            tax_amount: "0", total_ttc: "0", currency: "XOF",
+            status: "DRAFT", status_display: "Brouillon",
+        },
+        saving: false,
+        error: null,
+        lastSavedAt: null,
+
+        init(initialLines, initialTotals) {
+            this.lines = (initialLines || []).map(l => ({ ...l, _dirty: false }));
+            if (initialTotals) this.totals = initialTotals;
+        },
+
+        formatAmount(value) {
+            const n = parseFloat(value || 0);
+            if (Number.isNaN(n)) return "0.00";
+            return n.toLocaleString('fr-FR', {
+                minimumFractionDigits: 2, maximumFractionDigits: 2,
+            });
+        },
+
+        _csrf() {
+            const m = document.cookie.match(/(^|;)\s*csrftoken\s*=\s*([^;]+)/);
+            return m ? m[2] : '';
+        },
+
+        async _fetch(method, url, body) {
+            const opts = {
+                method: method,
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this._csrf(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            };
+            if (body !== undefined) opts.body = JSON.stringify(body);
+            const resp = await fetch(url, opts);
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) {
+                throw new Error(data.error || `HTTP ${resp.status}`);
+            }
+            return data;
+        },
+
+        _markSaved() {
+            const now = new Date();
+            this.lastSavedAt = now.toLocaleTimeString('fr-FR');
+            this.error = null;
+            // Efface l'indicateur après 4s
+            clearTimeout(this._savedTimeout);
+            this._savedTimeout = setTimeout(() => { this.lastSavedAt = null; }, 4000);
+        },
+
+        async addLine() {
+            if (!this.isEditable || this.saving) return;
+            this.saving = true;
+            this.error = null;
+            try {
+                const url = `/billing/invoices/${this.invoiceId}/lines.json`;
+                const data = await this._fetch('POST', url, {
+                    line_type: 'SERVICE', label: 'Nouvelle ligne',
+                    quantity: 1, unit_price: 0,
+                });
+                this.lines.push({ ...data.line, _dirty: false });
+                if (data.totals) this.totals = data.totals;
+                this._markSaved();
+                // Focus le champ label de la nouvelle ligne
+                this.$nextTick(() => {
+                    const rows = document.querySelectorAll('#invoice-lines-tbody tr[data-line-id]');
+                    const last = rows[rows.length - 1];
+                    const input = last && last.querySelector('input[type="text"]');
+                    if (input) { input.focus(); input.select(); }
+                });
+            } catch (err) {
+                this.error = err.message;
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        async patchLine(line, field, value) {
+            if (!this.isEditable || this.saving) return;
+            // Détection de changement : pas d'appel si valeur identique
+            if (line[`_last_${field}`] === value) return;
+            this.saving = true;
+            this.error = null;
+            line._dirty = true;
+            try {
+                const url = `/billing/lines/${line.id}.json`;
+                const data = await this._fetch('PATCH', url, { [field]: value });
+                // Update local avec les valeurs retournées (total_amount recalculé)
+                Object.assign(line, data.line, { _dirty: false });
+                line[`_last_${field}`] = value;
+                if (data.totals) this.totals = data.totals;
+                this._markSaved();
+            } catch (err) {
+                this.error = err.message;
+                line._dirty = false;
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        async deleteLine(line) {
+            if (!this.isEditable || this.saving) return;
+            if (!confirm(`Supprimer la ligne « ${line.label || 'sans titre'} » ?`)) return;
+            this.saving = true;
+            this.error = null;
+            try {
+                const url = `/billing/lines/${line.id}.json`;
+                const data = await this._fetch('DELETE', url);
+                this.lines = this.lines.filter(l => l.id !== line.id);
+                if (data.totals) this.totals = data.totals;
+                this._markSaved();
+            } catch (err) {
+                this.error = err.message;
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        async patchTotal(field, value) {
+            if (!this.isEditable || this.saving) return;
+            this.saving = true;
+            this.error = null;
+            try {
+                const url = `/billing/invoices/${this.invoiceId}/totals.json`;
+                const data = await this._fetch('PATCH', url, { [field]: value });
+                if (data.totals) this.totals = data.totals;
+                this._markSaved();
+            } catch (err) {
+                this.error = err.message;
+            } finally {
+                this.saving = false;
+            }
+        },
+    };
+};
+</script>
 
     <!-- Paiements -->
     <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
