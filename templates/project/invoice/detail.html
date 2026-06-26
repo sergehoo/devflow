@@ -55,8 +55,7 @@
     </section>
 
     <!-- ─── PR-INV-AJAX : Lignes éditables inline ─── -->
-    {# Données initiales sérialisées via json_script (échappe correctement
-       les guillemets, <, >, &, et caractères Unicode). #}
+
     {{ lines_data|json_script:"invoice-lines-data" }}
     {{ totals_data|json_script:"invoice-totals-data" }}
 
