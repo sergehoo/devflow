@@ -4,41 +4,45 @@
 <meta charset="utf-8">
 <title>Facture {{ invoice.number|default:'(brouillon)' }}</title>
 <style>
+    /* ════════════════════════════════════════════════════════════════
+       FACTURE PDF — VERSION COMPACTE (1 page autant que possible)
+       ════════════════════════════════════════════════════════════════
+       Stratégie d'optimisation :
+       - Marges page réduites : 26mm haut, 28mm bas (gain ~16mm)
+       - Logo : 40mm × 14mm (gain ~10mm en hauteur)
+       - Polices titres réduites
+       - Espacements verticaux serrés
+       - Tableau lignes compact (padding 1.8mm)
+       ════════════════════════════════════════════════════════════════ */
     @page {
         size: A4;
-        /* Marges adaptées au papier en-tête (haut) + pied de page complet (bas) */
-        margin: 38mm 18mm 42mm 18mm;
+        margin: 26mm 16mm 28mm 16mm;
 
-        /* ─── EN-TÊTE : LOGO À GAUCHE + SLOGAN AU CENTRE ─── */
+        /* En-tête : logo compact + tagline discret */
         @top-left {
             content: "";
             background-image: url("{{ logo_uri }}");
             background-repeat: no-repeat;
             background-position: left center;
             background-size: contain;
-            width: 60mm;
-            height: 24mm;
+            width: 45mm;
+            height: 14mm;
         }
         @top-center {
             content: "{{ workspace.tagline|default:'' }}";
-            font-size: 10pt;
+            font-size: 7.5pt;
             font-weight: 700;
-            letter-spacing: 3pt;
+            letter-spacing: 2pt;
             color: {{ workspace.accent_color|default:"#F4722B" }};
             vertical-align: middle;
-            padding-top: 6mm;
+            padding-top: 3mm;
         }
-        @top-right {
-            content: "";
-            border-bottom: 0;
-        }
-
-        /* Filet sous l'en-tête (barre orange) */
+        @top-right { content: ""; border-bottom: 0; }
         @top {
-            border-bottom: 1.5pt solid {{ workspace.accent_color|default:"#F4722B" }};
+            border-bottom: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
         }
 
-        /* ─── PIED DE PAGE : 3 COLONNES de coordonnées légales ─── */
+        /* Pied de page : 3 colonnes coordonnées légales (compact) */
         @bottom-left {
             content:
                 "{{ workspace.legal_name|default:workspace.name }}"
@@ -46,12 +50,13 @@
                 "{% if workspace.legal_cc %}\A CC : {{ workspace.legal_cc }}{% endif %}"
                 "{% if workspace.legal_tax_id %}\A NIF : {{ workspace.legal_tax_id }}{% endif %}";
             white-space: pre;
-            font-size: 8pt;
+            font-size: 7pt;
             color: #1d1a17;
-            padding-top: 5mm;
-            border-top: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
+            padding-top: 3mm;
+            border-top: 0.5pt solid {{ workspace.accent_color|default:"#F4722B" }};
             text-align: left;
             vertical-align: top;
+            line-height: 1.4;
         }
         @bottom-center {
             content:
@@ -60,12 +65,13 @@
                 "{% if workspace.postal_code or workspace.city %}\A {{ workspace.postal_code }} {{ workspace.city }}{% endif %}"
                 "{% if workspace.country %}\A {{ workspace.country }}{% endif %}";
             white-space: pre;
-            font-size: 8pt;
+            font-size: 7pt;
             color: #1d1a17;
-            padding-top: 5mm;
-            border-top: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
+            padding-top: 3mm;
+            border-top: 0.5pt solid {{ workspace.accent_color|default:"#F4722B" }};
             text-align: center;
             vertical-align: top;
+            line-height: 1.4;
         }
         @bottom-right {
             content:
@@ -73,157 +79,167 @@
                 "{% if workspace.email %}\A {{ workspace.email }}{% endif %}"
                 "{% if workspace.website %}\A {{ workspace.website }}{% endif %}";
             white-space: pre;
-            font-size: 8pt;
+            font-size: 7pt;
             color: #1d1a17;
-            padding-top: 5mm;
-            border-top: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
+            padding-top: 3mm;
+            border-top: 0.5pt solid {{ workspace.accent_color|default:"#F4722B" }};
             text-align: right;
             vertical-align: top;
+            line-height: 1.4;
         }
     }
 
     body {
         font-family: "Helvetica", "Arial", sans-serif;
         color: #1d1a17;
-        font-size: 10pt;
-        line-height: 1.55;
+        font-size: 9pt;
+        line-height: 1.35;
     }
 
     h1, h2, h3 { color: #1d1a17; margin: 0; }
 
+    /* ─── Titre Facture + N° : côte à côte sur une ligne ─── */
     .invoice-title {
-        font-size: 22pt;
+        font-size: 15pt;
         font-weight: 700;
-        letter-spacing: -0.5pt;
-        margin-bottom: 2mm;
+        letter-spacing: -0.3pt;
+        color: #1d1a17;
     }
     .invoice-number {
         color: {{ workspace.accent_color|default:"#F4722B" }};
         font-weight: 700;
         font-size: 11pt;
-        letter-spacing: 1pt;
-        text-transform: uppercase;
+        letter-spacing: 0.5pt;
     }
 
-    /* ─── Bloc Client uniquement (l'émetteur est dans le pied de page) ─── */
+    /* ─── Bloc Client (compact) ─── */
     .client-block {
-        margin-top: 8mm;
-        margin-bottom: 6mm;
-        padding: 4mm 5mm;
+        margin-top: 4mm;
+        margin-bottom: 3mm;
+        padding: 2.5mm 3.5mm;
         background: #f6f3ef;
-        border-radius: 6pt;
-        max-width: 90mm;
+        border-radius: 4pt;
+        max-width: 80mm;
     }
     .client-block .meta-label {
-        font-size: 8pt;
+        font-size: 7pt;
         color: #6d655d;
         text-transform: uppercase;
-        letter-spacing: 1pt;
-        margin-bottom: 1.5mm;
+        letter-spacing: 0.8pt;
+        margin-bottom: 1mm;
     }
     .client-block .meta-value {
-        font-size: 10pt;
+        font-size: 8.8pt;
         color: #1d1a17;
-        line-height: 1.5;
+        line-height: 1.35;
     }
     .client-block .meta-value strong { color: #1d1a17; }
 
+    /* ─── Bandeau info (date / échéance / projet / devise) ─── */
     .info-strip {
         width: 100%;
-        margin-bottom: 6mm;
-        border-top: 1pt solid #e9e1d8;
-        border-bottom: 1pt solid #e9e1d8;
+        margin-bottom: 3mm;
+        border-top: 0.5pt solid #e9e1d8;
+        border-bottom: 0.5pt solid #e9e1d8;
     }
     .info-strip td {
-        padding: 3mm 0;
-        font-size: 9pt;
+        padding: 1.8mm 0;
+        font-size: 8.5pt;
         color: #6d655d;
     }
     .info-strip .label {
         text-transform: uppercase;
-        font-size: 8pt;
-        letter-spacing: 1pt;
+        font-size: 7pt;
+        letter-spacing: 0.8pt;
         color: #a79f97;
     }
     .info-strip .value {
         color: #1d1a17;
         font-weight: 600;
-        margin-top: 1mm;
+        margin-top: 0.5mm;
         display: block;
     }
 
+    /* ─── Tableau lignes (compact) ─── */
     table.lines {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 4mm;
+        margin-top: 2mm;
     }
     table.lines th {
         background: #1d1a17;
         color: #ffffff;
         text-transform: uppercase;
-        font-size: 8pt;
-        letter-spacing: 0.6pt;
-        padding: 3mm 3mm;
+        font-size: 7.5pt;
+        letter-spacing: 0.4pt;
+        padding: 2mm 2.5mm;
         text-align: left;
         font-weight: 600;
     }
     table.lines th.num { text-align: right; }
     table.lines td {
-        padding: 3mm 3mm;
-        border-bottom: 0.5pt solid #e9e1d8;
+        padding: 1.8mm 2.5mm;
+        border-bottom: 0.4pt solid #e9e1d8;
         vertical-align: top;
+        font-size: 9pt;
     }
     table.lines td.num { text-align: right; white-space: nowrap; }
     table.lines tr.line-row { page-break-inside: avoid; }
     .line-label { font-weight: 600; }
-    .line-desc { font-size: 8.5pt; color: #6d655d; margin-top: 1mm; }
+    .line-desc { font-size: 7.8pt; color: #6d655d; margin-top: 0.5mm; line-height: 1.3; }
 
+    /* ─── Totaux (compact) ─── */
     .totals {
-        width: 60mm;
+        width: 55mm;
         margin-left: auto;
-        margin-top: 5mm;
-        font-size: 10pt;
+        margin-top: 3mm;
+        font-size: 9pt;
     }
-    .totals tr td { padding: 1.5mm 2mm; }
+    .totals tr td { padding: 0.8mm 2mm; }
     .totals tr.total-line td {
-        border-top: 1.2pt solid {{ workspace.accent_color|default:"#F4722B" }};
+        border-top: 1pt solid {{ workspace.accent_color|default:"#F4722B" }};
         font-weight: 700;
-        font-size: 12pt;
+        font-size: 10.5pt;
         color: {{ workspace.accent_color|default:"#F4722B" }};
+        padding-top: 1.5mm;
     }
 
+    /* ─── Notes / banque (compact) ─── */
     .notes-block {
-        margin-top: 8mm;
-        padding: 4mm 5mm;
+        margin-top: 4mm;
+        padding: 2.5mm 3.5mm;
         background: #f6f3ef;
-        border-left: 3pt solid {{ workspace.accent_color|default:"#F4722B" }};
-        border-radius: 4pt;
-        font-size: 9pt;
+        border-left: 2.5pt solid {{ workspace.accent_color|default:"#F4722B" }};
+        border-radius: 3pt;
+        font-size: 8.5pt;
         color: #1d1a17;
         page-break-inside: avoid;
+        line-height: 1.35;
     }
     .notes-title {
-        font-size: 8pt;
+        font-size: 7pt;
         text-transform: uppercase;
-        letter-spacing: 1pt;
+        letter-spacing: 0.8pt;
         color: #6d655d;
-        margin-bottom: 2mm;
+        margin-bottom: 1mm;
     }
 
     .legal-mentions {
-        margin-top: 6mm;
-        font-size: 8.5pt;
+        margin-top: 3mm;
+        font-size: 7.5pt;
         color: #6d655d;
-        line-height: 1.55;
+        line-height: 1.35;
     }
+    .legal-mentions p { margin: 0.5mm 0; }
 
+    /* ─── Badges statut (compact) ─── */
     .badge {
         display: inline-block;
-        padding: 1mm 3mm;
-        border-radius: 3pt;
-        font-size: 8pt;
+        padding: 0.6mm 2mm;
+        border-radius: 2pt;
+        font-size: 7pt;
         font-weight: 700;
-        letter-spacing: 0.5pt;
+        letter-spacing: 0.3pt;
         text-transform: uppercase;
     }
     .badge-paid { background: #dcfce7; color: #15803d; }
@@ -234,21 +250,28 @@
 </head>
 <body>
 
-<!-- TITRE -->
-<div class="invoice-number">Facture</div>
-<h1 class="invoice-title">N° {{ invoice.number|default:"(brouillon)" }}</h1>
-
-{% if invoice.status == "PAID" %}
-    <div style="margin-top:2mm;"><span class="badge badge-paid">Payée</span></div>
-{% elif invoice.status == "OVERDUE" %}
-    <div style="margin-top:2mm;"><span class="badge badge-overdue">En retard</span></div>
-{% elif invoice.status == "DRAFT" %}
-    <div style="margin-top:2mm;"><span class="badge badge-draft">Brouillon</span></div>
-{% elif invoice.status == "CANCELLED" %}
-    <div style="margin-top:2mm;"><span class="badge badge-overdue">Annulée</span></div>
-{% else %}
-    <div style="margin-top:2mm;"><span class="badge badge-issued">{{ invoice.get_status_display }}</span></div>
-{% endif %}
+<!-- TITRE : Facture + N° + Badge statut sur une seule ligne (gain vertical) -->
+<table style="width:100%; border-collapse:collapse; margin-bottom:2mm;">
+    <tr>
+        <td style="vertical-align:baseline;">
+            <span class="invoice-title">Facture</span>
+            <span class="invoice-number">&nbsp;&nbsp;N° {{ invoice.number|default:"(brouillon)" }}</span>
+        </td>
+        <td style="vertical-align:baseline; text-align:right; white-space:nowrap;">
+            {% if invoice.status == "PAID" %}
+                <span class="badge badge-paid">Payée</span>
+            {% elif invoice.status == "OVERDUE" %}
+                <span class="badge badge-overdue">En retard</span>
+            {% elif invoice.status == "DRAFT" %}
+                <span class="badge badge-draft">Brouillon</span>
+            {% elif invoice.status == "CANCELLED" %}
+                <span class="badge badge-overdue">Annulée</span>
+            {% else %}
+                <span class="badge badge-issued">{{ invoice.get_status_display }}</span>
+            {% endif %}
+        </td>
+    </tr>
+</table>
 
 <!-- CLIENT (seulement, l'émetteur est dans le pied de page) -->
 <div class="client-block">
@@ -295,13 +318,13 @@
     </tr>
 </table>
 
-{% if invoice.title and project %}
-<p style="font-style:italic; color:#6d655d; margin-bottom:5mm;">{{ invoice.title }}</p>
-{% endif %}
-
-{% if invoice.period_start or invoice.period_end %}
-<p style="font-size:9pt; color:#6d655d; margin-bottom:3mm;">
-    Période facturée : {{ invoice.period_start|date:"d/m/Y"|default:"—" }} — {{ invoice.period_end|date:"d/m/Y"|default:"—" }}
+{% if invoice.title and project or invoice.period_start or invoice.period_end %}
+<p style="font-size:8pt; color:#6d655d; margin: 1mm 0 2mm 0;">
+    {% if invoice.title and project %}<em>{{ invoice.title }}</em>{% endif %}
+    {% if invoice.period_start or invoice.period_end %}
+        {% if invoice.title and project %} &middot; {% endif %}
+        Période : {{ invoice.period_start|date:"d/m/Y"|default:"—" }} → {{ invoice.period_end|date:"d/m/Y"|default:"—" }}
+    {% endif %}
 </p>
 {% endif %}
 
