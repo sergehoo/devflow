@@ -206,14 +206,17 @@ class DevflowBaseMixin(LoginRequiredMixin):
             return queryset.filter(channel__workspace_id=workspace_id)
         if "roadmap" in direct_field_names:
             return queryset.filter(roadmap__workspace_id=workspace_id)
+        # FIX : 'invoice' doit être vérifié AVANT 'milestone' / 'objective' /
+        # 'message' parce que InvoiceLine a un FK 'milestone' nullable qui
+        # casse le INNER JOIN quand milestone=NULL.
+        if "invoice" in direct_field_names:
+            return queryset.filter(invoice__workspace_id=workspace_id)
         if "milestone" in direct_field_names:
             return queryset.filter(milestone__workspace_id=workspace_id)
         if "objective" in direct_field_names:
             return queryset.filter(objective__workspace_id=workspace_id)
         if "message" in direct_field_names:
             return queryset.filter(message__channel__workspace_id=workspace_id)
-        if "invoice" in direct_field_names:
-            return queryset.filter(invoice__workspace_id=workspace_id)
 
         return queryset
 
