@@ -8957,6 +8957,42 @@ class InvoicePDFView(DevflowBaseMixin, View):
         return response
 
 
+class InvoiceDocxView(DevflowBaseMixin, View):
+    """
+    Génère et télécharge la facture au format Microsoft Word (.docx).
+
+    URL: /billing/invoices/<pk>/docx/  → name="invoice_docx"
+    Sécurité : filter_by_workspace stricte (aucune fuite cross-tenant).
+    """
+
+    def get(self, request, pk):
+        from django.http import HttpResponse, Http404
+        from project.services.invoice_docx import render_invoice_docx
+
+        invoice = self.filter_by_workspace(
+            dm.Invoice.objects.all()
+        ).select_related("project", "client", "workspace", "issued_by").filter(pk=pk).first()
+        if not invoice:
+            raise Http404("Facture introuvable.")
+
+        try:
+            docx_bytes = render_invoice_docx(invoice, request=request)
+        except Exception as exc:
+            logger.exception("Erreur génération DOCX facture %s", invoice.pk)
+            messages.error(request, f"Impossible de générer le document Word : {exc}")
+            return redirect("invoice_detail", pk=invoice.pk)
+
+        filename = (invoice.number or f"facture-{invoice.pk}").replace("/", "-")
+        response = HttpResponse(
+            docx_bytes,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ),
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}.docx"'
+        return response
+
+
 class InvoiceLineCreateView(DevflowCreateView):
     model = dm.InvoiceLine
     form_class = InvoiceLineForm
