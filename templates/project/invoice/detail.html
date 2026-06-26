@@ -59,6 +59,140 @@
     {{ lines_data|json_script:"invoice-lines-data" }}
     {{ totals_data|json_script:"invoice-totals-data" }}
 
+    {# IMPORTANT : Alpine évalue x-data au scan du DOM. Si le <script> est
+       APRÈS le <section>, "invoiceLinesEditor" n'est pas encore défini et
+       Alpine lève "is not defined". On le pré-déclare ici via un stub, puis
+       on le surcharge avec la vraie implémentation plus bas. #}
+    <script>
+    // Stub initial — sera remplacé par la vraie implémentation
+    // (qui contient toute la logique fetch + Alpine state).
+    if (typeof window.invoiceLinesEditor === 'undefined') {
+        window.invoiceLinesEditor = function(invoiceId, isEditable) {
+            return {
+                invoiceId: invoiceId,
+                isEditable: isEditable,
+                lines: [],
+                totals: {
+                    subtotal_ht: "0", discount_amount: "0", tax_rate: "0",
+                    tax_amount: "0", total_ttc: "0", currency: "XOF",
+                    status: "DRAFT", status_display: "Brouillon",
+                },
+                saving: false,
+                error: null,
+                lastSavedAt: null,
+                init() {
+                    try {
+                        const linesEl = document.getElementById("invoice-lines-data");
+                        if (linesEl) {
+                            const data = JSON.parse(linesEl.textContent || "[]");
+                            this.lines = (data || []).map(l => ({ ...l, _dirty: false }));
+                        }
+                    } catch (e) { console.warn("[invoice] lines parse:", e); }
+                    try {
+                        const totalsEl = document.getElementById("invoice-totals-data");
+                        if (totalsEl) {
+                            this.totals = JSON.parse(totalsEl.textContent || "{}");
+                        }
+                    } catch (e) { console.warn("[invoice] totals parse:", e); }
+                },
+                formatAmount(value) {
+                    const n = parseFloat(value || 0);
+                    if (Number.isNaN(n)) return "0.00";
+                    return n.toLocaleString('fr-FR', {
+                        minimumFractionDigits: 2, maximumFractionDigits: 2,
+                    });
+                },
+                _csrf() {
+                    const m = document.cookie.match(/(^|;)\s*csrftoken\s*=\s*([^;]+)/);
+                    return m ? m[2] : '';
+                },
+                async _fetch(method, url, body) {
+                    const opts = {
+                        method: method, credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this._csrf(),
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    };
+                    if (body !== undefined) opts.body = JSON.stringify(body);
+                    const resp = await fetch(url, opts);
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+                    return data;
+                },
+                _markSaved() {
+                    this.lastSavedAt = new Date().toLocaleTimeString('fr-FR');
+                    this.error = null;
+                    clearTimeout(this._savedTimeout);
+                    this._savedTimeout = setTimeout(() => { this.lastSavedAt = null; }, 4000);
+                },
+                async addLine() {
+                    if (!this.isEditable || this.saving) return;
+                    this.saving = true; this.error = null;
+                    try {
+                        const data = await this._fetch('POST',
+                            `/billing/invoices/${this.invoiceId}/lines.json`,
+                            { line_type: 'SERVICE', label: 'Nouvelle ligne',
+                              quantity: 1, unit_price: 0 });
+                        this.lines.push({ ...data.line, _dirty: false });
+                        if (data.totals) this.totals = data.totals;
+                        this._markSaved();
+                        this.$nextTick(() => {
+                            const rows = document.querySelectorAll(
+                                '#invoice-lines-tbody tr[data-line-id]');
+                            const last = rows[rows.length - 1];
+                            const input = last && last.querySelector('input[type="text"]');
+                            if (input) { input.focus(); input.select(); }
+                        });
+                    } catch (err) { this.error = err.message; }
+                    finally { this.saving = false; }
+                },
+                async patchLine(line, field, value) {
+                    if (!this.isEditable || this.saving) return;
+                    if (line[`_last_${field}`] === value) return;
+                    this.saving = true; this.error = null; line._dirty = true;
+                    try {
+                        const data = await this._fetch('PATCH',
+                            `/billing/lines/${line.id}.json`,
+                            { [field]: value });
+                        Object.assign(line, data.line, { _dirty: false });
+                        line[`_last_${field}`] = value;
+                        if (data.totals) this.totals = data.totals;
+                        this._markSaved();
+                    } catch (err) { this.error = err.message; line._dirty = false; }
+                    finally { this.saving = false; }
+                },
+                async deleteLine(line) {
+                    if (!this.isEditable || this.saving) return;
+                    if (!confirm(`Supprimer « ${line.label || 'sans titre'} » ?`)) return;
+                    this.saving = true; this.error = null;
+                    try {
+                        const data = await this._fetch('DELETE',
+                            `/billing/lines/${line.id}.json`);
+                        this.lines = this.lines.filter(l => l.id !== line.id);
+                        if (data.totals) this.totals = data.totals;
+                        this._markSaved();
+                    } catch (err) { this.error = err.message; }
+                    finally { this.saving = false; }
+                },
+                async patchTotal(field, value) {
+                    if (!this.isEditable || this.saving) return;
+                    this.saving = true; this.error = null;
+                    try {
+                        const data = await this._fetch('PATCH',
+                            `/billing/invoices/${this.invoiceId}/totals.json`,
+                            { [field]: value });
+                        if (data.totals) this.totals = data.totals;
+                        this._markSaved();
+                    } catch (err) { this.error = err.message; }
+                    finally { this.saving = false; }
+                },
+            };
+        };
+    }
+    </script>
+
     <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft"
              x-data="invoiceLinesEditor({{ invoice.pk }}, {{ is_editable|yesno:'true,false' }})"
              x-init="init()">
@@ -213,170 +347,6 @@
         </table>
     </section>
 
-<script>
-window.invoiceLinesEditor = function(invoiceId, isEditable) {
-    return {
-        invoiceId: invoiceId,
-        isEditable: isEditable,
-        lines: [],
-        totals: {
-            subtotal_ht: "0", discount_amount: "0", tax_rate: "0",
-            tax_amount: "0", total_ttc: "0", currency: "XOF",
-            status: "DRAFT", status_display: "Brouillon",
-        },
-        saving: false,
-        error: null,
-        lastSavedAt: null,
-
-        init() {
-            // Lit les données initiales depuis les <script type="application/json">
-            // injectés par Django {{ ...|json_script }}
-            try {
-                const linesEl = document.getElementById("invoice-lines-data");
-                if (linesEl) {
-                    const data = JSON.parse(linesEl.textContent || "[]");
-                    this.lines = (data || []).map(l => ({ ...l, _dirty: false }));
-                }
-            } catch (e) {
-                console.warn("[invoice] lines_data parse failed:", e);
-            }
-            try {
-                const totalsEl = document.getElementById("invoice-totals-data");
-                if (totalsEl) {
-                    this.totals = JSON.parse(totalsEl.textContent || "{}");
-                }
-            } catch (e) {
-                console.warn("[invoice] totals_data parse failed:", e);
-            }
-        },
-
-        formatAmount(value) {
-            const n = parseFloat(value || 0);
-            if (Number.isNaN(n)) return "0.00";
-            return n.toLocaleString('fr-FR', {
-                minimumFractionDigits: 2, maximumFractionDigits: 2,
-            });
-        },
-
-        _csrf() {
-            const m = document.cookie.match(/(^|;)\s*csrftoken\s*=\s*([^;]+)/);
-            return m ? m[2] : '';
-        },
-
-        async _fetch(method, url, body) {
-            const opts = {
-                method: method,
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this._csrf(),
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-            };
-            if (body !== undefined) opts.body = JSON.stringify(body);
-            const resp = await fetch(url, opts);
-            const data = await resp.json().catch(() => ({}));
-            if (!resp.ok) {
-                throw new Error(data.error || `HTTP ${resp.status}`);
-            }
-            return data;
-        },
-
-        _markSaved() {
-            const now = new Date();
-            this.lastSavedAt = now.toLocaleTimeString('fr-FR');
-            this.error = null;
-            // Efface l'indicateur après 4s
-            clearTimeout(this._savedTimeout);
-            this._savedTimeout = setTimeout(() => { this.lastSavedAt = null; }, 4000);
-        },
-
-        async addLine() {
-            if (!this.isEditable || this.saving) return;
-            this.saving = true;
-            this.error = null;
-            try {
-                const url = `/billing/invoices/${this.invoiceId}/lines.json`;
-                const data = await this._fetch('POST', url, {
-                    line_type: 'SERVICE', label: 'Nouvelle ligne',
-                    quantity: 1, unit_price: 0,
-                });
-                this.lines.push({ ...data.line, _dirty: false });
-                if (data.totals) this.totals = data.totals;
-                this._markSaved();
-                // Focus le champ label de la nouvelle ligne
-                this.$nextTick(() => {
-                    const rows = document.querySelectorAll('#invoice-lines-tbody tr[data-line-id]');
-                    const last = rows[rows.length - 1];
-                    const input = last && last.querySelector('input[type="text"]');
-                    if (input) { input.focus(); input.select(); }
-                });
-            } catch (err) {
-                this.error = err.message;
-            } finally {
-                this.saving = false;
-            }
-        },
-
-        async patchLine(line, field, value) {
-            if (!this.isEditable || this.saving) return;
-            // Détection de changement : pas d'appel si valeur identique
-            if (line[`_last_${field}`] === value) return;
-            this.saving = true;
-            this.error = null;
-            line._dirty = true;
-            try {
-                const url = `/billing/lines/${line.id}.json`;
-                const data = await this._fetch('PATCH', url, { [field]: value });
-                // Update local avec les valeurs retournées (total_amount recalculé)
-                Object.assign(line, data.line, { _dirty: false });
-                line[`_last_${field}`] = value;
-                if (data.totals) this.totals = data.totals;
-                this._markSaved();
-            } catch (err) {
-                this.error = err.message;
-                line._dirty = false;
-            } finally {
-                this.saving = false;
-            }
-        },
-
-        async deleteLine(line) {
-            if (!this.isEditable || this.saving) return;
-            if (!confirm(`Supprimer la ligne « ${line.label || 'sans titre'} » ?`)) return;
-            this.saving = true;
-            this.error = null;
-            try {
-                const url = `/billing/lines/${line.id}.json`;
-                const data = await this._fetch('DELETE', url);
-                this.lines = this.lines.filter(l => l.id !== line.id);
-                if (data.totals) this.totals = data.totals;
-                this._markSaved();
-            } catch (err) {
-                this.error = err.message;
-            } finally {
-                this.saving = false;
-            }
-        },
-
-        async patchTotal(field, value) {
-            if (!this.isEditable || this.saving) return;
-            this.saving = true;
-            this.error = null;
-            try {
-                const url = `/billing/invoices/${this.invoiceId}/totals.json`;
-                const data = await this._fetch('PATCH', url, { [field]: value });
-                if (data.totals) this.totals = data.totals;
-                this._markSaved();
-            } catch (err) {
-                this.error = err.message;
-            } finally {
-                this.saving = false;
-            }
-        },
-    };
-};
-</script>
 
     <!-- Paiements -->
     <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
