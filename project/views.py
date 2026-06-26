@@ -8800,10 +8800,12 @@ class InvoiceDetailView(DevflowDetailView):
         )
         ctx["remaining"] = invoice.remaining_due
 
-        # PR-INV-AJAX : sérialise lignes + totaux pour l'éditeur inline
+        # PR-INV-AJAX : on expose les données comme dicts Python pour utiliser
+        # le filter ``|json_script`` (plus robuste que json.dumps inline qui
+        # casse si une description contient des guillemets ou caractères spéciaux).
         from project.views_invoice_ajax import _serialize_line, _serialize_totals
-        ctx["lines_json"] = json.dumps([_serialize_line(l) for l in lines])
-        ctx["totals_json"] = json.dumps(_serialize_totals(invoice))
+        ctx["lines_data"] = [_serialize_line(l) for l in lines]
+        ctx["totals_data"] = _serialize_totals(invoice)
         ctx["is_editable"] = (invoice.status == "DRAFT")
         return ctx
 

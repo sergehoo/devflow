@@ -55,9 +55,14 @@
     </section>
 
     <!-- ─── PR-INV-AJAX : Lignes éditables inline ─── -->
+    {# Données initiales sérialisées via json_script (échappe correctement
+       les guillemets, <, >, &, et caractères Unicode). #}
+    {{ lines_data|json_script:"invoice-lines-data" }}
+    {{ totals_data|json_script:"invoice-totals-data" }}
+
     <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft"
              x-data="invoiceLinesEditor({{ invoice.pk }}, {{ is_editable|yesno:'true,false' }})"
-             x-init="init({{ lines_json|safe }}, {{ totals_json|safe }})">
+             x-init="init()">
 
         <div class="flex items-center justify-between mb-4">
             <div>
@@ -224,9 +229,26 @@ window.invoiceLinesEditor = function(invoiceId, isEditable) {
         error: null,
         lastSavedAt: null,
 
-        init(initialLines, initialTotals) {
-            this.lines = (initialLines || []).map(l => ({ ...l, _dirty: false }));
-            if (initialTotals) this.totals = initialTotals;
+        init() {
+            // Lit les données initiales depuis les <script type="application/json">
+            // injectés par Django {{ ...|json_script }}
+            try {
+                const linesEl = document.getElementById("invoice-lines-data");
+                if (linesEl) {
+                    const data = JSON.parse(linesEl.textContent || "[]");
+                    this.lines = (data || []).map(l => ({ ...l, _dirty: false }));
+                }
+            } catch (e) {
+                console.warn("[invoice] lines_data parse failed:", e);
+            }
+            try {
+                const totalsEl = document.getElementById("invoice-totals-data");
+                if (totalsEl) {
+                    this.totals = JSON.parse(totalsEl.textContent || "{}");
+                }
+            } catch (e) {
+                console.warn("[invoice] totals_data parse failed:", e);
+            }
         },
 
         formatAmount(value) {
