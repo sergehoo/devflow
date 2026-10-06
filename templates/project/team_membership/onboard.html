@@ -1,0 +1,82 @@
+{% extends 'layout/base.html' %}
+
+{% block title %}DevFlow — Ajouter un membre{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl space-y-6"
+     x-data="{ mode: '{{ form.mode.value|default:'existing' }}' }">
+
+    <section class="rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--accent)]">Équipe</p>
+                <h1 class="mt-2 font-serif text-3xl font-medium text-[var(--text1)]">Ajouter un membre</h1>
+                <p class="mt-2 text-sm text-[var(--text2)]">
+                    Rattachez un collaborateur existant ou invitez un nouvel employé : son compte est créé
+                    et activé par lien sécurisé (valable 7 jours).
+                </p>
+            </div>
+            <a href="{% url 'team_membership_list' %}"
+               class="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-2.5 text-sm font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                <i class="fa-solid fa-arrow-left"></i> Retour
+            </a>
+        </div>
+    </section>
+
+    <form method="post" novalidate class="space-y-6">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <section class="rounded-[22px] border border-red-500/20 bg-red-500/5 px-5 py-4 text-sm text-red-500">
+                {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+            </section>
+        {% endif %}
+
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {% for radio in form.mode %}
+                    <label class="flex cursor-pointer items-center gap-3 rounded-2xl border border-[var(--border)] px-4 py-3 text-sm font-semibold text-[var(--text1)]"
+                           :class="mode === '{{ radio.data.value }}' ? 'border-[var(--accent)] bg-[var(--accent)]/5' : ''">
+                        <input type="radio" name="{{ radio.data.name }}" value="{{ radio.data.value }}"
+                               x-model="mode" {% if radio.data.selected %}checked{% endif %}>
+                        {{ radio.choice_label }}
+                    </label>
+                {% endfor %}
+            </div>
+
+            <div class="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div class="md:col-span-2" x-show="mode === 'existing'">
+                    {% include "project/team_membership/_field.html" with field=form.user %}
+                </div>
+                <div x-show="mode === 'new'">{% include "project/team_membership/_field.html" with field=form.first_name %}</div>
+                <div x-show="mode === 'new'">{% include "project/team_membership/_field.html" with field=form.last_name %}</div>
+                <div x-show="mode === 'new'">{% include "project/team_membership/_field.html" with field=form.email %}</div>
+                <div>{% include "project/team_membership/_field.html" with field=form.job_title %}</div>
+            </div>
+        </section>
+
+        <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
+            <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--text3)]">Rattachement</h2>
+            <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div>{% include "project/team_membership/_field.html" with field=form.team %}</div>
+                <div>{% include "project/team_membership/_field.html" with field=form.role %}</div>
+                <div>{% include "project/team_membership/_field.html" with field=form.weekly_capacity %}</div>
+                <div>{% include "project/team_membership/_field.html" with field=form.arrival_date %}</div>
+                <div class="md:col-span-2">{% include "project/team_membership/_field.html" with field=form.manager %}</div>
+            </div>
+        </section>
+
+        <section class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <a href="{% url 'team_membership_list' %}"
+               class="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg2)] px-4 py-3 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
+                Annuler
+            </a>
+            <button type="submit"
+                    class="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white">
+                <i class="fa-solid" :class="mode === 'new' ? 'fa-paper-plane' : 'fa-user-plus'"></i>
+                <span x-text="mode === 'new' ? 'Créer et inviter' : 'Ajouter le membre'">Ajouter le membre</span>
+            </button>
+        </section>
+    </form>
+</div>
+{% endblock %}

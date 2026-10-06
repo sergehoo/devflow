@@ -89,7 +89,6 @@ INSTALLED_APPS = [
     # 'qr_code',
     # 'notifications',
     "channels",
-    'weasyprint',
     "csp",
     'drf_spectacular',
     'corsheaders',
@@ -176,6 +175,9 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"
+# Prod derrière nginx : déléguer l'envoi des MEDIA autorisés à nginx
+# (location interne /protected-media/, cf. deploy/nginx/media.conf).
+MEDIA_X_ACCEL_REDIRECT = config("MEDIA_X_ACCEL_REDIRECT", default=False, cast=bool)
 
 # NOTE — STATICFILES_STORAGE est désormais déclaré dans STORAGES["staticfiles"]
 # plus bas. Django 4.2+ refuse d'avoir les deux paramètres simultanément
@@ -243,6 +245,19 @@ CELERY_BEAT_SCHEDULE = {
     "purge-old-security-logs": {
         "task": "project.tasks.purge_old_security_logs",
         "schedule": crontab(hour=3, minute=0, day_of_week=0),
+    },
+    # Timesheets : relance quotidienne (jours ouvrés), contrôle et rapport de fin de semaine
+    "timesheet-daily-reminder": {
+        "task": "project.tasks.timesheet_daily_reminder_sweep",
+        "schedule": crontab(hour=17, minute=30, day_of_week="1-5"),
+    },
+    "timesheet-weekly-check": {
+        "task": "project.tasks.timesheet_weekly_check_sweep",
+        "schedule": crontab(hour=18, minute=0, day_of_week=5),
+    },
+    "timesheet-weekly-manager-report": {
+        "task": "project.tasks.timesheet_weekly_manager_report",
+        "schedule": crontab(hour=19, minute=0, day_of_week=5),
     },
 }
 

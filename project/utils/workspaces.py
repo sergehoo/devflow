@@ -35,11 +35,43 @@ def get_default_workspace_for_user(user):
     if membership:
         return membership.workspace
 
-    return (
-        dm.Workspace.objects.filter(is_archived=False, is_active=True)
-        .order_by("name")
-        .first()
-    )
+    # SECURITY — plus de repli sur « le premier workspace de la plateforme » :
+    # un utilisateur sans rattachement n'a accès à aucun tenant.
+    profile = getattr(user, "profile", None)
+    if profile and profile.workspace_id and not profile.workspace.is_archived:
+        return profile.workspace
+    return None
+
+
+# Ordre aligné sur l'historique de DevflowBaseMixin.filter_by_workspace.
+_WORKSPACE_LOOKUPS = (
+    ("workspace", "workspace_id"),
+    ("project", "project__workspace_id"),
+    ("team", "team__workspace_id"),
+    ("task", "task__workspace_id"),
+    ("sprint", "sprint__workspace_id"),
+    ("channel", "channel__workspace_id"),
+    ("roadmap", "roadmap__workspace_id"),
+    # 'invoice' avant 'milestone' : InvoiceLine.milestone est nullable.
+    ("invoice", "invoice__workspace_id"),
+    ("milestone", "milestone__workspace_id"),
+    ("objective", "objective__workspace_id"),
+    ("meeting", "meeting__workspace_id"),
+    ("message", "message__channel__workspace_id"),
+    ("from_task", "from_task__workspace_id"),
+    ("checklist", "checklist__task__workspace_id"),
+)
+
+
+def workspace_lookup_for_model(model):
+    """Lookup ORM menant au workspace d'un modèle (None si inconnu)."""
+    if model is dm.Workspace:
+        return "id"
+    names = {f.name for f in model._meta.fields}
+    for field, lookup in _WORKSPACE_LOOKUPS:
+        if field in names:
+            return lookup
+    return None
 
 
 def get_user_workspace_ids(user):

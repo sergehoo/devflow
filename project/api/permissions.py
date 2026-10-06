@@ -158,3 +158,62 @@ class WorkspaceScopedViewSetMixin:
         if not user or not user.is_authenticated:
             return queryset.none()
         return scope_queryset_to_user_workspaces(queryset, user)
+
+    def get_serializer(self, *args, **kwargs):
+        serializer = super().get_serializer(*args, **kwargs)
+        user = getattr(self.request, "user", None)
+        if user is not None and user.is_authenticated and not user.is_superuser:
+            scope_serializer_relations(serializer, get_user_workspace_ids(user))
+        return serializer
+
+    def perform_destroy(self, instance):
+        """SECURITY — suppression physique d'un workspace / projet soumise au RBAC."""
+        rbac_action = DESTROY_RBAC_ACTIONS.get(type(instance))
+        if rbac_action:
+            from rest_framework.exceptions import PermissionDenied
+            from project.services.rbac import RBACService
+
+            if not RBACService.can(self.request.user, rbac_action, target=instance):
+                raise PermissionDenied("Suppression non autorisée pour votre rôle.")
+        super().perform_destroy(instance)
+
+
+DESTROY_RBAC_ACTIONS = {
+    dm.Workspace: "workspace.delete",
+    dm.Project: "project.delete",
+}
+
+
+def scope_serializer_relations(serializer, workspace_ids):
+    """
+    SECURITY — restreint les champs relationnels écrivables (FK / M2M) aux
+    objets des workspaces de l'utilisateur : un PK d'un autre tenant envoyé
+    dans le payload est rejeté (« objet inexistant ») à la validation.
+    """
+    from django.contrib.auth import get_user_model
+    from rest_framework import serializers
+    from project.utils.workspaces import users_in_workspaces, workspace_lookup_for_model
+
+    User = get_user_model()
+    target = getattr(serializer, "child", serializer)
+    fields = getattr(target, "fields", None)
+    if not fields:
+        return
+    for field in fields.values():
+        relation = field.child_relation if isinstance(field, serializers.ManyRelatedField) else field
+        if not isinstance(relation, serializers.RelatedField) or relation.read_only:
+            continue
+        queryset = getattr(relation, "queryset", None)
+        model = getattr(queryset, "model", None)
+        if model is None:
+            continue
+        if model is User:
+            relation.queryset = queryset.filter(pk__in=users_in_workspaces(workspace_ids).values("pk"))
+            continue
+        lookup = workspace_lookup_for_model(model)
+        if lookup is None:
+            continue
+        condition = Q(**{f"{lookup}__in": workspace_ids})
+        if lookup == "workspace_id" and model._meta.get_field("workspace").null:
+            condition |= Q(workspace__isnull=True)
+        relation.queryset = queryset.filter(condition)

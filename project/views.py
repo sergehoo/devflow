@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import functools
+
 import json
 import logging
 from collections import OrderedDict
@@ -31,7 +33,8 @@ from django.urls import path, reverse_lazy, reverse
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views import View
-from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
+from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView, FormView
+from django.core.exceptions import PermissionDenied
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Side, Border, Alignment
 
@@ -57,6 +60,7 @@ from .utils.workspaces import (
     ensure_workspace,
     get_user_workspace_ids,
     users_for_user,
+    workspace_lookup_for_model,
 )
 
 APP_LABEL = "project"
@@ -157,8 +161,39 @@ class DevflowBaseMixin(LoginRequiredMixin):
     success_list_url_name: str | None = None
     search_fields: tuple[str, ...] = ()
 
+    def __init_subclass__(cls, **kwargs):
+        """
+        SECURITY — toute ``get_queryset()`` redéfinie dans une sous-classe est
+        automatiquement re-filtrée par workspace, même si elle n'appelle pas
+        ``super()`` (convention n°1 d'AGENTS.md, appliquée par construction).
+        """
+        super().__init_subclass__(**kwargs)
+        original = cls.__dict__.get("get_queryset")
+        if original is None or getattr(original, "_workspace_scoped", False):
+            return
+
+        @functools.wraps(original)
+        def scoped_get_queryset(self, *args, **kw):
+            qs = original(self, *args, **kw)
+            if hasattr(qs, "model") and hasattr(qs, "filter"):
+                return self.filter_by_workspace(qs)
+            return qs
+
+        scoped_get_queryset._workspace_scoped = True
+        cls.get_queryset = scoped_get_queryset
+
     def get_workspace_id(self):
-        return self.kwargs.get("workspace_id") or self.request.GET.get("workspace")
+        """``?workspace=`` / kwarg validé : 404 si le user n'y a pas accès."""
+        raw = self.kwargs.get("workspace_id") or self.request.GET.get("workspace")
+        if not raw:
+            return None
+        try:
+            workspace_id = int(raw)
+        except (TypeError, ValueError):
+            raise Http404("Workspace introuvable ou accès interdit.")
+        if workspace_id not in self._allowed_workspace_ids():
+            raise Http404("Workspace introuvable ou accès interdit.")
+        return workspace_id
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -176,49 +211,48 @@ class DevflowBaseMixin(LoginRequiredMixin):
 
         return ctx
 
-    def filter_by_workspace(self, queryset):
-        workspace_id = self.get_workspace_id()
-
-        if not workspace_id:
-            if hasattr(self, "get_current_workspace"):
-                current_workspace = self.get_current_workspace()
-                if current_workspace:
-                    workspace_id = current_workspace.id
-                else:
-                    return queryset.none()
+    def _allowed_workspace_ids(self):
+        if not hasattr(self, "_allowed_ws_ids"):
+            user = self.request.user
+            if getattr(user, "is_superuser", False):
+                self._allowed_ws_ids = set(dm.Workspace.objects.values_list("id", flat=True))
             else:
-                return queryset
+                self._allowed_ws_ids = get_user_workspace_ids(user)
+        return self._allowed_ws_ids
 
-        model = queryset.model
-        direct_field_names = {f.name for f in model._meta.fields}
+    def filter_by_workspace(self, queryset):
+        """
+        SECURITY — Restreint ``queryset`` aux workspaces accessibles.
 
-        if "workspace" in direct_field_names:
-            return queryset.filter(workspace_id=workspace_id)
-        if "project" in direct_field_names:
-            return queryset.filter(project__workspace_id=workspace_id)
-        if "team" in direct_field_names:
-            return queryset.filter(team__workspace_id=workspace_id)
-        if "task" in direct_field_names:
-            return queryset.filter(task__workspace_id=workspace_id)
-        if "sprint" in direct_field_names:
-            return queryset.filter(sprint__workspace_id=workspace_id)
-        if "channel" in direct_field_names:
-            return queryset.filter(channel__workspace_id=workspace_id)
-        if "roadmap" in direct_field_names:
-            return queryset.filter(roadmap__workspace_id=workspace_id)
-        # FIX : 'invoice' doit être vérifié AVANT 'milestone' / 'objective' /
-        # 'message' parce que InvoiceLine a un FK 'milestone' nullable qui
-        # casse le INNER JOIN quand milestone=NULL.
-        if "invoice" in direct_field_names:
-            return queryset.filter(invoice__workspace_id=workspace_id)
-        if "milestone" in direct_field_names:
-            return queryset.filter(milestone__workspace_id=workspace_id)
-        if "objective" in direct_field_names:
-            return queryset.filter(objective__workspace_id=workspace_id)
-        if "message" in direct_field_names:
-            return queryset.filter(message__channel__workspace_id=workspace_id)
+        * ``?workspace=`` / kwarg ``workspace_id`` validés par get_workspace_id()
+          (404 si non autorisé) ;
+        * sinon workspace courant (WorkspaceSecurityMixin), ou à défaut
+          l'ensemble des workspaces de l'utilisateur ;
+        * modèle sans rattachement connu → queryset vide (fail closed),
+          sauf référentiels globaux déclarés via ``workspace_global_model``.
+        """
+        if getattr(queryset, "model", None) is None:
+            return queryset
+        if getattr(self, "workspace_global_model", False):
+            return queryset
 
-        return queryset
+        workspace_id = self.get_workspace_id()
+        if queryset.model is dm.Workspace:
+            return queryset.filter(id__in=[workspace_id] if workspace_id else self._allowed_workspace_ids())
+        if workspace_id:
+            workspace_ids = [workspace_id]
+        elif hasattr(self, "get_current_workspace"):
+            current_workspace = self.get_current_workspace()
+            if not current_workspace:
+                return queryset.none()
+            workspace_ids = [current_workspace.id]
+        else:
+            workspace_ids = list(self._allowed_workspace_ids())
+
+        lookup = workspace_lookup_for_model(queryset.model)
+        if lookup is None:
+            return queryset.none()
+        return queryset.filter(**{f"{lookup}__in": workspace_ids})
 
     def build_search_query(self, term: str):
         query = Q()
@@ -442,6 +476,15 @@ class DevflowUpdateView(WorkspaceSecurityMixin, DevflowBaseMixin, UpdateView):
     def get_queryset(self):
         return self.filter_by_workspace(super().get_queryset())
 
+    def get_form_kwargs(self):
+        # SECURITY — même scoping qu'en création : sans cela les FK des
+        # formulaires d'édition acceptaient des objets d'autres tenants.
+        kwargs = super().get_form_kwargs()
+        kwargs["current_workspace"] = self.get_current_workspace()
+        kwargs["allowed_workspaces"] = self.get_user_workspaces()
+        kwargs["request"] = self.request
+        return kwargs
+
     def get_success_url(self):
         return reverse_lazy(self.success_list_url_name)
 
@@ -496,9 +539,14 @@ class DevflowDeleteView(WorkspaceSecurityMixin, DevflowBaseMixin, DeleteView):
 class ArchiveObjectView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
     model = None
     success_list_url_name = None
+    rbac_action: str | None = None
 
     def post(self, request, pk):
-        obj = self.filter_by_workspace(self.model.objects.all()).get(pk=pk)
+        obj = get_object_or_404(self.filter_by_workspace(self.model.objects.all()), pk=pk)
+        if self.rbac_action:
+            from project.services.rbac import RBACService
+            if not RBACService.can(request.user, self.rbac_action, target=obj):
+                raise PermissionDenied("Action non autorisée pour votre rôle.")
         if hasattr(obj, "archive"):
             obj.archive()
             messages.success(request, f"{self.model._meta.verbose_name.title()} archivé avec succès.")
@@ -624,8 +672,8 @@ class ProfileUpdateView(DevflowBaseMixin, WorkspaceSecurityMixin, LoginRequiredM
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        # Optionnel : limiter le choix au workspace du profil actuel
-        form.fields["workspace"].queryset = dm.Workspace.objects.filter(is_archived=False).order_by("name")
+        # SECURITY — uniquement les workspaces auxquels l'utilisateur appartient déjà.
+        form.fields["workspace"].queryset = self.get_user_workspaces()
         return form
 
     def get_context_data(self, **kwargs):
@@ -1399,6 +1447,13 @@ class WorkspaceUpdateView(DevflowUpdateView):
     page_title = "Modifier workspace"
     success_list_url_name = "workspace_list"
 
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            from project.services.rbac import RBACService
+            if not RBACService.can(request.user, "workspace.manage", target=self.get_object()):
+                raise PermissionDenied("Modification du workspace réservée à ses administrateurs.")
+        return super().dispatch(request, *args, **kwargs)
+
     def form_valid(self, form):
         messages.success(self.request, "Workspace mis à jour avec succès.")
         return super().form_valid(form)
@@ -1406,6 +1461,7 @@ class WorkspaceUpdateView(DevflowUpdateView):
 
 class WorkspaceDeleteView(DevflowDeleteView):
     model = dm.Workspace
+    rbac_delete_action = "workspace.delete"
     template_name = "project/workspace/confirm_delete.html"
     section = "workspace"
     page_title = "Supprimer workspace"
@@ -1418,6 +1474,7 @@ class WorkspaceDeleteView(DevflowDeleteView):
 
 class WorkspaceArchiveView(ArchiveObjectView):
     model = dm.Workspace
+    rbac_action = "workspace.manage"
     success_list_url_name = "workspace_list"
 
     def post(self, request, *args, **kwargs):
@@ -1518,23 +1575,80 @@ class TeamMembershipDetailView(DevflowDetailView):
     page_title = "Détail appartenance équipe"
 
 
-class TeamMembershipCreateView(DevflowCreateView):
-    model = dm.TeamMembership
-    form_class = TeamMembershipForm
-    template_name = "project/team_membership/form.html"
+class TeamMembershipCreateView(WorkspaceSecurityMixin, DevflowBaseMixin, FormView):
+    """
+    Onboarding d'un membre : utilisateur existant du workspace OU nouvel
+    employé invité par email (compte créé inactif, activé via le lien).
+    Plus aucune création préalable dans Django Admin.
+    """
+
+    template_name = "project/team_membership/onboard.html"
     section = "team"
-    page_title = "Créer appartenance équipe"
-    success_list_url_name = "team_membership_list"
+    page_title = "Ajouter un membre"
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            from project.services.rbac import RBACService
+            ws = self.get_current_workspace()
+            if not ws or not (
+                RBACService.can(request.user, "members.invite", workspace=ws)
+                or RBACService.can(request.user, "team.manage_members", workspace=ws)
+            ):
+                raise PermissionDenied("Vous n'avez pas le droit d'ajouter des membres.")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_class(self):
+        from project.forms_team import EmployeeOnboardingForm
+        return EmployeeOnboardingForm
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["workspace"] = self.get_current_workspace()
+        return kwargs
 
     def get_initial(self):
         initial = super().get_initial()
-        team_id = self.request.GET.get("team")
-        user_id = self.request.GET.get("user")
-        if team_id:
-            initial["team"] = team_id
-        if user_id:
-            initial["user"] = user_id
+        for key in ("team", "user", "role"):
+            if self.request.GET.get(key):
+                initial[key] = self.request.GET[key]
         return initial
+
+    def form_valid(self, form):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from project.services.team_onboarding import onboard_employee
+
+        data = form.cleaned_data
+        is_new = data["mode"] == form.MODE_NEW
+        try:
+            membership, invitation = onboard_employee(
+                workspace=self.get_current_workspace(),
+                actor=self.request.user,
+                team=data.get("team"),
+                role=data["role"],
+                weekly_capacity=data.get("weekly_capacity"),
+                arrival_date=data.get("arrival_date"),
+                manager_user=data.get("manager"),
+                job_title=data.get("job_title") or "",
+                existing_user=None if is_new else data["user"],
+                first_name=data.get("first_name") or "",
+                last_name=data.get("last_name") or "",
+                email=data.get("email") or "",
+                request=self.request,
+            )
+        except (DjangoValidationError, ValueError) as exc:
+            messages_list = getattr(exc, "messages", None) or [str(exc)]
+            for msg in messages_list:
+                form.add_error("manager" if "manager" in str(msg).lower() else None, msg)
+            return self.form_invalid(form)
+
+        if invitation:
+            messages.success(
+                self.request,
+                f"{membership.user.get_full_name()} ajouté·e. Invitation d'activation envoyée à {invitation.email}.",
+            )
+        else:
+            messages.success(self.request, f"{membership.user.get_full_name() or membership.user} rattaché·e.")
+        return redirect("team_membership_list")
 
 
 class TeamMembershipUpdateView(DevflowUpdateView):
@@ -1544,6 +1658,41 @@ class TeamMembershipUpdateView(DevflowUpdateView):
     section = "team"
     page_title = "Modifier appartenance équipe"
     success_list_url_name = "team_membership_list"
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["current_workspace"] = self.get_current_workspace()
+        kwargs["allowed_workspaces"] = self.get_user_workspaces()
+        return kwargs
+
+    def get_form(self, form_class=None):
+        from project.forms_team import ManagerField
+        form = super().get_form(form_class)
+        ws = self.get_current_workspace()
+        form.fields.pop("workspace", None)
+        profile = dm.UserProfile.objects.filter(user_id=self.object.user_id, workspace=ws).first()
+        if profile:
+            form.fields["manager"] = ManagerField(
+                ws, initial=profile.manager.user_id if profile.manager_id else None,
+            )
+        return form
+
+    def form_valid(self, form):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from project.services.team_onboarding import set_manager
+
+        if "manager" in form.fields:
+            manager = form.cleaned_data.get("manager")
+            if manager and manager.pk == form.instance.user_id:
+                form.add_error("manager", "Un collaborateur ne peut pas être son propre manager.")
+                return self.form_invalid(form)
+            try:
+                set_manager(form.instance.user, self.get_current_workspace(), manager)
+            except DjangoValidationError as exc:
+                for msg in exc.messages:
+                    form.add_error("manager", msg)
+                return self.form_invalid(form)
+        return super().form_valid(form)
 
 
 class TeamMembershipDeleteView(DevflowDeleteView):
@@ -2069,6 +2218,7 @@ class ProjectBudgetExportExcelView(LoginRequiredMixin, View):
             dm.Project.objects.select_related("workspace", "budgetestimatif"),
 
             pk=pk,
+            workspace_id__in=get_user_workspace_ids(request.user),
 
         )
 
@@ -3788,6 +3938,7 @@ class ProjectDocumentImportCreateView(DevflowCreateView):
             dm.Project.objects.select_related("workspace"),
             pk=project_id,
             is_archived=False,
+            workspace_id__in=get_user_workspace_ids(self.request.user),
         )
 
     def get_workspace(self):
@@ -3797,7 +3948,10 @@ class ProjectDocumentImportCreateView(DevflowCreateView):
 
         workspace_id = self.request.GET.get("workspace") or self.request.POST.get("workspace")
         if workspace_id:
-            return get_object_or_404(dm.Workspace, pk=workspace_id, is_archived=False)
+            return get_object_or_404(
+                dm.Workspace, pk=workspace_id, is_archived=False,
+                id__in=get_user_workspace_ids(self.request.user),
+            )
 
         return None
 
@@ -3885,6 +4039,7 @@ class ProjectUpdateView(DevflowUpdateView):
 
 class ProjectDeleteView(DevflowDeleteView):
     model = dm.Project
+    rbac_delete_action = "project.delete"
     section = "project"
     page_title = "Supprimer projet"
     success_list_url_name = "project_list"
@@ -5231,6 +5386,7 @@ class TaskCommentListView(DevflowListView):
         return get_object_or_404(
             dm.Task.objects.select_related("project", "assignee", "reporter"),
             pk=task_id,
+            workspace_id__in=get_user_workspace_ids(self.request.user),
         )
 
     def get_context_data(self, **kwargs):
@@ -5239,14 +5395,16 @@ class TaskCommentListView(DevflowListView):
 
         ctx["current_task"] = current_task
         ctx["current_project"] = current_task.project if current_task else None
-        ctx["quick_form"] = TaskCommentQuickForm(task=current_task)
-        ctx["tasks"] = dm.Task.objects.select_related("project").order_by("-created_at")[:100]
+        ctx["quick_form"] = TaskCommentQuickForm(task=current_task, request=self.request)
+        ctx["tasks"] = dm.Task.objects.filter(
+            workspace_id__in=get_user_workspace_ids(self.request.user),
+        ).select_related("project").order_by("-created_at")[:100]
 
         return ctx
 
     def post(self, request, *args, **kwargs):
         current_task = self.get_task()
-        form = TaskCommentQuickForm(request.POST, task=current_task)
+        form = TaskCommentQuickForm(request.POST, task=current_task, request=request)
 
         if form.is_valid():
             comment = form.save(commit=False)
@@ -6044,6 +6202,13 @@ class TimesheetEntryListView(DevflowListView):
     search_fields = ("description", "user__username", "user__first_name", "user__last_name", "project__name")
     paginate_by = 50
 
+    def get_queryset(self):
+        # Visibilité : ses propres saisies + celles de ses subordonnés (N-1, N-2…).
+        from project.services.timesheet_workflow import visible_user_ids
+        qs = super().get_queryset()
+        ws = self.get_current_workspace()
+        return qs.filter(user_id__in=visible_user_ids(self.request.user, ws)) if ws else qs.none()
+
     def get_context_data(self, **kwargs):
         from datetime import timedelta as _td
         from collections import defaultdict
@@ -6089,6 +6254,12 @@ class TimesheetEntryListView(DevflowListView):
             )
             del grp["statuses"]
 
+        from project.services.timesheet_workflow import direct_report_users
+        direct_ids = {u.pk for u in direct_report_users(self.request.user, ws)} if ws else set()
+        for grp in groups_dict.values():
+            grp["can_review"] = grp["user"].pk in direct_ids
+            grp["is_mine"] = grp["user"].pk == self.request.user.pk
+
         groups = sorted(groups_dict.values(), key=lambda g: (g["monday"], g["user"].username), reverse=True)
         ctx["weekly_groups"] = groups
         ctx["status_choices"] = dm.TimesheetEntry.ApprovalStatus.choices
@@ -6097,69 +6268,58 @@ class TimesheetEntryListView(DevflowListView):
 
 class TimesheetWeekValidateView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
     """
-    POST /timesheets/week/validate/  — valide (APPROVED) toutes les entries
-    de la semaine d'un utilisateur.
-    POST avec params : user (pk), monday (YYYY-MM-DD), action (approve|reject|reopen|submit).
+    POST /timesheets/week/validate/ — transitions hebdomadaires.
+    params : user (pk), monday (YYYY-MM-DD), action (submit|approve|reject|reopen), comment.
+      * submit          : l'employé lui-même ;
+      * approve/reject  : uniquement son manager direct (N+1) ;
+      * reopen          : N+1, déverrouillage exceptionnel (tracé).
     """
 
     def post(self, request, *args, **kwargs):
-        from datetime import date as _date, timedelta as _td
+        from datetime import date as _date
+        from project.services import timesheet_workflow as tw
 
         user_id = request.POST.get("user")
         monday_raw = request.POST.get("monday")
-        action = (request.POST.get("action") or "approve").strip()
+        action = (request.POST.get("action") or "").strip()
+        comment = request.POST.get("comment") or ""
+        back = request.META.get("HTTP_REFERER") or "timesheet_entry_list"
 
-        if not (user_id and monday_raw):
-            messages.error(request, "Paramètres manquants.")
-            return redirect("timesheet_entry_list")
         try:
-            monday = _date.fromisoformat(monday_raw)
+            monday = _date.fromisoformat(monday_raw or "")
         except ValueError:
             messages.error(request, "Date invalide.")
             return redirect("timesheet_entry_list")
 
-        target_user = get_object_or_404(User, pk=user_id)
-        sunday = monday + _td(days=6)
-        qs = self.filter_by_workspace(
-            dm.TimesheetEntry.objects.filter(
-                user=target_user,
-                entry_date__gte=monday,
-                entry_date__lte=sunday,
-            )
+        ws = self.get_current_workspace()
+        target_user = get_object_or_404(
+            User, pk=user_id or request.user.pk,
+            pk__in=tw.visible_user_ids(request.user, ws) if ws else [],
         )
-
-        if not qs.exists():
-            messages.warning(request, "Aucune entrée pour cette semaine.")
-            return redirect("timesheet_entry_list")
-
-        action_map = {
-            "submit": dm.TimesheetEntry.ApprovalStatus.SUBMITTED,
-            "approve": dm.TimesheetEntry.ApprovalStatus.APPROVED,
-            "reject": dm.TimesheetEntry.ApprovalStatus.REJECTED,
-            "reopen": dm.TimesheetEntry.ApprovalStatus.DRAFT,
-        }
-        if action not in action_map:
-            messages.error(request, "Action inconnue.")
-            return redirect("timesheet_entry_list")
-
-        new_status = action_map[action]
-        update_fields = {"approval_status": new_status}
-        if action in ("approve", "reject"):
-            update_fields["approved_by"] = request.user
-            update_fields["approved_at"] = timezone.now()
-        elif action == "reopen":
-            update_fields["approved_by"] = None
-            update_fields["approved_at"] = None
-        qs.update(**update_fields)
-
-        labels = {
-            "submit": "Semaine soumise pour validation",
-            "approve": f"Semaine du {monday:%d/%m/%Y} validée pour {target_user}",
-            "reject": "Semaine rejetée — l'utilisateur peut la modifier puis re-soumettre",
-            "reopen": "Semaine rouverte pour modifications",
-        }
-        messages.success(request, labels[action])
-        return redirect(request.META.get("HTTP_REFERER") or "timesheet_entry_list")
+        try:
+            if action == "submit":
+                if target_user.pk != request.user.pk:
+                    raise tw.TimesheetWorkflowError("Vous ne pouvez soumettre que votre propre timesheet.")
+                tw.submit_week(request.user, ws, monday)
+                messages.success(request, "Semaine soumise à votre manager pour validation.")
+            elif action in ("approve", "reject"):
+                tw.review_week(
+                    request.user, target_user, ws, monday,
+                    approve=action == "approve", comment=comment,
+                )
+                messages.success(
+                    request,
+                    f"Semaine du {monday:%d/%m/%Y} {'validée' if action == 'approve' else 'rejetée'} "
+                    f"pour {target_user.get_full_name() or target_user}.",
+                )
+            elif action == "reopen":
+                tw.reopen_week(request.user, target_user, ws, monday, comment=comment)
+                messages.success(request, "Semaine rouverte pour modifications.")
+            else:
+                messages.error(request, "Action inconnue.")
+        except tw.TimesheetWorkflowError as exc:
+            messages.error(request, str(exc))
+        return redirect(back)
 
 
 class TimesheetEntryDetailView(DevflowDetailView):
@@ -6169,7 +6329,45 @@ class TimesheetEntryDetailView(DevflowDetailView):
     page_title = "Détail timesheet"
 
 
-class TimesheetEntryCreateView(DevflowCreateView):
+class _OwnTimesheetMixin:
+    """Saisie / modification réservées à l'employé, hors semaines verrouillées."""
+
+    def _check_editable(self, form):
+        from project.services import timesheet_workflow as tw
+        try:
+            tw.assert_week_editable(self.request.user, self.get_current_workspace(), form.instance.entry_date)
+        except tw.TimesheetWorkflowError as exc:
+            form.add_error(None, str(exc))
+            return False
+        return True
+
+    def form_valid(self, form):
+        from project.services import timesheet_workflow as tw
+        form.instance.user = self.request.user
+        form.instance.workspace = self.get_current_workspace()
+        form.instance.approval_status = dm.TimesheetEntry.ApprovalStatus.DRAFT
+        form.instance.approved_by = None
+        form.instance.approved_at = None
+        if not self._check_editable(form):
+            return self.form_invalid(form)
+        response = super().form_valid(form)
+        tw.reopen_rejected_for_correction(
+            self.request.user, form.instance.workspace, form.instance.entry_date,
+        )
+        return response
+
+
+def _editable_own_entries(view):
+    return super(type(view), view).get_queryset().filter(
+        user=view.request.user,
+        approval_status__in=[
+            dm.TimesheetEntry.ApprovalStatus.DRAFT,
+            dm.TimesheetEntry.ApprovalStatus.REJECTED,
+        ],
+    )
+
+
+class TimesheetEntryCreateView(_OwnTimesheetMixin, DevflowCreateView):
     model = dm.TimesheetEntry
     form_class = TimesheetEntryForm
     section = "timesheet"
@@ -6177,12 +6375,20 @@ class TimesheetEntryCreateView(DevflowCreateView):
     success_list_url_name = "timesheet_entry_list"
 
 
-class TimesheetEntryUpdateView(DevflowUpdateView):
+class TimesheetEntryUpdateView(_OwnTimesheetMixin, DevflowUpdateView):
     model = dm.TimesheetEntry
     form_class = TimesheetEntryForm
     section = "timesheet"
     page_title = "Modifier entrée timesheet"
     success_list_url_name = "timesheet_entry_list"
+
+    def get_queryset(self):
+        return _editable_own_entries(self)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["current_workspace"] = self.get_current_workspace()
+        return kwargs
 
 
 class TimesheetEntryDeleteView(DevflowDeleteView):
@@ -6190,6 +6396,9 @@ class TimesheetEntryDeleteView(DevflowDeleteView):
     section = "timesheet"
     page_title = "Supprimer entrée timesheet"
     success_list_url_name = "timesheet_entry_list"
+
+    def get_queryset(self):
+        return _editable_own_entries(self)
 
 
 # =========================================================================
@@ -6310,7 +6519,12 @@ class TimesheetCalendarView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
 
         # ── 2. Statut semaine (verrou si APPROVED) ──────────────────
         week_status = self._compute_week_status(entry_qs)
-        is_locked = week_status == dm.TimesheetEntry.ApprovalStatus.APPROVED
+        is_locked = week_status in (
+            dm.TimesheetEntry.ApprovalStatus.APPROVED,
+            dm.TimesheetEntry.ApprovalStatus.SUBMITTED,
+        )
+        from project.services import timesheet_workflow as tw
+        week_summary = tw.week_summary(request.user, ws, monday) if ws else None
 
         # Map (task_id, day) -> hours pour les lignes "tâches"
         task_cell_map = {}
@@ -6402,6 +6616,11 @@ class TimesheetCalendarView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
                 week_status, "Aucune saisie"
             ),
             "is_locked": is_locked,
+            "can_submit": week_status in (
+                dm.TimesheetEntry.ApprovalStatus.DRAFT,
+                dm.TimesheetEntry.ApprovalStatus.REJECTED,
+            ),
+            "week_summary": week_summary,
             "projects": projects_qs,
         }
         return render(request, self.template_name, ctx)
@@ -6468,21 +6687,26 @@ class TimesheetCalendarSaveView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
         if hours < 0 or hours > 24:
             return JsonResponse({"success": False, "error": "Heures hors plage 0–24."}, status=400)
 
-        # Verrou : si la semaine est APPROVED, on refuse toute modification
+        # Verrou : semaine soumise ou validée → plus modifiable par l'employé.
+        from project.services import timesheet_workflow as tw
+        ws_lock = self.get_current_workspace()
+        try:
+            tw.assert_week_editable(request.user, ws_lock, target_date)
+        except tw.TimesheetWorkflowError as exc:
+            return JsonResponse({"success": False, "error": str(exc)}, status=403)
+
+        planned_raw = payload.get("planned_hours")
+        planned_hours = None
+        if planned_raw not in (None, ""):
+            try:
+                planned_hours = Decimal(str(planned_raw).replace(",", "."))
+            except (InvalidOperation, TypeError):
+                return JsonResponse({"success": False, "error": "Heures prévues invalides."}, status=400)
+            if planned_hours < 0 or planned_hours > 24:
+                return JsonResponse({"success": False, "error": "Heures prévues hors plage 0–24."}, status=400)
+
         monday = target_date - _td(days=target_date.weekday())
         sunday = monday + _td(days=6)
-        week_qs = dm.TimesheetEntry.objects.filter(
-            user=request.user, entry_date__gte=monday, entry_date__lte=sunday,
-        )
-        week_status_set = set(week_qs.values_list("approval_status", flat=True))
-        if (
-            week_status_set
-            and week_status_set <= {dm.TimesheetEntry.ApprovalStatus.APPROVED}
-        ):
-            return JsonResponse(
-                {"success": False, "error": "Cette semaine est validée et verrouillée."},
-                status=403,
-            )
 
         task = None
         project = None
@@ -6519,7 +6743,7 @@ class TimesheetCalendarSaveView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
 
         ws = (task.workspace if task else project.workspace) if (task or project) else None
 
-        if hours == 0:
+        if hours == 0 and not planned_hours:
             qs_del = dm.TimesheetEntry.objects.filter(
                 user=request.user, entry_date=target_date,
             )
@@ -6540,6 +6764,8 @@ class TimesheetCalendarSaveView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
                 "is_billable": True,
                 "approval_status": dm.TimesheetEntry.ApprovalStatus.DRAFT,
             }
+            if planned_hours is not None:
+                defaults["planned_hours"] = planned_hours
             if task:
                 lookup["task"] = task
             else:
@@ -6561,6 +6787,10 @@ class TimesheetCalendarSaveView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
                     for k, v in lookup.items()
                 }
                 dm.TimesheetEntry.objects.create(**{**clean_lookup, **defaults})
+
+        # Correction après rejet : toute la semaine repasse en brouillon.
+        if ws_lock is not None:
+            tw.reopen_rejected_for_correction(request.user, ws_lock, target_date)
 
         # Recalcul totaux
         week_qs = dm.TimesheetEntry.objects.filter(
@@ -7478,7 +7708,10 @@ def roadmap_item_shift_dates(request):
         item_id = payload.get("item_id")
         delta_days = int(payload.get("delta_days", 0))
 
-        roadmap_item = get_object_or_404(dm.RoadmapItem, pk=item_id)
+        roadmap_item = get_object_or_404(
+            dm.RoadmapItem, pk=item_id,
+            roadmap__workspace_id__in=get_user_workspace_ids(request.user),
+        )
 
         if delta_days == 0:
             return JsonResponse({"success": True, "message": "Aucun changement."})
@@ -8013,13 +8246,22 @@ class WorkspaceInvitationPublicAcceptView(View):
             return invitation, "expired"
         return invitation, "ok"
 
+    @staticmethod
+    def _split_user(invitation):
+        """(compte actif existant, compte créé par l'onboarding en attente d'activation)."""
+        user = User.objects.filter(email__iexact=invitation.email).first()
+        if user and not user.is_active and not user.has_usable_password():
+            return None, user
+        return user, None
+
     def get(self, request, token):
         invitation, state = self.get_invitation_or_404(token)
-        existing_user = User.objects.filter(email__iexact=invitation.email).first()
+        existing_user, pending_user = self._split_user(invitation)
         return render(request, self.template_name, {
             "invitation": invitation,
             "state": state,
             "existing_user": existing_user,
+            "pending_user": pending_user,
         })
 
     def post(self, request, token):
@@ -8033,10 +8275,25 @@ class WorkspaceInvitationPublicAcceptView(View):
         from django.db import transaction
         from django.contrib.auth import login
 
-        existing_user = User.objects.filter(email__iexact=invitation.email).first()
+        existing_user, pending_user = self._split_user(invitation)
         with transaction.atomic():
             if existing_user:
                 user = existing_user
+            elif pending_user:
+                # Compte créé par l'onboarding : activation + choix du mot de passe.
+                password = request.POST.get("password") or ""
+                if len(password) < 8:
+                    messages.error(request, "Choisissez un mot de passe d'au moins 8 caractères.")
+                    return render(request, self.template_name, {
+                        "invitation": invitation, "state": "ok",
+                        "pending_user": pending_user, "form_errors": True,
+                    })
+                user = pending_user
+                user.first_name = (request.POST.get("first_name") or "").strip() or user.first_name
+                user.last_name = (request.POST.get("last_name") or "").strip() or user.last_name
+                user.set_password(password)
+                user.is_active = True
+                user.save(update_fields=["first_name", "last_name", "password", "is_active"])
             else:
                 first_name = (request.POST.get("first_name") or "").strip()
                 last_name = (request.POST.get("last_name") or "").strip()

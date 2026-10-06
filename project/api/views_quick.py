@@ -189,10 +189,9 @@ class TaskQuickAssignJSONView(APIView):
             task.unassign(actor=request.user)
             return Response(_task_payload(task))
 
-        # On ne valide pas que l'assignee soit "membre du workspace" ici —
-        # c'est le rôle de Task.assign() / TaskForm côté serveur. On vérifie
-        # juste que l'utilisateur existe et est actif.
-        assignee = get_object_or_404(User, pk=user_id, is_active=True)
+        # SECURITY — l'assignee doit appartenir au workspace de la tâche.
+        from project.utils.workspaces import users_in_workspaces
+        assignee = get_object_or_404(users_in_workspaces([task.workspace_id]), pk=user_id)
         task.assign(assignee, assigned_by=request.user)
 
         # Recharge depuis la base (assign peut avoir muté plusieurs champs)

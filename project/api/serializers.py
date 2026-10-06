@@ -19,7 +19,7 @@ from project import models as dm
 class WorkspaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = dm.Workspace
-        fields = ["id", "name", "slug", "currency", "is_archived", "created_at", "updated_at"]
+        fields = ["id", "name", "slug", "is_archived", "created_at", "updated_at"]
         read_only_fields = ["slug", "created_at", "updated_at"]
 
 
@@ -307,7 +307,6 @@ class TaskSerializer(serializers.ModelSerializer):
             "reporter",
             "estimate_hours",
             "spent_hours",
-            "story_points",
             "due_date",
             "is_archived",
             "created_at",
@@ -335,7 +334,7 @@ class TimesheetEntrySerializer(serializers.ModelSerializer):
             "approved_at",
             "computed_cost",
         ]
-        read_only_fields = ["approved_by", "approved_at", "computed_cost"]
+        read_only_fields = ["approval_status", "approved_by", "approved_at", "computed_cost"]
 
     def get_computed_cost(self, obj):
         snap = getattr(obj, "cost_snapshot", None)

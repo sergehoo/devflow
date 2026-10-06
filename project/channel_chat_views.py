@@ -2,30 +2,28 @@ import json
 
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
 from project.models import DirectChannel, Message
+from project.services.chat import ChatService
+
+
+def _accessible_channels(user):
+    """SECURITY — canaux du tenant de l'utilisateur, privés seulement s'il en est membre."""
+    return ChatService.channels_qs_for(user)
 
 
 @login_required
 @require_GET
 def channel_chat_page(request, pk):
     channel = get_object_or_404(
-        DirectChannel.objects.prefetch_related("members").select_related("workspace"),
+        _accessible_channels(request.user).select_related("workspace"),
         pk=pk,
     )
 
-    messages = channel.messages.select_related("author").order_by("created_at")[:80]
-
-    return render(
-        request,
-        "project/chat/channel_detail.html",
-        {
-            "chat_channel": channel,
-            "messages": messages,
-        },
-    )
+    # Messagerie unifiée : la conversation s'ouvre dans Messenger.
+    return redirect(f"/chat/?channel={channel.pk}")
 
 
 @login_required
@@ -45,9 +43,8 @@ def channel_panel_data(request):
         )
 
     channels = (
-        DirectChannel.objects
+        _accessible_channels(request.user)
         .filter(workspace=workspace)
-        .prefetch_related("members")
         .order_by("name", "id")
     )
 
@@ -67,7 +64,7 @@ def channel_panel_data(request):
 @login_required
 @require_GET
 def channel_panel_detail(request, pk):
-    channel = get_object_or_404(DirectChannel, pk=pk)
+    channel = get_object_or_404(_accessible_channels(request.user), pk=pk)
 
     messages = channel.messages.select_related("author").order_by("created_at")[:80]
 
@@ -94,7 +91,7 @@ def channel_panel_detail(request, pk):
 @login_required
 @require_POST
 def channel_send_message(request, pk):
-    channel = get_object_or_404(DirectChannel, pk=pk)
+    channel = get_object_or_404(_accessible_channels(request.user), pk=pk)
 
     payload = json.loads(request.body.decode("utf-8"))
     body = (payload.get("body") or "").strip()

@@ -574,7 +574,14 @@ class AIChatService:
         wb.save(buffer)
         buffer.seek(0)
 
-        filename = f"exports/devflow_projets_risque_{timezone.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        # SECURITY — rangé par utilisateur : seul son auteur peut le télécharger
+        # (voir project.views_media.protected_media).
+        import secrets
+        owner_id = (ctx.get("user") or {}).get("id") or 0
+        filename = (
+            f"exports/u{owner_id}/devflow_projets_risque_"
+            f"{timezone.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}.xlsx"
+        )
 
         saved_path = default_storage.save(
             filename,

@@ -1,0 +1,424 @@
+{% comment %}
+Messagerie DevFlow (style Messenger).
+  messenger_mode = "bubble" → bulle flottante + petites fenêtres (desktop), plein écran (mobile)
+  messenger_mode = "page"   → page /chat/ : liste | conversation
+Aucune administration de canal : DM créés à la volée (1 par paire), conversations
+Équipe / Projet synchronisées côté serveur. Tous les accès sont vérifiés côté API/WS.
+{% endcomment %}
+{% if request.user.is_authenticated %}
+<script>
+  window.devflowMessenger = window.devflowMessenger || function ({ mode, me }) {
+    const API = "/api/v1/me/chat";
+    const csrf = () => (typeof getCookie === "function" ? getCookie("csrftoken") : "");
+    async function http(url, opts = {}) {
+      const res = await fetch(url, Object.assign({ credentials: "same-origin", headers: {} }, opts, {
+        headers: Object.assign({ "X-CSRFToken": csrf(), "X-Requested-With": "XMLHttpRequest" }, opts.headers || {}),
+      }));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || "Erreur " + res.status);
+      return data;
+    }
+    const json = (url, body) => http(url, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+    });
+
+    return {
+      mode, me,
+      panelOpen: false, loading: true, query: "",
+      conversations: [], contacts: [], windows: [], totalUnread: 0, presenceTick: 0,
+      emojis: ["👍", "❤️", "😂", "😮", "😢", "🎉"],
+      isMobile: window.matchMedia("(max-width: 767px)").matches,
+      maxWindows: 3,
+
+      async init() {
+        window.matchMedia("(max-width: 767px)").addEventListener("change", e => { this.isMobile = e.matches; });
+        await this.refresh();
+        await this.searchContacts();
+        const wanted = new URLSearchParams(window.location.search).get("channel");
+        if (wanted) {
+          const c = this.conversations.find(x => String(x.id) === wanted);
+          if (c) this.openConversation(c);
+        } else if (this.mode === "page" && !this.isMobile && this.conversations.length) {
+          this.openConversation(this.conversations[0]);
+        }
+        setInterval(() => this.refresh(), 20000);
+      },
+
+      async refresh() {
+        try {
+          const data = await http(API + "/conversations/");
+          this.conversations = data.conversations || [];
+          this.totalUnread = this.conversations.reduce((s, c) => s + (c.is_muted ? 0 : c.unread_count), 0);
+          const ids = this.conversations.map(c => c.other_user_id).filter(Boolean);
+          if (ids.length && window.devflowPresence) window.devflowPresence.fetchFor(ids);
+        } catch (e) { /* silencieux : réessai au prochain tick */ }
+        this.loading = false;
+      },
+
+      async searchContacts() {
+        try {
+          const data = await http(API + "/contacts/?limit=50&q=" + encodeURIComponent(this.query || ""));
+          this.contacts = data.contacts || [];
+          if (window.devflowPresence) window.devflowPresence.fetchFor(this.contacts.map(u => u.id));
+        } catch (e) { this.contacts = []; }
+      },
+
+      sections() {
+        const q = (this.query || "").toLowerCase();
+        const list = this.conversations.filter(c => !q || c.title.toLowerCase().includes(q));
+        return [
+          { key: "direct", label: "Messages directs", items: list.filter(c => c.section === "direct") },
+          { key: "teams", label: "Équipes", items: list.filter(c => c.section === "teams") },
+          { key: "projects", label: "Projets", items: list.filter(c => c.section === "projects") },
+          { key: "groups", label: "Groupes", items: list.filter(c => c.section === "groups") },
+        ];
+      },
+
+      onUnread(detail) {
+        if (detail && detail.delta > 0) this.refresh();
+      },
+
+      togglePanel() { this.panelOpen = !this.panelOpen; if (this.panelOpen) this.refresh(); },
+      isOpen(id) { return this.windows.some(w => w.id === id); },
+
+      async openDirect(user) {
+        try {
+          const data = await json(API + "/direct/", { user_id: user.id });
+          const conv = data.conversation || { id: data.id, title: user.display_name, kind: "DM", other_user_id: user.id };
+          await this.refresh();
+          this.openConversation(conv);
+        } catch (e) { this.toast(e.message); }
+      },
+
+      openConversation(c) {
+        if (this.isOpen(c.id)) return this.focusWindow(c.id);
+        const limit = (this.mode === "page" || this.isMobile) ? 1 : this.maxWindows;
+        while (this.windows.length >= limit) this.closeWindow(this.windows[0].id);
+        const w = {
+          id: c.id, title: c.title, kind: c.kind, other_user_id: c.other_user_id, member_count: c.member_count,
+          messages: [], draft: "", files: [], sending: false, typing: "", seen: false, socket: null,
+        };
+        this.windows.push(w);
+        if (this.isMobile && this.mode === "bubble") this.panelOpen = false;
+        this.loadMessages(this.windows[this.windows.length - 1]);
+      },
+
+      focusWindow(id) { this.$nextTick(() => this.scrollBottom(id)); },
+
+      closeWindow(id) {
+        const w = this.windows.find(x => x.id === id);
+        if (w && w.socket) { w.socket.onclose = null; w.socket.close(); }
+        this.windows = this.windows.filter(x => x.id !== id);
+      },
+
+      async loadMessages(w) {
+        try {
+          const data = await http(`${API}/channels/${w.id}/messages/?limit=60`);
+          w.messages = data.messages || [];
+          const last = w.messages[w.messages.length - 1];
+          w.seen = !!(last && last.author_id === this.me && data.others_last_read_at
+                      && data.others_last_read_at >= last.created_at);
+          this.connect(w);
+          this.markRead(w);
+          this.$nextTick(() => this.scrollBottom(w.id));
+        } catch (e) { this.toast(e.message); this.closeWindow(w.id); }
+      },
+
+      connect(w) {
+        const proto = window.location.protocol === "https:" ? "wss" : "ws";
+        const socket = new WebSocket(`${proto}://${window.location.host}/ws/channels/${w.id}/`);
+        socket.onmessage = (ev) => {
+          let data; try { data = JSON.parse(ev.data); } catch { return; }
+          if (data.type === "chat_message") this.receive(w, data.message);
+          else if (data.type === "reaction") this.applyReactions(w, data.message_id, data.reactions);
+          else if (data.type === "read" && data.user_id !== this.me) w.seen = true;
+          else if (data.type === "typing") {
+            w.typing = data.is_typing ? data.display_name : "";
+            if (data.is_typing) setTimeout(() => { w.typing = ""; }, 4000);
+          }
+        };
+        socket.onclose = () => {  // reconnexion simple tant que la fenêtre est ouverte
+          if (this.isOpen(w.id)) setTimeout(() => this.isOpen(w.id) && this.connect(w), 3000);
+        };
+        w.socket = socket;
+      },
+
+      receive(w, m) {
+        if (!m) return;
+        const idx = w.messages.findIndex(x => (m.id && x.id === m.id) || (m.client_id && x.client_id === m.client_id));
+        if (idx >= 0) w.messages.splice(idx, 1, Object.assign({}, w.messages[idx], m));
+        else w.messages.push(m);
+        w.seen = false;
+        if (m.author_id !== this.me) this.markRead(w);
+        this.$nextTick(() => this.scrollBottom(w.id));
+        this.refresh();
+      },
+
+      applyReactions(w, messageId, reactions) {
+        const m = w.messages.find(x => x.id === messageId);
+        if (!m) return;
+        const mine = new Set((m.reactions || []).filter(r => r.mine).map(r => r.emoji));
+        m.reactions = (reactions || []).map(r => Object.assign({}, r, { mine: r.mine || mine.has(r.emoji) }));
+      },
+
+      async send(w) {
+        const body = w.draft.trim();
+        if ((!body && !w.files.length) || w.sending) return;
+        const clientId = "c" + Date.now() + Math.random().toString(16).slice(2, 6);
+        w.sending = true;
+        const files = w.files.slice();
+        w.messages.push({ client_id: clientId, author_id: this.me, body: body || "📎", attachments: [], reactions: [] });
+        w.draft = ""; w.files = [];
+        this.$nextTick(() => this.scrollBottom(w.id));
+        try {
+          const form = new FormData();
+          form.append("body", body);
+          form.append("client_id", clientId);
+          files.forEach(f => form.append("files", f));
+          const msg = await http(`${API}/channels/${w.id}/messages/`, { method: "POST", body: form });
+          this.receive(w, Object.assign(msg, { client_id: clientId }));
+        } catch (e) {
+          w.messages = w.messages.filter(x => x.client_id !== clientId);
+          w.draft = body; w.files = files;
+          this.toast(e.message);
+        } finally { w.sending = false; }
+      },
+
+      async react(w, m, emoji) {
+        try {
+          const data = await json(`${API}/messages/${m.id}/reactions/`, { emoji });
+          m.reactions = data.reactions;
+        } catch (e) { this.toast(e.message); }
+      },
+
+      typing(w) {
+        if (!w.socket || w.socket.readyState !== 1 || w._typingAt > Date.now() - 2500) return;
+        w._typingAt = Date.now();
+        w.socket.send(JSON.stringify({ type: "typing.start" }));
+      },
+
+      async markRead(w) {
+        try {
+          await json(`${API}/channels/${w.id}/mark-read/`);
+          const c = this.conversations.find(x => x.id === w.id);
+          if (c) { this.totalUnread = Math.max(0, this.totalUnread - c.unread_count); c.unread_count = 0; }
+          if (window.devflowUnread) window.devflowUnread.refresh();
+        } catch (e) { /* silencieux */ }
+      },
+
+      scrollBottom(id) {
+        const el = document.getElementById("msgs-" + id);
+        if (el) el.scrollTop = el.scrollHeight;
+      },
+
+      status(userId) { this.presenceTick; return window.devflowPresence ? window.devflowPresence.statusOf(userId) : "offline"; },
+      presenceLabel(userId) { this.presenceTick; return window.devflowPresence ? window.devflowPresence.labelFor(userId) : ""; },
+      subtitle(c) {
+        if (c.kind === "TEAM") return "Équipe · " + (c.member_count || 0) + " membres";
+        if (c.kind === "PROJECT") return "Projet · " + (c.member_count || 0) + " participants";
+        return "";
+      },
+      initials(name) {
+        return (name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join("");
+      },
+      colorFor(name) {
+        const palette = ["#7C6FF7", "#FF4E00", "#0EA5C9", "#22C55E", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#14B8A6"];
+        let h = 0; for (const ch of (name || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+        return palette[h % palette.length];
+      },
+      formatTime(iso, full) {
+        if (!iso) return "";
+        const d = new Date(iso), now = new Date();
+        if (full) return d.toLocaleString("fr-FR");
+        if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+        return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+      },
+      toast(msg) {
+        if (window.devflowToast) window.devflowToast(msg, "error"); else console.warn(msg);
+      },
+    };
+  };
+</script>
+<div x-data="devflowMessenger({ mode: '{{ messenger_mode|default:'bubble' }}', me: {{ request.user.id }} })"
+     x-init="init()"
+     class="{% if messenger_mode == 'page' %}h-[calc(100vh-9rem)] min-h-[520px]{% endif %}"
+     @devflow:unread-changed.window="onUnread($event.detail)"
+     @devflow:presence-updated.window="presenceTick++">
+
+  <!-- Bulle flottante -->
+  <template x-if="mode === 'bubble'">
+    <button type="button" @click="togglePanel()"
+            class="fixed bottom-5 right-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-devaccent text-white shadow-xl transition hover:scale-105"
+            aria-label="Messagerie">
+      <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span x-show="totalUnread > 0" x-text="totalUnread > 99 ? '99+' : totalUnread"
+            class="absolute -right-1 -top-1 min-w-[1.25rem] rounded-full bg-red-500 px-1.5 text-center text-[11px] font-bold leading-5"></span>
+    </button>
+  </template>
+
+  <div :class="mode === 'page'
+          ? 'flex h-full overflow-hidden rounded-2xl border border-devborder bg-devbg2 shadow-soft'
+          : 'contents'">
+
+    <!-- Liste : Conversations | recherche | récents / membres -->
+    <aside x-show="mode === 'page' || panelOpen" x-transition.opacity
+           :class="mode === 'page'
+              ? 'flex w-full max-w-sm flex-col border-r border-devborder ' + (isMobile && windows.length ? 'hidden' : '')
+              : 'fixed z-[60] flex flex-col bg-devbg2 shadow-2xl ' + (isMobile ? 'inset-0' : 'bottom-24 right-5 h-[560px] w-[360px] rounded-2xl border border-devborder')">
+      <header class="flex items-center justify-between border-b border-devborder px-4 py-3">
+        <h2 class="text-base font-semibold text-devtext1">Discussions</h2>
+        <button x-show="mode === 'bubble'" @click="panelOpen = false" class="rounded-lg p-1 text-devtext2 hover:bg-devbg3" aria-label="Fermer">✕</button>
+      </header>
+      <div class="px-3 py-2">
+        <input type="search" x-model.debounce.250ms="query" @input.debounce.300ms="searchContacts()"
+               placeholder="Rechercher un membre ou une conversation"
+               class="w-full rounded-full border border-devborder bg-devbg3 px-4 py-2 text-sm text-devtext1 outline-none focus:border-devaccent">
+      </div>
+      <div class="flex-1 overflow-y-auto pb-2">
+        <template x-for="section in sections()" :key="section.key">
+          <div x-show="section.items.length">
+            <p class="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-devtext3" x-text="section.label"></p>
+            <template x-for="c in section.items" :key="'c' + c.id">
+              <button type="button" @click="openConversation(c)"
+                      class="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-devbg3"
+                      :class="isOpen(c.id) ? 'bg-devbg3' : ''">
+                <div class="relative">
+                  <div class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-white"
+                       :style="'background:' + colorFor(c.title)" x-text="initials(c.title)"></div>
+                  <span x-show="c.other_user_id && status(c.other_user_id) === 'online'"
+                        class="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[var(--bg2)] bg-emerald-500"></span>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-baseline justify-between gap-2">
+                    <span class="truncate text-sm text-devtext1" :class="c.unread_count ? 'font-bold' : 'font-medium'" x-text="c.title"></span>
+                    <span class="shrink-0 text-[11px] text-devtext3" x-text="formatTime(c.last_message_at)"></span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="truncate text-xs" :class="c.unread_count ? 'font-semibold text-devtext1' : 'text-devtext3'"
+                          x-text="(c.last_author_is_me && c.last_message_preview ? 'Vous : ' : '') + (c.last_message_preview || subtitle(c))"></span>
+                    <span x-show="c.unread_count" x-text="c.unread_count"
+                          class="shrink-0 rounded-full bg-devaccent px-1.5 text-[10px] font-bold leading-4 text-white"></span>
+                  </div>
+                </div>
+              </button>
+            </template>
+          </div>
+        </template>
+
+        <div x-show="contacts.length">
+          <p class="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-devtext3">Membres</p>
+          <template x-for="u in contacts" :key="'u' + u.id">
+            <button type="button" @click="openDirect(u)" class="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-devbg3">
+              <div class="relative">
+                <div class="flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold text-white"
+                     :style="'background:' + colorFor(u.display_name)" x-text="initials(u.display_name)"></div>
+                <span x-show="status(u.id) === 'online'"
+                      class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[var(--bg2)] bg-emerald-500"></span>
+              </div>
+              <div class="min-w-0">
+                <div class="truncate text-sm text-devtext1" x-text="u.display_name"></div>
+                <div class="truncate text-xs text-devtext3" x-text="presenceLabel(u.id)"></div>
+              </div>
+            </button>
+          </template>
+        </div>
+        <p x-show="!loading && !conversations.length && !contacts.length" class="px-4 py-8 text-center text-sm text-devtext3">
+          Aucune conversation pour le moment.
+        </p>
+      </div>
+    </aside>
+
+    <!-- Fenêtres de conversation -->
+    <div :class="mode === 'page'
+            ? 'flex min-w-0 flex-1 ' + (isMobile && !windows.length ? 'hidden' : '')
+            : (isMobile ? 'contents' : 'fixed bottom-0 z-[59] flex items-end gap-3 ' + (panelOpen ? 'right-[400px]' : 'right-24'))">
+      <p x-show="mode === 'page' && !windows.length" class="m-auto text-sm text-devtext3">Sélectionnez une conversation ou un membre.</p>
+      <template x-for="w in windows" :key="'w' + w.id">
+        <section class="flex flex-col bg-devbg2"
+                 :class="mode === 'page' ? 'h-full w-full'
+                    : (isMobile ? 'fixed inset-0 z-[61]' : 'h-[460px] w-[330px] rounded-t-2xl border border-b-0 border-devborder shadow-2xl')">
+          <header class="flex items-center gap-3 border-b border-devborder px-3 py-2">
+            <button x-show="isMobile" @click="closeWindow(w.id)" class="text-devtext2" aria-label="Retour">←</button>
+            <div class="relative">
+              <div class="flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold text-white"
+                   :style="'background:' + colorFor(w.title)" x-text="initials(w.title)"></div>
+              <span x-show="w.other_user_id && status(w.other_user_id) === 'online'"
+                    class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[var(--bg2)] bg-emerald-500"></span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-semibold text-devtext1" x-text="w.title"></div>
+              <div class="truncate text-[11px] text-devtext3"
+                   x-text="w.typing ? w.typing + ' écrit…' : (w.other_user_id ? presenceLabel(w.other_user_id) : subtitle(w))"></div>
+            </div>
+            <button x-show="!isMobile && mode === 'bubble'" @click="closeWindow(w.id)" class="rounded-lg p-1 text-devtext2 hover:bg-devbg3" aria-label="Fermer">✕</button>
+          </header>
+
+          <div class="flex-1 space-y-1 overflow-y-auto px-3 py-3" :id="'msgs-' + w.id">
+            <template x-for="(m, i) in w.messages" :key="m.id || m.client_id">
+              <div class="group flex flex-col" :class="m.author_id === me ? 'items-end' : 'items-start'">
+                <span x-show="w.kind !== 'DM' && m.author_id !== me && (i === 0 || w.messages[i - 1].author_id !== m.author_id)"
+                      class="mb-0.5 px-2 text-[11px] text-devtext3" x-text="m.author_name"></span>
+                <div class="relative max-w-[80%]">
+                  <div x-show="m.body && m.body !== '📎'"
+                       class="whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm"
+                       :class="m.author_id === me ? 'bg-devaccent text-white' : 'bg-devbg3 text-devtext1'"
+                       x-text="m.body" :title="formatTime(m.created_at, true)"></div>
+                  <template x-for="a in (m.attachments || [])" :key="a.id">
+                    <a :href="a.url" target="_blank" rel="noopener" class="mt-1 block">
+                      <img x-show="a.is_image" :src="a.url" :alt="a.name" class="max-h-48 rounded-xl border border-devborder">
+                      <span x-show="!a.is_image" class="inline-flex items-center gap-2 rounded-xl border border-devborder bg-devbg3 px-3 py-2 text-xs text-devtext1">
+                        📎 <span class="truncate" x-text="a.name"></span>
+                      </span>
+                    </a>
+                  </template>
+                  <div x-show="(m.reactions || []).length" class="mt-0.5 flex flex-wrap gap-1"
+                       :class="m.author_id === me ? 'justify-end' : ''">
+                    <template x-for="r in m.reactions" :key="r.emoji">
+                      <button @click="react(w, m, r.emoji)"
+                              class="rounded-full border px-1.5 text-xs"
+                              :class="r.mine ? 'border-devaccent bg-devaccent/10' : 'border-devborder bg-devbg2'"
+                              x-text="r.emoji + ' ' + r.count"></button>
+                    </template>
+                  </div>
+                  <div x-show="m.id" class="absolute -top-7 hidden gap-0.5 rounded-full border border-devborder bg-devbg2 px-1.5 py-0.5 shadow group-hover:flex"
+                       :class="m.author_id === me ? 'right-0' : 'left-0'">
+                    <template x-for="e in emojis" :key="e">
+                      <button @click="react(w, m, e)" class="text-sm transition hover:scale-125" x-text="e"></button>
+                    </template>
+                  </div>
+                </div>
+                <span x-show="m.author_id === me && i === w.messages.length - 1 && w.seen"
+                      class="px-2 text-[10px] text-devtext3">Vu</span>
+              </div>
+            </template>
+          </div>
+
+          <form @submit.prevent="send(w)" class="border-t border-devborder p-2">
+            <div x-show="w.files.length" class="mb-1 flex flex-wrap gap-1">
+              <template x-for="(f, fi) in w.files" :key="fi">
+                <span class="inline-flex items-center gap-1 rounded-full bg-devbg3 px-2 py-0.5 text-[11px] text-devtext2">
+                  <span class="max-w-[140px] truncate" x-text="f.name"></span>
+                  <button type="button" @click="w.files.splice(fi, 1)">✕</button>
+                </span>
+              </template>
+            </div>
+            <div class="flex items-end gap-2">
+              <label class="cursor-pointer rounded-full p-2 text-devtext2 hover:bg-devbg3" title="Joindre un fichier">
+                📎<input type="file" multiple class="hidden" @change="w.files.push(...$event.target.files); $event.target.value = ''">
+              </label>
+              <textarea x-model="w.draft" rows="1" placeholder="Aa"
+                        @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); send(w); }"
+                        @input="typing(w)"
+                        class="max-h-28 flex-1 resize-none rounded-2xl border border-devborder bg-devbg3 px-3 py-2 text-sm text-devtext1 outline-none focus:border-devaccent"></textarea>
+              <button type="submit" :disabled="w.sending || (!w.draft.trim() && !w.files.length)"
+                      class="rounded-full p-2 text-devaccent disabled:opacity-40" aria-label="Envoyer">➤</button>
+            </div>
+          </form>
+        </section>
+      </template>
+    </div>
+  </div>
+</div>
+
+
+{% endif %}

@@ -907,3 +907,32 @@ def send_meeting_minutes_email_async(self, meeting_id: int,
         except Exception:
             pass
         return {"ok": False, "reason": str(exc)}
+
+
+# =============================================================================
+# Timesheets — relances & rapport hebdomadaire managers
+# =============================================================================
+def _parse_day(day_iso):
+    from datetime import date as _date
+    return _date.fromisoformat(day_iso) if day_iso else None
+
+
+@shared_task(name="project.tasks.timesheet_daily_reminder_sweep")
+def timesheet_daily_reminder_sweep(day_iso=None):
+    """Jours ouvrés : relance les membres sans saisie du jour."""
+    from project.services.timesheet_reminders import send_daily_reminders
+    return send_daily_reminders(_parse_day(day_iso))
+
+
+@shared_task(name="project.tasks.timesheet_weekly_check_sweep")
+def timesheet_weekly_check_sweep(day_iso=None):
+    """Fin de semaine : alerte employé + N+1 si incomplet, critique si vide."""
+    from project.services.timesheet_reminders import send_weekly_checks
+    return send_weekly_checks(_parse_day(day_iso))
+
+
+@shared_task(name="project.tasks.timesheet_weekly_manager_report")
+def timesheet_weekly_manager_report(day_iso=None):
+    """Fin de semaine : rapport N+1 (son équipe) et direction (consolidé)."""
+    from project.services.timesheet_reminders import send_weekly_reports
+    return send_weekly_reports(_parse_day(day_iso))

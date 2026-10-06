@@ -239,6 +239,52 @@ class BaseStyledModelForm(forms.ModelForm):
 
             widget.attrs.setdefault("autocomplete", "off")
 
+        self._scope_fk_fields()
+
+    # ── SECURITY — scoping multi-tenant des clés étrangères ──────────────
+    def _scoping_workspace_ids(self):
+        if self.allowed_workspaces is not None:
+            return {getattr(w, "pk", w) for w in self.allowed_workspaces}
+        if self.current_workspace is not None:
+            return {self.current_workspace.pk}
+        user = getattr(self.request, "user", None)
+        if user is not None and user.is_authenticated:
+            from project.utils.workspaces import get_user_workspace_ids
+            return get_user_workspace_ids(user)
+        return None
+
+    def _scope_fk_fields(self):
+        """
+        Restreint chaque ModelChoiceField aux objets des workspaces autorisés :
+        un PK d'un autre tenant falsifié dans le POST est rejeté à la validation.
+        Ré-appliqué dans full_clean() pour couvrir les sous-classes qui
+        redéfinissent un queryset après l'init de base.
+        """
+        ws_ids = self._scoping_workspace_ids()
+        if ws_ids is None:
+            return
+        from django.db.models import Q
+        from project.utils.workspaces import users_in_workspaces, workspace_lookup_for_model
+
+        for field in self.fields.values():
+            qs = getattr(field, "queryset", None)
+            model = getattr(qs, "model", None)
+            if model is None:
+                continue
+            if model is User:
+                field.queryset = qs.filter(pk__in=users_in_workspaces(ws_ids).values("pk"))
+                continue
+            lookup = workspace_lookup_for_model(model)
+            if lookup is None:
+                continue  # référentiel global (catégories, etc.)
+            condition = Q(**{f"{lookup}__in": ws_ids})
+            if lookup == "workspace_id" and model._meta.get_field("workspace").null:
+                condition |= Q(workspace__isnull=True)  # objets système partagés
+            field.queryset = qs.filter(condition)
+
+    def full_clean(self):
+        self._scope_fk_fields()
+        super().full_clean()
 
 
 # =============================================================================
@@ -406,11 +452,10 @@ class TeamMembershipForm(BaseStyledModelForm):
                     workspace=ws, is_archived=False
                 ).order_by("name")
             if "user" in self.fields:
-                # Tous les users actifs : on autorise à ajouter un user
-                # pas encore membre du workspace (typique du flow d'onboarding).
-                self.fields["user"].queryset = User.objects.filter(
-                    is_active=True
-                ).order_by("last_name", "first_name", "username")
+                # Limité au workspace courant : les nouveaux employés passent
+                # par l'onboarding (/team-memberships/create/, mode invitation).
+                from project.services.team_onboarding import workspace_users
+                self.fields["user"].queryset = workspace_users(ws)
 
     def clean_current_load_percent(self):
         value = self.cleaned_data.get("current_load_percent") or 0
@@ -1554,27 +1599,39 @@ class ReactionForm(BaseStyledModelForm):
 # TIMESHEET / DASHBOARD / PREFERENCES
 # =============================================================================
 class TimesheetEntryForm(BaseStyledModelForm):
+    """
+    Saisie de l'employé connecté : user, workspace et champs de validation
+    sont imposés côté serveur (validation réservée au N+1 via le workflow).
+    """
+
     class Meta:
         model = TimesheetEntry
         fields = [
-            "user",
-            "workspace",
             "project",
             "task",
             "entry_date",
+            "planned_hours",
             "hours",
             "description",
             "is_billable",
-            "approved_by",
-            "approved_at",
         ]
         widgets = {
             "entry_date": forms.DateInput(
                 format="%Y-%m-%d",
                 attrs={"type": "date"},
             ),
-            "approved_at": forms.DateTimeInput(),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ws = self.current_workspace or getattr(self.instance, "workspace", None)
+        if ws:
+            self.fields["project"].queryset = Project.objects.filter(
+                workspace=ws, is_archived=False,
+            ).order_by("name")
+            self.fields["task"].queryset = Task.objects.filter(
+                workspace=ws, is_archived=False,
+            ).order_by("title")
 
 
 class DashboardSnapshotForm(BaseStyledModelForm):

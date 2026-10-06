@@ -329,12 +329,70 @@ class UserProfile(TimeStampedModel):
     # ───────────── Méta ─────────────
     joined_company_at = models.DateField(null=True, blank=True)
 
+    # ───────────── Hiérarchie ─────────────
+    # Seul le N+1 est stocké : N+2, N+3… se déduisent de la chaîne
+    # (voir management_chain()).
+    manager = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="direct_reports",
+        help_text="Manager direct (N+1), dans le même workspace.",
+    )
+
     class Meta:
         unique_together = [("user", "workspace")]
         ordering = ["user__username"]
 
     def __str__(self):
         return f"{self.user} · {self.get_seniority_display()}"
+
+    def clean(self):
+        super().clean()
+        manager = self.manager
+        if manager is None:
+            return
+        if (self.pk and manager.pk == self.pk) or manager.user_id == self.user_id:
+            raise ValidationError({"manager": "Un collaborateur ne peut pas être son propre manager."})
+        if manager.workspace_id != self.workspace_id:
+            raise ValidationError({"manager": "Le manager doit appartenir au même workspace."})
+        if self.pk:
+            seen = set()
+            node = manager
+            while node is not None and node.pk not in seen:
+                if node.pk == self.pk:
+                    raise ValidationError({"manager": "Cette affectation créerait un cycle hiérarchique."})
+                seen.add(node.pk)
+                node = node.manager
+
+    def management_chain(self, max_depth=20):
+        """[N+1, N+2, …] — protégé contre les cycles hérités."""
+        chain, seen = [], {self.pk}
+        node = self.manager
+        while node is not None and node.pk not in seen and len(chain) < max_depth:
+            chain.append(node)
+            seen.add(node.pk)
+            node = node.manager
+        return chain
+
+    def manager_at_level(self, level):
+        """level=1 → N+1, level=2 → N+2… ; None si la chaîne est plus courte."""
+        chain = self.management_chain()
+        return chain[level - 1] if 0 < level <= len(chain) else None
+
+    def all_reports(self):
+        """Tous les subordonnés (directs et indirects)."""
+        result, seen = [], {self.pk}
+        frontier = [self.pk]
+        while frontier:
+            children = list(
+                UserProfile.objects.filter(manager_id__in=frontier).exclude(pk__in=seen)
+            )
+            frontier = [c.pk for c in children]
+            seen.update(frontier)
+            result.extend(children)
+        return result
 
 
 class ProjectCategory(models.Model):
@@ -1792,15 +1850,52 @@ class ActivityLog(TimeStampedModel):
 
 
 class DirectChannel(TimeStampedModel):
+    """
+    Conversation interne de la messagerie (jamais administrée par l'utilisateur) :
+      * DM      — une seule par paire d'utilisateurs et workspace (dm_key) ;
+      * TEAM    — une par équipe, membres synchronisés ;
+      * PROJECT — une par projet, participants synchronisés ;
+      * GROUP   — conversations historiques.
+    """
+
+    class Kind(models.TextChoices):
+        DM = "DM", "Message direct"
+        TEAM = "TEAM", "Équipe"
+        PROJECT = "PROJECT", "Projet"
+        GROUP = "GROUP", "Groupe"
+
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="channels")
     name = models.CharField(max_length=120)
     is_private = models.BooleanField(default=False)
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, through="ChannelMembership",
                                      related_name="devflow_channels")
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.GROUP, db_index=True)
+    dm_key = models.CharField(
+        max_length=40, null=True, blank=True,
+        help_text="« <user_id_min>:<user_id_max> » pour les DM (unicité par paire).",
+    )
+    team = models.ForeignKey(
+        Team, on_delete=models.CASCADE, null=True, blank=True, related_name="chat_channels",
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, null=True, blank=True, related_name="chat_channels",
+    )
 
     class Meta:
         unique_together = [("workspace", "name")]
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workspace", "dm_key"], name="uniq_chat_dm_pair",
+                condition=Q(dm_key__isnull=False),
+            ),
+            models.UniqueConstraint(
+                fields=["team"], name="uniq_chat_team_channel", condition=Q(team__isnull=False),
+            ),
+            models.UniqueConstraint(
+                fields=["project"], name="uniq_chat_project_channel", condition=Q(project__isnull=False),
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -1854,6 +1949,10 @@ class TimesheetEntry(TimeStampedModel):
     task = models.ForeignKey("Task", on_delete=models.SET_NULL, null=True, blank=True, related_name="timesheet_entries")
 
     entry_date = models.DateField(default=timezone.localdate)
+    planned_hours = models.DecimalField(
+        max_digits=6, decimal_places=2, default=0,
+        help_text="Heures prévues pour cette ligne (planification).",
+    )
     hours = models.DecimalField(max_digits=6, decimal_places=2)
     description = models.TextField(blank=True)
 
@@ -1888,6 +1987,70 @@ class TimesheetEntry(TimeStampedModel):
 
     def __str__(self):
         return f"{self.user} · {self.hours}h · {self.entry_date}"
+
+
+class TimesheetApprovalLog(TimeStampedModel):
+    """Historique / audit du workflow hebdomadaire des timesheets."""
+
+    class Action(models.TextChoices):
+        SUBMITTED = "SUBMITTED", "Soumise"
+        APPROVED = "APPROVED", "Validée"
+        REJECTED = "REJECTED", "Rejetée"
+        REOPENED = "REOPENED", "Rouverte"
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="timesheet_approval_logs")
+    employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="timesheet_approval_logs",
+    )
+    week_start = models.DateField()
+    action = models.CharField(max_length=12, choices=Action.choices)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="timesheet_actions",
+    )
+    comment = models.TextField(blank=True)
+    total_hours = models.DecimalField(max_digits=7, decimal_places=2, default=0)
+    entry_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["workspace", "employee", "week_start"], name="ts_log_ws_emp_week_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.employee} · {self.week_start} · {self.get_action_display()}"
+
+
+class TimesheetReminderLog(TimeStampedModel):
+    """Trace des relances / rapports envoyés : garantit l'absence de doublons."""
+
+    class Kind(models.TextChoices):
+        DAILY_MISSING = "DAILY_MISSING", "Relance quotidienne"
+        WEEKLY_INCOMPLETE = "WEEKLY_INCOMPLETE", "Semaine incomplète"
+        WEEKLY_MISSING = "WEEKLY_MISSING", "Aucun timesheet (critique)"
+        WEEKLY_REPORT_MANAGER = "WEEKLY_REPORT_MANAGER", "Rapport hebdo N+1"
+        WEEKLY_REPORT_TOP = "WEEKLY_REPORT_TOP", "Rapport hebdo direction"
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="timesheet_reminder_logs")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="timesheet_reminder_logs",
+    )
+    kind = models.CharField(max_length=24, choices=Kind.choices)
+    period_start = models.DateField()
+    email_sent = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workspace", "user", "kind", "period_start"],
+                name="uniq_timesheet_reminder",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} · {self.kind} · {self.period_start}"
 
 
 class DashboardSnapshot(TimeStampedModel):

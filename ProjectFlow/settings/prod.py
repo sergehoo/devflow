@@ -2,7 +2,8 @@ from .base import *
 
 import os
 
-DEBUG = True
+# SECURITY — jamais de DEBUG en production (pages d'erreur détaillées, fuite de settings).
+DEBUG = False
 
 # SECRET_KEY = 'django-insecure-xosdj%%2kmu2yvy5s2ut*r_#+zvp+_tm21h(en$*a0lla-q=4b'
 

@@ -10,7 +10,8 @@ ALLOWED_HOSTS = ['*']
 # GDAL_LIBRARY_PATH = "/opt/homebrew/lib/libgdal.dylib"
 # GEOS_LIBRARY_PATH = "/opt/homebrew/lib/libgeos_c.dylib"
 
-DEBUG = True
+# Piloté par l'environnement : le docker-compose (DEBUG=False) utilise ces settings.
+DEBUG = config("DEBUG", default=True, cast=bool)
 
 
 DATABASES = {

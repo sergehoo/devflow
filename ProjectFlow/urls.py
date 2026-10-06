@@ -81,6 +81,12 @@ from project.views_chat import ChatView  # Chat unifié
 
 app_name = "project"
 
+# Messagerie : les canaux / memberships / messages / réactions / pièces jointes
+# ne sont plus administrables depuis l'UI — tout passe par /chat/ (Messenger).
+from django.views.generic import RedirectView as _RedirectView  # noqa: E402
+
+_MESSENGER_REDIRECT = _RedirectView.as_view(url="/chat/", query_string=False)
+
 urlpatterns = [
     path('devflo/admin/back', admin.site.urls),
     path('accounts/', include('allauth.urls')),
@@ -248,30 +254,30 @@ urlpatterns = [
     path("activity-logs/<int:pk>/update/", ActivityLogUpdateView.as_view(), name="activity_log_update"),
     path("activity-logs/<int:pk>/delete/", ActivityLogDeleteView.as_view(), name="activity_log_delete"),
 
-    path("channels/<int:pk>/", channel_chat_page, name="channel_chat_page"),
+    path("channels/<int:pk>/", channel_chat_page, name="channel_chat_page"),  # → /chat/?channel=<pk>
 
     path("channels/panel/", channel_panel_data, name="channel_panel_data"),
     path("channels/<int:pk>/panel/", channel_panel_detail, name="channel_panel_detail"),
     path("channels/<int:pk>/messages/send/", channel_send_message, name="channel_send_message"),
-    path("channels/", DirectChannelListView.as_view(), name="direct_channel_list"),
-    path("channels/create/", DirectChannelCreateView.as_view(), name="direct_channel_create"),
-    path("channels/<int:pk>/", DirectChannelDetailView.as_view(), name="direct_channel_detail"),
-    path("channels/<int:pk>/update/", DirectChannelUpdateView.as_view(), name="direct_channel_update"),
-    path("channels/<int:pk>/delete/", DirectChannelDeleteView.as_view(), name="direct_channel_delete"),
+    path("channels/", _MESSENGER_REDIRECT, name="direct_channel_list"),
+    path("channels/create/", _MESSENGER_REDIRECT, name="direct_channel_create"),
+    path("channels/<int:pk>/", _MESSENGER_REDIRECT, name="direct_channel_detail"),
+    path("channels/<int:pk>/update/", _MESSENGER_REDIRECT, name="direct_channel_update"),
+    path("channels/<int:pk>/delete/", _MESSENGER_REDIRECT, name="direct_channel_delete"),
 
-    path("channel-memberships/", ChannelMembershipListView.as_view(), name="channel_membership_list"),
-    path("channel-memberships/create/", ChannelMembershipCreateView.as_view(), name="channel_membership_create"),
-    path("channel-memberships/<int:pk>/", ChannelMembershipDetailView.as_view(), name="channel_membership_detail"),
-    path("channel-memberships/<int:pk>/update/", ChannelMembershipUpdateView.as_view(),
+    path("channel-memberships/", _MESSENGER_REDIRECT, name="channel_membership_list"),
+    path("channel-memberships/create/", _MESSENGER_REDIRECT, name="channel_membership_create"),
+    path("channel-memberships/<int:pk>/", _MESSENGER_REDIRECT, name="channel_membership_detail"),
+    path("channel-memberships/<int:pk>/update/", _MESSENGER_REDIRECT,
          name="channel_membership_update"),
-    path("channel-memberships/<int:pk>/delete/", ChannelMembershipDeleteView.as_view(),
+    path("channel-memberships/<int:pk>/delete/", _MESSENGER_REDIRECT,
          name="channel_membership_delete"),
 
-    path("messages/", MessageListView.as_view(), name="message_list"),
-    path("messages/create/", MessageCreateView.as_view(), name="message_create"),
-    path("messages/<int:pk>/", MessageDetailView.as_view(), name="message_detail"),
-    path("messages/<int:pk>/update/", MessageUpdateView.as_view(), name="message_update"),
-    path("messages/<int:pk>/delete/", MessageDeleteView.as_view(), name="message_delete"),
+    path("messages/", _MESSENGER_REDIRECT, name="message_list"),
+    path("messages/create/", _MESSENGER_REDIRECT, name="message_create"),
+    path("messages/<int:pk>/", _MESSENGER_REDIRECT, name="message_detail"),
+    path("messages/<int:pk>/update/", _MESSENGER_REDIRECT, name="message_update"),
+    path("messages/<int:pk>/delete/", _MESSENGER_REDIRECT, name="message_delete"),
 
     path("timesheets/", TimesheetCalendarView.as_view(), name="timesheet_calendar"),
     path("timesheets/list/", TimesheetEntryListView.as_view(), name="timesheet_entry_list"),
@@ -409,18 +415,18 @@ urlpatterns = [
     path("webhooks/<int:pk>/update/", WebhookUpdateView.as_view(), name="webhook_update"),
     path("webhooks/<int:pk>/delete/", WebhookDeleteView.as_view(), name="webhook_delete"),
 
-    path("reactions/", ReactionListView.as_view(), name="reaction_list"),
-    path("reactions/create/", ReactionCreateView.as_view(), name="reaction_create"),
-    path("reactions/<int:pk>/", ReactionDetailView.as_view(), name="reaction_detail"),
-    path("reactions/<int:pk>/update/", ReactionUpdateView.as_view(), name="reaction_update"),
-    path("reactions/<int:pk>/delete/", ReactionDeleteView.as_view(), name="reaction_delete"),
+    path("reactions/", _MESSENGER_REDIRECT, name="reaction_list"),
+    path("reactions/create/", _MESSENGER_REDIRECT, name="reaction_create"),
+    path("reactions/<int:pk>/", _MESSENGER_REDIRECT, name="reaction_detail"),
+    path("reactions/<int:pk>/update/", _MESSENGER_REDIRECT, name="reaction_update"),
+    path("reactions/<int:pk>/delete/", _MESSENGER_REDIRECT, name="reaction_delete"),
 
-    path("message-attachments/", MessageAttachmentListView.as_view(), name="message_attachment_list"),
-    path("message-attachments/create/", MessageAttachmentCreateView.as_view(), name="message_attachment_create"),
-    path("message-attachments/<int:pk>/", MessageAttachmentDetailView.as_view(), name="message_attachment_detail"),
-    path("message-attachments/<int:pk>/update/", MessageAttachmentUpdateView.as_view(),
+    path("message-attachments/", _MESSENGER_REDIRECT, name="message_attachment_list"),
+    path("message-attachments/create/", _MESSENGER_REDIRECT, name="message_attachment_create"),
+    path("message-attachments/<int:pk>/", _MESSENGER_REDIRECT, name="message_attachment_detail"),
+    path("message-attachments/<int:pk>/update/", _MESSENGER_REDIRECT,
          name="message_attachment_update"),
-    path("message-attachments/<int:pk>/delete/", MessageAttachmentDeleteView.as_view(),
+    path("message-attachments/<int:pk>/delete/", _MESSENGER_REDIRECT,
          name="message_attachment_delete"),
 
     path("sprint-reviews/", SprintReviewListView.as_view(), name="sprint_review_list"),
@@ -924,6 +930,12 @@ if settings.DEBUG:
         path("preview/error/<str:code>/", _preview_error, name="preview_error"),
     ]
 
+# SECURITY — MEDIA servis uniquement après contrôle d'accès (workspace).
+from project.views_media import protected_media  # noqa: E402
+
+urlpatterns += [
+    re_path(r"^%s(?P<path>.*)$" % settings.MEDIA_URL.lstrip("/"), protected_media, name="protected_media"),
+]
+
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

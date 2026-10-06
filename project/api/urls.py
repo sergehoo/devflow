@@ -18,9 +18,11 @@ from project.api.views_chat import (
     ChatChannelMessagesView,
     ChatChannelsListView,
     ChatContactsView,
+    ChatConversationsView,
     ChatDirectCreateView,
     ChatGroupCreateView,
     ChatMarkReadView,
+    ChatReactionView,
     ChatUnreadCountView,
 )
 from project.api.views_presence import (
@@ -123,6 +125,8 @@ urlpatterns = [
     path("ai/chat/stream/", AIChatStreamView.as_view(), name="api-ai-chat-stream"),
 
     # ────── Chat collaborateurs (DM + groupes) — PR Chat ──────
+    path("me/chat/conversations/", ChatConversationsView.as_view(), name="api-chat-conversations"),
+    path("me/chat/messages/<int:pk>/reactions/", ChatReactionView.as_view(), name="api-chat-reaction"),
     path("me/chat/channels/",
          ChatChannelsListView.as_view(),
          name="api-chat-channels"),

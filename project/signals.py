@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db.models import Q
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
@@ -497,3 +497,50 @@ def reverse_spent_hours_to_timesheet_on_done(sender, instance, created, **kwargs
     except Exception:
         # Ne jamais bloquer le save de la tâche à cause du timesheet.
         pass
+
+
+# =============================================================================
+# Messagerie — conversations automatiques Équipe / Projet (idempotent)
+# =============================================================================
+def _sync_chat(callback, obj):
+    from django.db import transaction
+
+    def run():
+        try:
+            callback(obj)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("chat sync failed for %r", obj)
+
+    transaction.on_commit(run)
+
+
+@receiver(post_save, sender=dm.Team)
+def chat_sync_team(sender, instance, **kwargs):
+    from project.services.chat import ChatService
+    _sync_chat(ChatService.sync_team_channel, instance)
+
+
+@receiver(post_save, sender=dm.TeamMembership)
+@receiver(post_delete, sender=dm.TeamMembership)
+def chat_sync_team_membership(sender, instance, **kwargs):
+    from project.services.chat import ChatService
+    if instance.team_id and dm.Team.objects.filter(pk=instance.team_id).exists():
+        _sync_chat(ChatService.sync_team_channel, instance.team)
+
+
+@receiver(post_save, sender=dm.Project)
+def chat_sync_project(sender, instance, created, update_fields=None, **kwargs):
+    # Les sauvegardes partielles (recalculs budgétaires…) ne touchent pas aux participants.
+    if not created and update_fields and not {"owner", "product_manager"} & set(update_fields):
+        return
+    from project.services.chat import ChatService
+    _sync_chat(ChatService.sync_project_channel, instance)
+
+
+@receiver(post_save, sender=dm.ProjectMember)
+@receiver(post_delete, sender=dm.ProjectMember)
+def chat_sync_project_member(sender, instance, **kwargs):
+    from project.services.chat import ChatService
+    if dm.Project.objects.filter(pk=instance.project_id).exists():
+        _sync_chat(ChatService.sync_project_channel, instance.project)

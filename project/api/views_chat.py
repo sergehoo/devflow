@@ -38,9 +38,13 @@ def _resolve_workspace(request):
         request.data.get("workspace_id") if hasattr(request, "data") else None
     )
     if workspace_id:
-        accessible = get_user_workspace_ids(request.user)
-        if int(workspace_id) in accessible:
+        try:
+            workspace_id = int(workspace_id)
+        except (TypeError, ValueError):
+            return None
+        if workspace_id in get_user_workspace_ids(request.user):
             return dm.Workspace.objects.filter(pk=workspace_id).first()
+        return None
     return get_default_workspace_for_user(request.user)
 
 
@@ -78,19 +82,9 @@ class ChatDirectCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        accessible_workspace_ids = get_user_workspace_ids(request.user)
-        # On vérifie que le user cible partage au moins un workspace avec moi.
-        other_in_ws = (
-            User.objects.filter(pk=user_id, is_active=True)
-            .filter(
-                # via profile, team membership ou owner
-                Q(profile__workspace_id__in=accessible_workspace_ids)
-                | Q(devflow_memberships__workspace_id__in=accessible_workspace_ids)
-                | Q(owned_workspaces__id__in=accessible_workspace_ids)
-            )
-            .distinct()
-            .first()
-        )
+        from project.utils.workspaces import users_in_workspaces
+        # SECURITY — le destinataire doit appartenir au workspace courant.
+        other_in_ws = users_in_workspaces([workspace.pk]).filter(pk=user_id).first()
         if other_in_ws is None:
             return Response(
                 {"detail": "Utilisateur introuvable ou non accessible."},
@@ -105,7 +99,10 @@ class ChatDirectCreateView(APIView):
             return Response({"detail": str(exc)}, status=400)
 
         return Response(
-            _channel_to_dict(channel, current_user=request.user),
+            {
+                **_channel_to_dict(channel, current_user=request.user),
+                "conversation": ChatService.conversation_dict(request.user, channel),
+            },
             status=200,
         )
 
@@ -114,59 +111,56 @@ class ChatDirectCreateView(APIView):
 # POST /groups/
 # ---------------------------------------------------------------------------
 class ChatGroupCreateView(APIView):
+    """Les conversations de groupe sont automatiques (équipes / projets)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        data = request.data or {}
-        name = (data.get("name") or "").strip()
-        member_ids = data.get("member_ids") or []
-        if not name:
-            return Response({"detail": "name requis."}, status=400)
-        if not isinstance(member_ids, list) or len(member_ids) < 1:
-            return Response(
-                {"detail": "member_ids doit contenir au moins 1 user (en plus de vous)."},
-                status=400,
-            )
+        return Response(
+            {"detail": "Les conversations de groupe sont créées automatiquement pour les équipes et les projets."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
+
+class ChatConversationsView(APIView):
+    """GET /me/chat/conversations/?q= — liste Messenger (DM, équipes, projets)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
         workspace = _resolve_workspace(request)
         if workspace is None:
-            return Response({"detail": "Aucun workspace accessible."}, status=400)
+            return Response({"workspace_id": None, "conversations": []})
+        ChatService.ensure_group_channels_for(request.user, workspace)
+        return Response({
+            "workspace_id": workspace.pk,
+            "conversations": ChatService.conversations_for(
+                request.user, workspace, query=request.GET.get("q", ""),
+            ),
+        })
 
-        # Charge les users — uniquement ceux dans le même workspace que le caller
-        accessible_workspace_ids = get_user_workspace_ids(request.user)
-        members_qs = (
-            User.objects.filter(pk__in=member_ids, is_active=True)
-            .filter(
-                Q(profile__workspace_id__in=accessible_workspace_ids)
-                | Q(devflow_memberships__workspace_id__in=accessible_workspace_ids)
-                | Q(owned_workspaces__id__in=accessible_workspace_ids)
-            )
-            .distinct()
+
+class ChatReactionView(APIView):
+    """POST /me/chat/messages/{id}/reactions/ — body: {emoji}. Bascule la réaction."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        message = (
+            dm.Message.objects.select_related("channel")
+            .filter(pk=pk, channel__in=ChatService.channels_qs_for(request.user))
+            .first()
         )
-        members = list(members_qs)
-        if not members:
-            return Response(
-                {"detail": "Aucun membre valide trouvé."},
-                status=404,
-            )
-
+        if message is None:
+            return Response({"detail": "Message introuvable."}, status=404)
         try:
-            channel = ChatService.create_group(
-                workspace=workspace, name=name,
-                members=members, creator=request.user,
+            reactions = ChatService.toggle_reaction(
+                user=request.user, message=message, emoji=(request.data or {}).get("emoji", ""),
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)
-
-        return Response(
-            _channel_to_dict(channel, current_user=request.user),
-            status=201,
-        )
+        except PermissionError as exc:
+            return Response({"detail": str(exc)}, status=403)
+        return Response({"message_id": message.pk, "reactions": reactions})
 
 
-# ---------------------------------------------------------------------------
-# GET / POST /channels/{id}/messages/
-# ---------------------------------------------------------------------------
 class ChatChannelMessagesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -193,9 +187,14 @@ class ChatChannelMessagesView(APIView):
             )
         except PermissionError as exc:
             return Response({"detail": str(exc)}, status=403)
+        from django.db.models import Max
+        others_read = (
+            channel.memberships.exclude(user=request.user).aggregate(m=Max("last_read_at"))["m"]
+        )
         return Response({
             "channel": _channel_to_dict(channel, current_user=request.user),
             "messages": messages,
+            "others_last_read_at": others_read.isoformat() if others_read else None,
         })
 
     def post(self, request, pk):
@@ -211,6 +210,8 @@ class ChatChannelMessagesView(APIView):
         try:
             result = ChatService.post_message(
                 channel=channel, author=request.user, body=body, parent=parent,
+                files=request.FILES.getlist("files"),
+                client_id=(request.data or {}).get("client_id"),
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)
@@ -234,7 +235,12 @@ class ChatContactsView(APIView):
             limit = 30
         limit = min(max(limit, 1), 100)
 
-        contacts = ChatService.contacts_for(request.user, query=query, limit=limit)
+        workspace = _resolve_workspace(request)
+        if workspace is None:
+            return Response({"contacts": []})
+        contacts = ChatService.contacts_for(
+            request.user, query=query, limit=limit, workspace=workspace,
+        )
         return Response({"contacts": contacts})
 
 

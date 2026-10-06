@@ -40,11 +40,11 @@
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
                             <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Prénom <span class="text-orange-500">*</span></label>
-                            <input type="text" name="first_name" required class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm">
+                            <input type="text" name="first_name" value="{{ pending_user.first_name|default:'' }}" required class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm">
                         </div>
                         <div>
                             <label class="mb-2 block text-sm font-semibold text-[var(--text1)]">Nom <span class="text-orange-500">*</span></label>
-                            <input type="text" name="last_name" required class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm">
+                            <input type="text" name="last_name" value="{{ pending_user.last_name|default:'' }}" required class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm">
                         </div>
                     </div>
                     <div>

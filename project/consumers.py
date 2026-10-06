@@ -93,35 +93,16 @@ class ChannelChatConsumer(AsyncWebsocketConsumer):
             return
 
         body = (data.get("body") or "").strip()
-        parent_id = data.get("parent_id")
-        client_id = data.get("client_id")
-
         if not body:
             return
-
-        message = await self.create_message(
+        # Persistance + notifications + diffusion au groupe via ChatService
+        # (canal résolu côté serveur depuis l'URL déjà autorisée au connect).
+        await self.create_message(
             channel_id=self.channel_id,
             author_id=self.user.id,
             body=body,
-            parent_id=parent_id,
-        )
-
-        payload = {
-            "id": message["id"],
-            "body": message["body"],
-            "author": message["author"],
-            "author_id": self.user.id,
-            "created_at": message["created_at"],
-            "parent_id": message["parent_id"],
-            "client_id": client_id,
-        }
-
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                "type": "chat.message",
-                "message": payload,
-            },
+            parent_id=data.get("parent_id"),
+            client_id=data.get("client_id"),
         )
 
     async def chat_message(self, event):
@@ -138,6 +119,10 @@ class ChannelChatConsumer(AsyncWebsocketConsumer):
                 }
             )
         )
+
+    async def chat_event(self, event):
+        """Événements Messenger (réactions…) diffusés par ChatService."""
+        await self.send(text_data=json.dumps({"type": event.get("event"), **(event.get("data") or {})}))
 
     async def chat_typing(self, event):
         """
@@ -214,46 +199,29 @@ class ChannelChatConsumer(AsyncWebsocketConsumer):
         return True
 
     @database_sync_to_async
-    def create_message(self, channel_id, author_id, body, parent_id=None):
-        User = get_user_model()
+    def create_message(self, channel_id, author_id, body, parent_id=None, client_id=None):
+        from project.services.chat import ChatService
 
-        author = User.objects.get(pk=author_id)
+        author = get_user_model().objects.get(pk=author_id)
         channel = dm.DirectChannel.objects.get(pk=channel_id)
-        parent = dm.Message.objects.filter(pk=parent_id).first() if parent_id else None
-
-        msg = dm.Message.objects.create(
-            channel=channel,
-            author=author,
-            body=body,
-            parent=parent,
+        # SECURITY — le parent doit appartenir au même canal.
+        parent = (
+            dm.Message.objects.filter(pk=parent_id, channel_id=channel_id).first()
+            if parent_id else None
         )
+        try:
+            return ChatService.post_message(
+                channel=channel, author=author, body=body, parent=parent, client_id=client_id,
+            ).message.pk
+        except (ValueError, PermissionError):
+            return None
 
-        member_ids = list(
-            channel.memberships.exclude(user_id=author_id).values_list("user_id", flat=True)
-        )
-        recipients = User.objects.filter(pk__in=member_ids)
 
-        for recipient in recipients:
-            dm.Notification.objects.create(
-                recipient=recipient,
-                workspace=channel.workspace,
-                notification_type=dm.Notification.NotificationType.MESSAGE,
-                title=f"Nouveau message dans {channel.name}",
-                body=body[:180],
-                url=f"/channels/{channel.pk}/",
-                metadata={
-                    "channel_id": channel.pk,
-                    "message_id": msg.pk,
-                },
-            )
+def _user_can_access_channel(user, channel_id) -> bool:
+    """Canal du tenant de l'utilisateur ; privé → membership obligatoire."""
+    from project.services.chat import ChatService
 
-        return {
-            "id": msg.pk,
-            "body": msg.body,
-            "author": author.get_full_name() or author.username,
-            "created_at": timezone.localtime(msg.created_at).strftime("%d/%m/%Y %H:%M"),
-            "parent_id": msg.parent_id,
-        }
+    return ChatService.channels_qs_for(user).filter(pk=channel_id).exists()
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -266,6 +234,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.channel_id = self.scope["url_route"]["kwargs"]["channel_id"]
         self.room_group_name = f"chat_{self.channel_id}"
         self.user = self.scope["user"]
+
+        # SECURITY — authentification + appartenance au canal AVANT group_add.
+        if not getattr(self.user, "is_authenticated", False):
+            await self.close(code=4401)
+            return
+        if not await database_sync_to_async(_user_can_access_channel)(self.user, self.channel_id):
+            await self.close(code=4403)
+            return
 
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
@@ -288,6 +264,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         user = self.scope["user"]
+        # Re-vérifie l'accès à chaque écriture (membership révoquée en cours de session).
+        if not await database_sync_to_async(_user_can_access_channel)(user, self.channel_id):
+            await self.close(code=4403)
+            return
         channel = await dm.DirectChannel.objects.aget(pk=self.channel_id)
         msg = await dm.Message.objects.acreate(
             channel=channel,

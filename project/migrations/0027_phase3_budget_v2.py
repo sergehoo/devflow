@@ -26,6 +26,8 @@ import django.utils.timezone
 from django.conf import settings
 from django.db import migrations, models
 
+from project.utils.migration_ops import SkipIfTableExists
+
 
 class Migration(migrations.Migration):
 
@@ -34,7 +36,9 @@ class Migration(migrations.Migration):
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
-    operations = [
+    # Branche sœur de l'autre 0027 (même schéma) : SQL ignoré si déjà
+    # appliqué par celle-ci. Voir project/utils/migration_ops.py.
+    operations = [SkipIfTableExists("project_projectbudgetforecastrun", [
         # ─── 1) BillingRate.project ──────────────────────────────────────
         migrations.AddField(
             model_name="billingrate",
@@ -173,4 +177,4 @@ class Migration(migrations.Migration):
             index=models.Index(fields=["project", "-created_at"],
                                 name="forecast_proj_date_idx"),
         ),
-    ]
+    ])]

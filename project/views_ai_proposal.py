@@ -26,6 +26,8 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+
+from project.utils.workspaces import get_user_workspace_ids
 from django.views import View
 from django.views.generic import DetailView, ListView, UpdateView
 
@@ -453,7 +455,9 @@ class ProjectAIProposalTriggerView(LoginRequiredMixin, View):
 
     def post(self, request, project_pk):
         from django.http import JsonResponse
-        project = get_object_or_404(dm.Project, pk=project_pk)
+        project = get_object_or_404(
+            dm.Project, pk=project_pk, workspace_id__in=get_user_workspace_ids(request.user),
+        )
         is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
         if is_ajax:
@@ -539,7 +543,9 @@ class ProjectAIProposalStatusView(LoginRequiredMixin, View):
 
     def get(self, request, project_pk):
         from django.http import JsonResponse
-        project = get_object_or_404(dm.Project, pk=project_pk)
+        project = get_object_or_404(
+            dm.Project, pk=project_pk, workspace_id__in=get_user_workspace_ids(request.user),
+        )
         proposal = (
             dm.ProjectAIProposal.objects.filter(project=project)
             .order_by("-created_at").first()

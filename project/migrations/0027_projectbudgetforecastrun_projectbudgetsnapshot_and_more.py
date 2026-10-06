@@ -3,6 +3,8 @@
 from decimal import Decimal
 from django.conf import settings
 from django.db import migrations, models
+
+from project.utils.migration_ops import SkipIfTableExists
 import django.db.models.deletion
 import django.utils.timezone
 
@@ -14,7 +16,9 @@ class Migration(migrations.Migration):
         ('project', '0026_phase2_multimode'),
     ]
 
-    operations = [
+    # Branche sœur de l'autre 0027 (même schéma) : SQL ignoré si déjà
+    # appliqué par celle-ci. Voir project/utils/migration_ops.py.
+    operations = [SkipIfTableExists("project_projectbudgetforecastrun", [
         migrations.CreateModel(
             name='ProjectBudgetForecastRun',
             fields=[
@@ -156,4 +160,4 @@ class Migration(migrations.Migration):
             model_name='projectbudgetforecastrun',
             index=models.Index(fields=['project', '-created_at'], name='forecast_proj_date_idx'),
         ),
-    ]
+    ])]
