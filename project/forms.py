@@ -285,6 +285,75 @@ class BaseStyledModelForm(forms.ModelForm):
     def full_clean(self):
         self._scope_fk_fields()
         super().full_clean()
+        self._flag_invalid_widgets()
+
+    # ── UX — erreurs explicites (type + emplacement) ──────────────────────
+    # Section affichée dans le récapitulatif ; surchargé par formulaire.
+    field_sections: dict = {}
+
+    _ERROR_TYPES = {
+        "required": "Champ obligatoire",
+        "invalid": "Format invalide",
+        "invalid_choice": "Choix non autorisé",
+        "invalid_pk_value": "Choix non autorisé",
+        "invalid_list": "Choix non autorisé",
+        "unique": "Doublon",
+        "unique_together": "Doublon",
+        "max_length": "Valeur trop longue",
+        "min_length": "Valeur trop courte",
+        "max_value": "Valeur hors limites",
+        "min_value": "Valeur hors limites",
+        "max_digits": "Valeur hors limites",
+        "max_decimal_places": "Valeur hors limites",
+        "max_whole_digits": "Valeur hors limites",
+        "invalid_image": "Fichier invalide",
+        "missing": "Fichier manquant",
+        "empty": "Fichier vide",
+    }
+
+    def _flag_invalid_widgets(self):
+        """Encadre en rouge les champs en erreur (aria-invalid pour l'accessibilité)."""
+        for name in (self._errors or {}):
+            field = self.fields.get(name)
+            if field is None:
+                continue
+            attrs = field.widget.attrs
+            attrs["class"] = f"{attrs.get('class', '')} !border-red-500 ring-2 ring-red-500/20".strip()
+            attrs["aria-invalid"] = "true"
+
+    def error_report(self) -> list[dict]:
+        """
+        Liste exhaustive des erreurs pour le récapitulatif : type d'erreur,
+        section, libellé du champ, ancre HTML et message. Couvre aussi les
+        champs non rendus par le template (jamais d'erreur silencieuse).
+        """
+        from django.forms.forms import NON_FIELD_ERRORS
+
+        report = []
+        if not self.is_bound:
+            return report
+        for name, errors in self.errors.as_data().items():
+            if name == NON_FIELD_ERRORS:
+                for error in errors:
+                    for message in error.messages:
+                        report.append({
+                            "type": "Règle de cohérence" if error.code else "Erreur générale",
+                            "section": "Formulaire", "label": "", "anchor": "", "message": message,
+                        })
+                continue
+            field = self.fields.get(name)
+            label = (field.label if field is not None and field.label else name.replace("_", " ")).strip()
+            anchor = self[name].auto_id if field is not None else ""
+            for error in errors:
+                for message in error.messages:
+                    report.append({
+                        "type": self._ERROR_TYPES.get(error.code, "Règle de cohérence"),
+                        "section": self.field_sections.get(name, ""),
+                        "label": label[:1].upper() + label[1:],
+                        "anchor": anchor,
+                        "message": message,
+                    })
+        return report
 
 
 # =============================================================================
@@ -486,6 +555,19 @@ class TeamMembershipForm(BaseStyledModelForm):
 # =============================================================================
 class ProjectForm(BaseStyledModelForm):
 
+    field_sections = {
+        **{f: "Informations générales" for f in (
+            "name", "code", "category", "methodology", "team", "teams", "workspace",
+            "tech_stack", "description", "image",
+        )},
+        **{f: "Pilotage" for f in (
+            "owner", "product_manager", "status", "priority", "health_status", "ai_risk_label",
+        )},
+        **{f: "Planning & budget" for f in (
+            "start_date", "target_date", "delivered_at", "budget", "progress_percent", "is_favorite",
+        )},
+    }
+
     class Meta:
 
         model = Project
@@ -539,6 +621,28 @@ class ProjectForm(BaseStyledModelForm):
 
         ]
 
+        labels = {
+            "workspace": "Workspace",
+            "category": "Catégorie projet",
+            "team": "Équipe principale",
+            "name": "Nom du projet",
+            "code": "Code projet",
+            "description": "Description",
+            "tech_stack": "Stack technique",
+            "owner": "Responsable (owner)",
+            "product_manager": "Product manager",
+            "status": "Statut",
+            "priority": "Priorité",
+            "health_status": "Santé du projet",
+            "progress_percent": "Avancement (%)",
+            "ai_risk_label": "Niveau de risque",
+            "start_date": "Date de début",
+            "target_date": "Date cible",
+            "delivered_at": "Date de livraison",
+            "budget": "Budget",
+            "is_favorite": "Favori",
+            "image": "Image de couverture",
+        }
         widgets = {
 
             "start_date": forms.DateInput(
@@ -717,6 +821,15 @@ class ProjectForm(BaseStyledModelForm):
 
         return value
 
+    def clean_workspace(self):
+        # Champ facultatif : vide → workspace actuel du projet (édition) ou
+        # workspace courant (création). Évite l'IntegrityError workspace NULL.
+        return (
+            self.cleaned_data.get("workspace")
+            or (self.instance.workspace if self.instance.workspace_id else None)
+            or self.current_workspace
+        )
+
     def clean_budget(self):
 
         value = self.cleaned_data.get("budget")
@@ -781,9 +894,13 @@ class ProjectForm(BaseStyledModelForm):
 
             self.add_error("delivered_at", "Veuillez renseigner la date de livraison pour un projet terminé.")
 
+        # Avertissement non bloquant : un projet en retard doit rester enregistrable.
+        self.warnings = []
         if target and target < timezone.now().date() and progress < 100:
-
-            self.add_error("target_date", "Ce projet est en retard par rapport à sa date cible.")
+            self.warnings.append(
+                f"Ce projet est en retard : la date cible ({target:%d/%m/%Y}) est dépassée "
+                f"et l'avancement est de {progress} %."
+            )
 
         return cleaned
 

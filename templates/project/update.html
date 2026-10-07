@@ -49,14 +49,7 @@
 
  <form method="post" enctype="multipart/form-data" novalidate class="space-y-6">
         {% csrf_token %}
-
-        {% if form.non_field_errors %}
-            <section class="rounded-[22px] border border-[var(--red)]/20 bg-[var(--red-bg)] px-5 py-4 text-sm text-[var(--red)] shadow-soft">
-                {% for error in form.non_field_errors %}
-                    <div>{{ error }}</div>
-                {% endfor %}
-            </section>
-        {% endif %}
+        {% include "components/forms/error_summary.html" %}
 
         <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_.8fr]">
             <div class="space-y-6">
@@ -103,6 +96,23 @@
                             {% include "components/forms/field_errors.html" with field=form.team %}
                         </div>
 
+                        <div class="md:col-span-2">
+                            <label for="{{ form.teams.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.teams.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Équipes contributrices
+                            </label>
+                            {{ form.teams }}
+                            {% if form.teams.help_text %}<p class="mt-1 text-xs text-[var(--text3)]">{{ form.teams.help_text }}</p>{% endif %}
+                            {% include "components/forms/field_errors.html" with field=form.teams %}
+                        </div>
+
+                        <div>
+                            <label for="{{ form.methodology.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
+                                {% if form.methodology.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Méthodologie de gestion
+                            </label>
+                            {{ form.methodology }}
+                            {% if form.methodology.help_text %}<p class="mt-1 text-xs text-[var(--text3)]">{{ form.methodology.help_text }}</p>{% endif %}
+                            {% include "components/forms/field_errors.html" with field=form.methodology %}
+                        </div>
                         <div>
                             <label for="{{ form.workspace.id_for_label }}" class="mb-2 block text-sm font-semibold text-[var(--text1)]">
                                 {% if form.workspace.field.required %}<strong style="color: orangered">(*)</strong>{% endif %} Workspace

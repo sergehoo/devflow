@@ -41,7 +41,8 @@
         <form method="post" enctype="multipart/form-data" novalidate class="space-y-6">
             {% csrf_token %}
 
-            {% if form.non_field_errors %}
+            {% include "components/forms/error_summary.html" %}
+            {% if form.non_field_errors and not form.error_report %}
                 <section class="rounded-[22px] border border-red-500/20 bg-red-500/5 px-5 py-4 text-sm text-red-500">
                     {% for error in form.non_field_errors %}
                         <div>{{ error }}</div>{% endfor %}

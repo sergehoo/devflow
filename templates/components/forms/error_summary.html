@@ -1,0 +1,61 @@
+{% comment %}
+Récapitulatif des erreurs d'un formulaire BaseStyledModelForm : type d'erreur,
+section › champ (lien vers le champ) et message. Aucune erreur silencieuse,
+y compris pour un champ absent du template.
+{% endcomment %}
+{% with report=form.error_report %}
+{% if report %}
+<section id="form-error-summary" role="alert" tabindex="-1"
+         class="rounded-[22px] border border-red-500/30 bg-red-500/5 px-5 py-4 text-sm shadow-soft outline-none">
+    <p class="flex items-center gap-2 font-semibold text-red-600">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        Enregistrement impossible : {{ report|length }} erreur{{ report|length|pluralize }} à corriger
+    </p>
+    <ul class="mt-3 space-y-2">
+        {% for e in report %}
+            <li class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span class="rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-red-600">{{ e.type }}</span>
+                {% if e.anchor %}
+                    <a href="#{{ e.anchor }}" data-error-anchor="{{ e.anchor }}"
+                       class="font-semibold text-[var(--text1)] underline decoration-dotted underline-offset-2 hover:text-red-600">
+                        {% if e.section %}{{ e.section }} › {% endif %}{{ e.label }}
+                    </a>
+                {% else %}
+                    <span class="font-semibold text-[var(--text1)]">{{ e.section|default:"Formulaire" }}</span>
+                {% endif %}
+                <span class="text-red-600">— {{ e.message }}</span>
+            </li>
+        {% endfor %}
+    </ul>
+</section>
+<script>
+  (function () {
+    function visibleTarget(el) {
+      // select2 / TinyMCE masquent le champ d'origine : on vise leur conteneur.
+      var next = el.nextElementSibling;
+      if (next && (next.classList.contains("select2") || next.classList.contains("tox"))) return next;
+      return el.offsetParent === null && next ? next : el;
+    }
+    document.addEventListener("DOMContentLoaded", function () {
+      var box = document.getElementById("form-error-summary");
+      if (box) { box.scrollIntoView({ behavior: "smooth", block: "start" }); box.focus({ preventScroll: true }); }
+      document.querySelectorAll("[aria-invalid=true]").forEach(function (el) {
+        var t = visibleTarget(el);
+        var sel = t.querySelector ? (t.querySelector(".select2-selection") || (t.classList.contains("tox") ? t : null)) : null;
+        if (sel) { sel.style.borderColor = "#ef4444"; sel.style.boxShadow = "0 0 0 3px rgba(239,68,68,.18)"; }
+      });
+      document.querySelectorAll("[data-error-anchor]").forEach(function (link) {
+        link.addEventListener("click", function (ev) {
+          var el = document.getElementById(link.getAttribute("data-error-anchor"));
+          if (!el) return;
+          ev.preventDefault();
+          visibleTarget(el).scrollIntoView({ behavior: "smooth", block: "center" });
+          if (window.jQuery && el.classList.contains("select2-hidden-accessible")) { window.jQuery(el).select2("open"); }
+          else if (el.focus) { el.focus({ preventScroll: true }); }
+        });
+      });
+    });
+  })();
+</script>
+{% endif %}
+{% endwith %}

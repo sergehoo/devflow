@@ -3823,6 +3823,8 @@ class ProjectCreateView(DevflowCreateView):
             form.add_error(None, f"Erreur lors de l'enregistrement : {e}")
             return self.form_invalid(form)
 
+        for warning in getattr(form, "warnings", []):
+            messages.warning(self.request, warning)
         messages.success(
             self.request,
             self.success_message
@@ -4097,6 +4099,11 @@ class ProjectUpdateView(DevflowUpdateView):
             "item": self.object,
         })
         return ctx
+
+    def form_valid(self, form):
+        for warning in getattr(form, "warnings", []):
+            messages.warning(self.request, warning)
+        return super().form_valid(form)
 
 
 class ProjectDeleteView(DevflowDeleteView):
