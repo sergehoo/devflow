@@ -1505,12 +1505,13 @@ class TeamDetailView(DevflowDetailView):
     section = "team"
     page_title = "Détail équipe"
 
+    def get_queryset(self):
+        return super().get_queryset().select_related("workspace", "lead")
+
     def get_context_data(self, **kwargs):
+        from project.services.team_insights import team_overview
         ctx = super().get_context_data(**kwargs)
-        team = self.object
-        ctx["memberships"] = team.memberships.select_related("user")
-        ctx["projects"] = team.projects.filter(is_archived=False)
-        ctx["sprints"] = team.sprints.filter(is_archived=False)[:10]
+        ctx.update(team_overview(self.object, self.request.user))
         return ctx
 
 
@@ -1608,6 +1609,8 @@ class TeamMembershipPasswordResetView(WorkspaceSecurityMixin, DevflowBaseMixin, 
                 )
             else:
                 messages.success(request, f"Lien de réinitialisation envoyé à {name} ({target.email}).")
+        if request.POST.get("next") == "detail":
+            return redirect("team_membership_detail", pk=membership.pk)
         return redirect("team_membership_list")
 
 
@@ -1615,7 +1618,23 @@ class TeamMembershipDetailView(DevflowDetailView):
     model = dm.TeamMembership
     template_name = "project/team_membership/detail.html"
     section = "team"
-    page_title = "Détail appartenance équipe"
+    page_title = "Fiche membre"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("user", "team", "workspace")
+
+    def get_context_data(self, **kwargs):
+        from project.services.password_reset import can_manage_passwords
+        from project.services.team_insights import member_overview
+        ctx = super().get_context_data(**kwargs)
+        m = self.object
+        ctx.update(member_overview(m, self.request.user))
+        ctx["can_manage_passwords"] = (
+            can_manage_passwords(self.request.user, m.workspace)
+            and m.user.is_active and m.user_id != self.request.user.pk
+            and m.user_id != m.workspace.owner_id and not m.user.is_superuser
+        )
+        return ctx
 
 
 class TeamMembershipCreateView(WorkspaceSecurityMixin, DevflowBaseMixin, FormView):

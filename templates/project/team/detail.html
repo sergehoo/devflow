@@ -1,60 +1,191 @@
 {% extends "layout/base.html" %}
+{% load devflow_extras %}
 
-{% block title %}Équipe{% endblock %}
+{% block title %}{{ object.name }} · Équipe{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto space-y-6">
-    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft p-6 lg:p-8">
-        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">DevFlow · Équipes</p>
-        <h1 class="mt-2 text-3xl font-serif text-devtext1">{{ object }}</h1>
-        {% if object.description %}
-        <p class="mt-3 text-sm text-devtext2 leading-7">{{ object.description|linebreaks }}</p>
-        {% endif %}
-        <div class="mt-6 flex flex-wrap gap-3">
-            <a href="{{ request.META.HTTP_REFERER|default:'/' }}" class="btn-soft">
-                <i class="fa-solid fa-arrow-left"></i> Retour
-            </a>
+{% with team=object %}
+<div class="mx-auto max-w-6xl space-y-6">
+
+    <!-- En-tête -->
+    <section class="rounded-[28px] border border-devborder bg-devbg2 p-6 shadow-soft lg:p-8">
+        <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div class="flex min-w-0 items-start gap-5">
+                <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-[20px] text-xl font-semibold text-white"
+                     style="background: {{ team.color|default:'#7C6FF7' }};">
+                    {{ team.name|first|upper }}
+                </div>
+                <div class="min-w-0">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">Équipe · {{ team.workspace.name }}</p>
+                    <h1 class="mt-1 font-serif text-3xl text-devtext1">{{ team.name }}</h1>
+                    <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        <span class="rounded-full bg-devbg3 px-3 py-1 text-devtext2">{{ team.get_team_type_display }}</span>
+                        {% if team.lead %}
+                            <span class="rounded-full bg-devbg3 px-3 py-1 text-devtext2"><i class="fa-solid fa-crown mr-1 text-amber-500"></i>{{ team.lead.get_full_name|default:team.lead.username }}</span>
+                        {% endif %}
+                        {% if team.is_archived %}
+                            <span class="rounded-full bg-devbg3 px-3 py-1 font-semibold text-devtext3">Archivée</span>
+                        {% elif not team.is_active %}
+                            <span class="rounded-full bg-amber-500/15 px-3 py-1 font-semibold text-amber-600">Inactive</span>
+                        {% else %}
+                            <span class="rounded-full bg-emerald-500/15 px-3 py-1 font-semibold text-emerald-600">Active</span>
+                        {% endif %}
+                    </div>
+                    {% if team.description %}
+                        <div class="prose prose-sm mt-4 max-w-3xl text-sm leading-7 text-devtext2">{{ team.description|safe_html }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="flex shrink-0 flex-wrap gap-2">
+                <a href="{% url 'team_list' %}" class="btn-soft"><i class="fa-solid fa-arrow-left"></i> Équipes</a>
+                {% if chat_channel %}
+                    <a href="/chat/?channel={{ chat_channel.pk }}" class="btn-soft"><i class="fa-solid fa-comments"></i> Discussion</a>
+                {% endif %}
+                <a href="{% url 'team_membership_create' %}?team={{ team.pk }}" class="btn-soft"><i class="fa-solid fa-user-plus"></i> Ajouter un membre</a>
+                <a href="{% url 'team_update' team.pk %}" class="btn-soft"><i class="fa-solid fa-pen"></i> Modifier</a>
+            </div>
         </div>
     </section>
 
-    <section class="rounded-[24px] border border-devborder bg-devbg2 p-6 shadow-soft">
-        <h2 class="text-lg font-semibold text-devtext1 mb-4">Informations</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Identifiant</div>
-                <div class="mt-1 font-mono text-devtext1">#{{ object.pk }}</div>
-            </div>
-            {% if object.name %}
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Nom</div>
-                <div class="mt-1 text-devtext1">{{ object.name }}</div>
-            </div>
-            {% endif %}
-            {% if object.title %}
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Titre</div>
-                <div class="mt-1 text-devtext1">{{ object.title }}</div>
-            </div>
-            {% endif %}
-            {% if object.status %}
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Statut</div>
-                <div class="mt-1 text-devtext1">{{ object.get_status_display|default:object.status }}</div>
-            </div>
-            {% endif %}
-            {% if object.created_at %}
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Créé le</div>
-                <div class="mt-1 text-devtext1">{{ object.created_at|date:"d/m/Y H:i" }}</div>
-            </div>
-            {% endif %}
-            {% if object.updated_at %}
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Mis à jour</div>
-                <div class="mt-1 text-devtext1">{{ object.updated_at|date:"d/m/Y H:i" }}</div>
-            </div>
+    <!-- Indicateurs -->
+    <section class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div class="rounded-[22px] border border-devborder bg-devbg2 p-5 shadow-soft">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Membres actifs</p>
+            <p class="mt-2 text-2xl font-semibold text-devtext1">{{ active_count }}<span class="text-sm font-normal text-devtext3"> / {{ rows|length }}</span></p>
+        </div>
+        <div class="rounded-[22px] border border-devborder bg-devbg2 p-5 shadow-soft">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Occupation semaine</p>
+            {% if week_percent is not None %}
+                <p class="mt-2 text-2xl font-semibold text-devtext1">{{ week_percent }} %</p>
+                <p class="mt-1 text-xs text-devtext3">{{ week_hours|floatformat:"-1" }} h / {{ week_expected|floatformat:"-1" }} h attendues</p>
+            {% else %}
+                <p class="mt-2 text-sm text-devtext3">Non disponible</p>
             {% endif %}
         </div>
+        <div class="rounded-[22px] border border-devborder bg-devbg2 p-5 shadow-soft">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Charge moyenne</p>
+            <p class="mt-2 text-2xl font-semibold text-devtext1">{{ avg_load }} %</p>
+            <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-devbg3">
+                <div class="h-full rounded-full" style="width: {{ avg_load }}%; background: {% if avg_load >= 90 %}#ef4444{% elif avg_load >= 70 %}#f59e0b{% else %}#22c55e{% endif %};"></div>
+            </div>
+        </div>
+        <div class="rounded-[22px] border border-devborder bg-devbg2 p-5 shadow-soft">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Tâches ouvertes</p>
+            <p class="mt-2 text-2xl font-semibold text-devtext1">{{ open_tasks }}</p>
+            <p class="mt-1 text-xs {% if overdue_tasks %}font-semibold text-red-500{% else %}text-devtext3{% endif %}">{{ overdue_tasks }} en retard</p>
+        </div>
     </section>
+
+    <!-- Membres -->
+    <section class="overflow-hidden rounded-[24px] border border-devborder bg-devbg2 shadow-soft">
+        <div class="flex items-center justify-between px-6 py-4">
+            <h2 class="text-lg font-semibold text-devtext1">Membres</h2>
+            <span class="text-xs text-devtext3">Semaine du {{ monday|date:"d/m" }}</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-devbg3/60 text-[11px] uppercase tracking-wide text-devtext3">
+                    <tr>
+                        <th class="px-6 py-3 text-left font-semibold">Membre</th>
+                        <th class="px-6 py-3 text-left font-semibold">Rôle</th>
+                        <th class="px-6 py-3 text-center font-semibold">Statut</th>
+                        <th class="px-6 py-3 text-right font-semibold">Charge</th>
+                        <th class="px-6 py-3 text-right font-semibold">Heures semaine</th>
+                        <th class="px-6 py-3 text-right font-semibold">Tâches</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in rows %}
+                    {% with m=row.membership %}
+                    <tr class="border-t border-devborder hover:bg-devbg3/40">
+                        <td class="px-6 py-3">
+                            <a href="{% url 'team_membership_detail' m.pk %}" class="flex items-center gap-3">
+                                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white" style="background: {{ m.avatar_color|default:'#7C6FF7' }};">
+                                    {{ m.user.first_name|first|upper }}{{ m.user.last_name|first|upper|default:"" }}
+                                </span>
+                                <span class="min-w-0">
+                                    <span class="block truncate font-medium text-devtext1 hover:text-devaccent">{{ m.user.get_full_name|default:m.user.username }}</span>
+                                    {% if m.job_title %}<span class="block truncate text-[11px] text-devtext3">{{ m.job_title }}</span>{% endif %}
+                                </span>
+                            </a>
+                        </td>
+                        <td class="px-6 py-3 text-xs text-devtext2">{{ m.get_role_display }}</td>
+                        <td class="px-6 py-3 text-center">
+                            <span class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold
+                                {% if m.status == 'ACTIVE' %}bg-emerald-500/15 text-emerald-600{% elif m.status == 'ON_LEAVE' %}bg-amber-500/15 text-amber-600{% elif m.status == 'REMOTE' %}bg-sky-500/15 text-sky-600{% else %}bg-devbg3 text-devtext3{% endif %}">
+                                {{ m.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-3 text-right text-xs text-devtext1">{{ m.current_load_percent|default:0 }} %</td>
+                        <td class="px-6 py-3 text-right text-xs">
+                            {% if row.week %}
+                                <span class="{% if row.week.completion_percent >= 100 %}text-emerald-600{% elif row.week.total_hours == 0 %}text-red-500{% else %}text-amber-600{% endif %} font-semibold">
+                                    {{ row.week.total_hours|floatformat:"-1" }} h
+                                </span>
+                                <span class="text-devtext3">/ {{ row.week.expected|floatformat:"-1" }} h</span>
+                            {% else %}
+                                <span class="text-devtext3">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-right text-xs text-devtext1">{{ row.open_tasks }}</td>
+                    </tr>
+                    {% endwith %}
+                {% empty %}
+                    <tr><td colspan="6" class="px-6 py-12 text-center text-sm text-devtext3">
+                        Aucun membre. <a href="{% url 'team_membership_create' %}?team={{ team.pk }}" class="text-devaccent hover:underline">Ajouter un membre</a>
+                    </td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <section class="rounded-[24px] border border-devborder bg-devbg2 p-6 shadow-soft">
+            <h2 class="mb-4 text-lg font-semibold text-devtext1">Projets</h2>
+            {% for p in projects %}
+                <a href="{% url 'project_detail' p.pk %}" class="flex items-center justify-between gap-4 border-t border-devborder py-3 first:border-t-0">
+                    <div class="min-w-0">
+                        <p class="truncate text-sm font-medium text-devtext1 hover:text-devaccent">{{ p.name }}</p>
+                        <p class="text-xs text-devtext3">{{ p.get_status_display }}{% if p.target_date %} · échéance {{ p.target_date|date:"d/m/Y" }}{% endif %}</p>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-2">
+                        <span class="h-2.5 w-2.5 rounded-full {% if p.health_status == 'GREEN' %}bg-emerald-500{% elif p.health_status == 'AMBER' %}bg-amber-500{% elif p.health_status == 'RED' %}bg-red-500{% else %}bg-gray-400{% endif %}" title="Santé : {{ p.get_health_status_display }}"></span>
+                        <div class="h-1.5 w-20 overflow-hidden rounded-full bg-devbg3">
+                            <div class="h-full rounded-full bg-devaccent" style="width: {{ p.progress_percent|default:0 }}%;"></div>
+                        </div>
+                        <span class="w-9 text-right text-xs text-devtext2">{{ p.progress_percent|default:0 }}%</span>
+                    </div>
+                </a>
+            {% empty %}
+                <p class="py-6 text-center text-sm text-devtext3">Aucun projet rattaché.</p>
+            {% endfor %}
+        </section>
+
+        <section class="rounded-[24px] border border-devborder bg-devbg2 p-6 shadow-soft">
+            <h2 class="mb-4 text-lg font-semibold text-devtext1">Vélocité & sprints</h2>
+            <div class="mb-4 grid grid-cols-2 gap-3 text-sm">
+                <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
+                    <p class="text-[11px] uppercase tracking-wide text-devtext3">Vélocité actuelle</p>
+                    <p class="mt-1 font-semibold text-devtext1">{{ team.velocity_current }} pts</p>
+                </div>
+                <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
+                    <p class="text-[11px] uppercase tracking-wide text-devtext3">Objectif</p>
+                    <p class="mt-1 font-semibold text-devtext1">{{ team.velocity_target }} pts</p>
+                </div>
+            </div>
+            {% for s in sprints %}
+                <div class="flex items-center justify-between border-t border-devborder py-2.5 text-sm first:border-t-0">
+                    <span class="truncate text-devtext1">{{ s.name }}</span>
+                    <span class="shrink-0 text-xs text-devtext3">{{ s.start_date|date:"d/m" }} → {{ s.end_date|date:"d/m" }}</span>
+                </div>
+            {% empty %}
+                <p class="py-4 text-center text-sm text-devtext3">Aucun sprint.</p>
+            {% endfor %}
+        </section>
+    </div>
+
+    <p class="text-right text-[11px] text-devtext3">Créée le {{ team.created_at|date:"d/m/Y" }} · mise à jour le {{ team.updated_at|date:"d/m/Y H:i" }}</p>
 </div>
+{% endwith %}
 {% endblock %}

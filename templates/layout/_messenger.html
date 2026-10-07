@@ -34,8 +34,12 @@ Aucune administration de canal : DM créés à la volée (1 par paire), conversa
         window.matchMedia("(max-width: 767px)").addEventListener("change", e => { this.isMobile = e.matches; });
         await this.refresh();
         await this.searchContacts();
-        const wanted = new URLSearchParams(window.location.search).get("channel");
-        if (wanted) {
+        const params = new URLSearchParams(window.location.search);
+        const wanted = params.get("channel");
+        const wantedUser = params.get("user");
+        if (wantedUser) {
+          await this.openDirect({ id: parseInt(wantedUser, 10), display_name: "" });
+        } else if (wanted) {
           const c = this.conversations.find(x => String(x.id) === wanted);
           if (c) this.openConversation(c);
         } else if (this.mode === "page" && !this.isMobile && this.conversations.length) {

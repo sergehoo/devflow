@@ -1,60 +1,206 @@
 {% extends "layout/base.html" %}
 
-{% block title %}Membres d'équipe{% endblock %}
+{% block title %}{{ member.get_full_name|default:member.username }} · Fiche membre{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto space-y-6">
-    <section class="rounded-[28px] border border-devborder bg-devbg2 shadow-soft p-6 lg:p-8">
-        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">DevFlow · Membres d'équipe</p>
-        <h1 class="mt-2 text-3xl font-serif text-devtext1">{{ object }}</h1>
-        {% if object.description %}
-        <p class="mt-3 text-sm text-devtext2 leading-7">{{ object.description|linebreaks }}</p>
-        {% endif %}
-        <div class="mt-6 flex flex-wrap gap-3">
-            <a href="{{ request.META.HTTP_REFERER|default:'/' }}" class="btn-soft">
-                <i class="fa-solid fa-arrow-left"></i> Retour
-            </a>
+{% with m=object %}
+<div class="mx-auto max-w-6xl space-y-6">
+
+    <!-- En-tête -->
+    <section class="rounded-[28px] border border-devborder bg-devbg2 p-6 shadow-soft lg:p-8">
+        <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex items-center gap-5">
+                <div class="flex h-20 w-20 shrink-0 items-center justify-center rounded-[24px] text-2xl font-semibold text-white"
+                     style="background: {{ m.avatar_color|default:'#7C6FF7' }};">
+                    {{ member.first_name|first|upper }}{{ member.last_name|first|upper|default:"" }}
+                </div>
+                <div class="min-w-0">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-devaccent">Membre · {{ m.workspace.name }}</p>
+                    <h1 class="mt-1 truncate font-serif text-3xl text-devtext1">{{ member.get_full_name|default:member.username }}</h1>
+                    <p class="mt-1 text-sm text-devtext2">
+                        {{ m.job_title|default:profile.job_title|default:m.get_role_display }}
+                        {% if member.email %} · <a href="mailto:{{ member.email }}" class="hover:text-devaccent">{{ member.email }}</a>{% endif %}
+                    </p>
+                    <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                        {% if m.team %}
+                            <a href="{% url 'team_detail' m.team.pk %}" class="inline-flex items-center gap-1.5 rounded-full bg-devbg3 px-3 py-1 text-devtext1 hover:text-devaccent">
+                                <span class="h-2 w-2 rounded-full" style="background: {{ m.team.color|default:'#7C6FF7' }};"></span>{{ m.team.name }}
+                            </a>
+                        {% else %}
+                            <span class="rounded-full bg-devbg3 px-3 py-1 text-devtext3">Sans équipe</span>
+                        {% endif %}
+                        <span class="rounded-full bg-devbg3 px-3 py-1 text-devtext2">{{ m.get_role_display }}</span>
+                        <span class="rounded-full px-3 py-1 font-semibold
+                            {% if m.status == 'ACTIVE' %}bg-emerald-500/15 text-emerald-600{% elif m.status == 'ON_LEAVE' %}bg-amber-500/15 text-amber-600{% elif m.status == 'REMOTE' %}bg-sky-500/15 text-sky-600{% else %}bg-devbg3 text-devtext3{% endif %}">
+                            {{ m.get_status_display }}
+                        </span>
+                        {% if not member.is_active %}
+                            <span class="rounded-full bg-amber-500/15 px-3 py-1 font-semibold text-amber-600">Invitation en attente</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                <a href="{% url 'team_membership_list' %}" class="btn-soft"><i class="fa-solid fa-arrow-left"></i> Membres</a>
+                {% if member.pk != request.user.pk and member.is_active %}
+                    <a href="/chat/?user={{ member.pk }}" class="btn-soft"><i class="fa-solid fa-comment"></i> Message</a>
+                {% endif %}
+                <a href="{% url 'team_membership_update' m.pk %}" class="btn-soft"><i class="fa-solid fa-pen"></i> Modifier</a>
+                {% if can_manage_passwords %}
+                    <form method="post" action="{% url 'team_membership_password_reset' m.pk %}"
+                          onsubmit="return confirm('Envoyer à {{ member.email|escapejs }} un lien pour réinitialiser son mot de passe ?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="mode" value="link"><input type="hidden" name="next" value="detail">
+                        <button class="btn-soft" title="Lien de réinitialisation par email"><i class="fa-solid fa-key"></i> Réinitialiser</button>
+                    </form>
+                    <form method="post" action="{% url 'team_membership_password_reset' m.pk %}"
+                          onsubmit="return confirm('Invalider le mot de passe actuel (sessions fermées) et envoyer un lien de création à {{ member.email|escapejs }} ?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="mode" value="force"><input type="hidden" name="next" value="detail">
+                        <button class="btn-soft text-red-500" title="Ancien mot de passe invalidé"><i class="fa-solid fa-rotate"></i> Nouveau mot de passe</button>
+                    </form>
+                {% endif %}
+            </div>
         </div>
     </section>
 
-    <section class="rounded-[24px] border border-devborder bg-devbg2 p-6 shadow-soft">
-        <h2 class="text-lg font-semibold text-devtext1 mb-4">Informations</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Identifiant</div>
-                <div class="mt-1 font-mono text-devtext1">#{{ object.pk }}</div>
+    <!-- Indicateurs -->
+    <section class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div class="rounded-[22px] border border-devborder bg-devbg2 p-5 shadow-soft">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Charge actuelle</p>
+            <p class="mt-2 text-2xl font-semibold text-devtext1">{{ m.current_load_percent|default:0 }} %</p>
+            <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-devbg3">
+                <div class="h-full rounded-full" style="width: {{ m.current_load_percent|default:0 }}%; background: {% if m.current_load_percent >= 90 %}#ef4444{% elif m.current_load_percent >= 70 %}#f59e0b{% else %}#22c55e{% endif %};"></div>
             </div>
-            {% if object.name %}
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Nom</div>
-                <div class="mt-1 text-devtext1">{{ object.name }}</div>
-            </div>
-            {% endif %}
-            {% if object.title %}
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Titre</div>
-                <div class="mt-1 text-devtext1">{{ object.title }}</div>
-            </div>
-            {% endif %}
-            {% if object.status %}
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Statut</div>
-                <div class="mt-1 text-devtext1">{{ object.get_status_display|default:object.status }}</div>
-            </div>
-            {% endif %}
-            {% if object.created_at %}
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Créé le</div>
-                <div class="mt-1 text-devtext1">{{ object.created_at|date:"d/m/Y H:i" }}</div>
-            </div>
-            {% endif %}
-            {% if object.updated_at %}
-            <div class="rounded-[14px] bg-devbg3/60 px-4 py-3">
-                <div class="text-[11px] uppercase tracking-wide text-devtext3 font-semibold">Mis à jour</div>
-                <div class="mt-1 text-devtext1">{{ object.updated_at|date:"d/m/Y H:i" }}</div>
-            </div>
+        </div>
+        <div class="rounded-[22px] border border-devborder bg-devbg2 p-5 shadow-soft">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Tâches ouvertes</p>
+            <p class="mt-2 text-2xl font-semibold text-devtext1">{{ task_stats.open }}</p>
+            <p class="mt-1 text-xs {% if task_stats.overdue %}font-semibold text-red-500{% else %}text-devtext3{% endif %}">
+                {{ task_stats.overdue }} en retard
+            </p>
+        </div>
+        <div class="rounded-[22px] border border-devborder bg-devbg2 p-5 shadow-soft">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Heures cette semaine</p>
+            {% if week %}
+                <p class="mt-2 text-2xl font-semibold text-devtext1">{{ week.total_hours|floatformat:"-1" }} h<span class="text-sm font-normal text-devtext3"> / {{ week.expected|floatformat:"-1" }} h</span></p>
+                <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-devbg3">
+                    <div class="h-full rounded-full {% if week.completion_percent >= 100 %}bg-emerald-500{% else %}bg-amber-500{% endif %}" style="width: {% if week.completion_percent > 100 %}100{% else %}{{ week.completion_percent }}{% endif %}%;"></div>
+                </div>
+            {% else %}
+                <p class="mt-2 text-sm text-devtext3">Réservé à la ligne hiérarchique</p>
             {% endif %}
         </div>
+        <div class="rounded-[22px] border border-devborder bg-devbg2 p-5 shadow-soft">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-devtext3">Capacité</p>
+            <p class="mt-2 text-2xl font-semibold text-devtext1">{{ profile.capacity_hours_per_week|default:40|floatformat:"-1" }} h<span class="text-sm font-normal text-devtext3"> / sem.</span></p>
+            <p class="mt-1 text-xs text-devtext3">{{ m.capacity_points|default:0 }} story points</p>
+        </div>
     </section>
+
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <!-- Colonne principale -->
+        <div class="space-y-6 lg:col-span-2">
+            <section class="rounded-[24px] border border-devborder bg-devbg2 p-6 shadow-soft">
+                <div class="mb-4 flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-devtext1">Tâches à venir</h2>
+                    <div class="flex flex-wrap gap-1.5 text-[11px]">
+                        {% for label, n in task_stats.by_status %}
+                            <span class="rounded-full bg-devbg3 px-2.5 py-0.5 text-devtext2">{{ label }} · {{ n }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% for t in upcoming_tasks %}
+                    <a href="{% url 'task_detail' t.pk %}" class="flex items-center justify-between gap-4 border-t border-devborder py-3 first:border-t-0 hover:text-devaccent">
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-medium text-devtext1">{{ t.title }}</p>
+                            <p class="truncate text-xs text-devtext3">{{ t.project.name|default:"—" }} · {{ t.get_status_display }}</p>
+                        </div>
+                        <span class="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold
+                            {% if t.due_date and t.due_date < today %}bg-red-500/15 text-red-500{% else %}bg-devbg3 text-devtext2{% endif %}">
+                            {% if t.due_date %}{{ t.due_date|date:"d/m" }}{% else %}Sans échéance{% endif %}
+                        </span>
+                    </a>
+                {% empty %}
+                    <p class="py-6 text-center text-sm text-devtext3">Aucune tâche ouverte.</p>
+                {% endfor %}
+            </section>
+
+            <section class="rounded-[24px] border border-devborder bg-devbg2 p-6 shadow-soft">
+                <h2 class="mb-4 text-lg font-semibold text-devtext1">Projets</h2>
+                {% for pm in projects %}
+                    <a href="{% url 'project_detail' pm.project.pk %}" class="flex items-center justify-between gap-4 border-t border-devborder py-3 first:border-t-0">
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-medium text-devtext1 hover:text-devaccent">{{ pm.project.name }}</p>
+                            <p class="text-xs text-devtext3">{{ pm.role|default:"Contributeur" }}{% if pm.is_primary %} · référent{% endif %}</p>
+                        </div>
+                        <div class="flex shrink-0 items-center gap-3">
+                            <span class="text-xs text-devtext2">{{ pm.allocation_percent|default:0 }} % alloué</span>
+                            <div class="h-1.5 w-20 overflow-hidden rounded-full bg-devbg3">
+                                <div class="h-full rounded-full bg-devaccent" style="width: {{ pm.project.progress_percent|default:0 }}%;"></div>
+                            </div>
+                        </div>
+                    </a>
+                {% empty %}
+                    <p class="py-6 text-center text-sm text-devtext3">Rattaché à aucun projet.</p>
+                {% endfor %}
+            </section>
+        </div>
+
+        <!-- Colonne latérale -->
+        <div class="space-y-6">
+            <section class="rounded-[24px] border border-devborder bg-devbg2 p-6 shadow-soft">
+                <h2 class="mb-4 text-lg font-semibold text-devtext1">Hiérarchie</h2>
+                {% if chain %}
+                    <ol class="space-y-2">
+                        {% for p in chain %}
+                            <li class="flex items-center justify-between rounded-[14px] bg-devbg3/60 px-3 py-2 text-sm">
+                                <span class="truncate text-devtext1">{{ p.user.get_full_name|default:p.user.username }}</span>
+                                <span class="shrink-0 text-[11px] font-semibold text-devtext3">N+{{ forloop.counter }}</span>
+                            </li>
+                        {% endfor %}
+                    </ol>
+                {% else %}
+                    <p class="text-sm text-devtext3">Aucun manager défini.</p>
+                {% endif %}
+                {% if reports %}
+                    <p class="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-wide text-devtext3">Collaborateurs directs ({{ reports|length }})</p>
+                    <ul class="space-y-1 text-sm">
+                        {% for r in reports %}<li class="truncate text-devtext2">{{ r.user.get_full_name|default:r.user.username }}</li>{% endfor %}
+                    </ul>
+                {% endif %}
+            </section>
+
+            <section class="rounded-[24px] border border-devborder bg-devbg2 p-6 shadow-soft">
+                <h2 class="mb-4 text-lg font-semibold text-devtext1">Informations</h2>
+                <dl class="space-y-3 text-sm">
+                    <div class="flex justify-between gap-3"><dt class="text-devtext3">Arrivée</dt><dd class="text-devtext1">{{ profile.joined_company_at|default:m.joined_at|date:"d/m/Y" }}</dd></div>
+                    {% if profile %}
+                        <div class="flex justify-between gap-3"><dt class="text-devtext3">Séniorité</dt><dd class="text-devtext1">{{ profile.get_seniority_display }}</dd></div>
+                        <div class="flex justify-between gap-3"><dt class="text-devtext3">Contrat</dt><dd class="text-devtext1">{{ profile.get_contract_type_display }}</dd></div>
+                        {% if profile.phone %}<div class="flex justify-between gap-3"><dt class="text-devtext3">Téléphone</dt><dd class="text-devtext1">{{ profile.phone }}</dd></div>{% endif %}
+                        {% if profile.location %}<div class="flex justify-between gap-3"><dt class="text-devtext3">Localisation</dt><dd class="text-devtext1">{{ profile.location }}</dd></div>{% endif %}
+                    {% endif %}
+                    {% if week %}
+                        <div class="flex justify-between gap-3"><dt class="text-devtext3">Timesheet semaine</dt>
+                            <dd class="text-devtext1">{{ week.status_label }}</dd></div>
+                    {% endif %}
+                    <div class="flex justify-between gap-3"><dt class="text-devtext3">Membre depuis</dt><dd class="text-devtext1">{{ m.created_at|date:"d/m/Y" }}</dd></div>
+                </dl>
+                {% if other_memberships %}
+                    <p class="mb-2 mt-5 text-[11px] font-semibold uppercase tracking-wide text-devtext3">Autres équipes</p>
+                    <div class="flex flex-wrap gap-1.5">
+                        {% for om in other_memberships %}
+                            <a href="{% url 'team_membership_detail' om.pk %}" class="rounded-full bg-devbg3 px-2.5 py-0.5 text-xs text-devtext2 hover:text-devaccent">
+                                {{ om.team.name|default:"Sans équipe" }} · {{ om.get_role_display }}
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </section>
+        </div>
+    </div>
 </div>
+{% endwith %}
 {% endblock %}

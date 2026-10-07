@@ -114,6 +114,10 @@ class WeekSummary:
     last_log: object = None
 
     @property
+    def status_label(self) -> str:
+        return dict(Status.choices).get(self.status, "Aucune saisie")
+
+    @property
     def completion_percent(self) -> int:
         if not self.expected:
             return 100 if self.total_hours else 0
