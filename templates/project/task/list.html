@@ -278,7 +278,7 @@
                                     </div>
                                     <div class="rounded-2xl bg-[var(--bg3)] px-3 py-2">
                                         <div class="text-[var(--text3)]">Assigné</div>
-                                        <div class="mt-1 truncate font-semibold text-[var(--text1)]">{{ task.assignee|default:"—" }}</div>
+                                        <div class="mt-1 truncate font-semibold text-[var(--text1)]" data-task-assignee="{{ task.pk }}">{{ task.assignee|default:"—" }}</div>
                                     </div>
                                     <div class="rounded-2xl bg-[var(--bg3)] px-3 py-2">
                                         <div class="text-[var(--text3)]">Échéance</div>
@@ -309,8 +309,9 @@
                                 <div class="mt-4 grid grid-cols-3 gap-2">
                                     <button type="button"
                                             @click.stop="openAssignModal('{{ task.pk }}', '{{ task.title|escapejs }}', '{{ task.assignee_id|default:'' }}')"
+                                            title="Réaffecter"
                                             class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
-                                        <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                                        <i class="fa-solid fa-user-pen"></i> Réaffecter
                                     </button>
 
                                     <!-- COMMENTAIRES -->
@@ -435,39 +436,7 @@
         </div>
     </section>
 
-    <!-- ASSIGN MODAL -->
-    <div x-show="assignModalOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-        <div class="w-full max-w-md rounded-[28px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-2xl" @click.stop>
-            <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-[var(--text1)]">Affecter la tâche</h3>
-                <button type="button" @click="assignModalOpen=false" class="text-[var(--text3)]">✕</button>
-            </div>
 
-            <p class="mt-2 text-sm text-[var(--text2)]" x-text="assignTaskTitle"></p>
-
-            <form method="post" :action="assignActionUrl" class="mt-5 space-y-4">
-                {% csrf_token %}
-                <select name="user" class="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm">
-                    <option value="">Sélectionner un utilisateur</option>
-                    {% for user in assignable_users %}
-                    <option value="{{ user.id }}">{{ user.get_full_name|default:user.username }}</option>
-                    {% endfor %}
-                </select>
-
-                <div class="flex gap-2">
-                    <button type="button"
-                            @click="assignModalOpen=false"
-                            class="flex-1 rounded-2xl border border-[var(--border)] bg-[var(--bg3)] px-4 py-3 text-sm font-semibold text-[var(--text2)]">
-                        Annuler
-                    </button>
-                    <button type="submit"
-                            class="flex-1 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white">
-                        Affecter
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
 </div>
 
 <script>
@@ -659,10 +628,7 @@ function taskKanbanBoard() {
 
         openAssignModal(taskId, title) {
             this.closeAllPopovers();
-            this.assignTaskId = taskId;
-            this.assignTaskTitle = title;
-            this.assignActionUrl = `/tasks/${taskId}/quick-assign/`;
-            this.assignModalOpen = true;
+            window.devflowReassign(taskId, title);
         },
 
         toggleCommentPopover(taskId) {

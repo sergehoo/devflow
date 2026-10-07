@@ -2854,6 +2854,7 @@
 {% if request.resolver_match.url_name != 'chat' %}
   {% include "layout/_messenger.html" with messenger_mode="bubble" %}
 {% endif %}
+{% include "components/task_reassign_modal.html" %}
 
 </body>
 </html>

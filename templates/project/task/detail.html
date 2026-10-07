@@ -58,7 +58,7 @@
                 <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--text3)]">
                     <span>{{ item.project.name }}</span>
                     {% if item.sprint %}<span>• {{ item.sprint.name }}</span>{% endif %}
-                    {% if item.assignee %}<span>• Assignée à {{ item.assignee }}</span>{% endif %}
+                    <span>• Assignée à <span data-task-assignee="{{ item.pk }}">{{ item.assignee|default:"—" }}</span></span>
                     {% if item.reporter %}<span>• Reportée par {{ item.reporter }}</span>{% endif %}
                 </div>
 
@@ -79,6 +79,10 @@
                     <i class="fa-solid fa-rotate-right"></i> Reconduire
                 </a>
                 {% endif %}
+                <button type="button" onclick="devflowReassign({{ item.pk }}, '{{ item.title|escapejs }}')"
+                   class="inline-flex items-center gap-2 rounded-xl border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2.5 text-sm font-semibold text-[var(--accent)]">
+                    <i class="fa-solid fa-user-pen"></i> Réaffecter
+                </button>
                 <a href="{% url 'task_update' item.pk %}"
                    class="inline-flex items-center rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white">
                     Modifier
@@ -279,7 +283,11 @@
                     </div>
                     <div class="flex items-start justify-between gap-4">
                         <span class="text-[var(--text3)]">Assigné à</span>
-                        <span class="text-right font-medium text-[var(--text1)]">{{ item.assignee|default:"—" }}</span>
+                        <span class="text-right">
+                            <span class="font-medium text-[var(--text1)]" data-task-assignee="{{ item.pk }}">{{ item.assignee|default:"—" }}</span>
+                            <button type="button" onclick="devflowReassign({{ item.pk }}, '{{ item.title|escapejs }}')"
+                                    class="ml-2 text-xs font-semibold text-[var(--accent)] hover:underline">Réaffecter</button>
+                        </span>
                     </div>
                 </div>
             </section>

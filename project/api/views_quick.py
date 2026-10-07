@@ -179,24 +179,38 @@ class TaskSnoozeView(APIView):
 # 4) Quick assign — body: {user_id?: int}, null/absent = unassign
 # ---------------------------------------------------------------------------
 class TaskQuickAssignJSONView(APIView):
+    """POST {user_id?: int, note?: str} — réaffecte (null/absent = retirer l'assignation)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
+        from project.services.task_assignment import ReassignError, reassign
+
         task = _get_task_or_404(request, pk)
-        user_id = (request.data or {}).get("user_id")
-
-        if user_id in (None, "", "null", 0):
-            task.unassign(actor=request.user)
-            return Response(_task_payload(task))
-
-        # SECURITY — l'assignee doit appartenir au workspace de la tâche.
-        from project.utils.workspaces import users_in_workspaces
-        assignee = get_object_or_404(users_in_workspaces([task.workspace_id]), pk=user_id)
-        task.assign(assignee, assigned_by=request.user)
-
-        # Recharge depuis la base (assign peut avoir muté plusieurs champs)
+        data = request.data or {}
+        try:
+            new_user = reassign(task, data.get("user_id"), actor=request.user, note=data.get("note", ""))
+        except ReassignError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN
+                            if "droit" in str(exc) else status.HTTP_400_BAD_REQUEST)
         task.refresh_from_db()
-        return Response(_task_payload(task))
+        payload = _task_payload(task)
+        payload["assignee_name"] = (new_user.get_full_name() or new_user.get_username()) if new_user else ""
+        return Response(payload)
+
+
+class TaskAssigneesJSONView(APIView):
+    """GET ?q= — candidats à la réaffectation (membres du workspace de la tâche)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        from project.services.task_assignment import assignable_users, can_reassign
+
+        task = _get_task_or_404(request, pk)
+        return Response({
+            "task": {"id": task.pk, "title": task.title, "assignee_id": task.assignee_id},
+            "can_reassign": can_reassign(request.user, task),
+            "users": assignable_users(task, query=request.GET.get("q", "")),
+        })
 
 
 # ---------------------------------------------------------------------------

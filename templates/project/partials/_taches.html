@@ -99,7 +99,12 @@
                         </td>
                         <td class="py-3 text-[var(--text2)]">{{ task.get_status_display|default:task.status }}</td>
                         <td class="py-3 text-[var(--text2)]">{{ task.get_priority_display|default:task.priority }}</td>
-                        <td class="py-3 text-[var(--text2)]">{{ task.assignee|default:"—" }}</td>
+                        <td class="py-3 text-[var(--text2)]">
+                            <span data-task-assignee="{{ task.pk }}">{{ task.assignee|default:"—" }}</span>
+                            <button type="button" onclick="devflowReassign({{ task.pk }}, '{{ task.title|escapejs }}')"
+                                    class="ml-1 rounded-lg px-1.5 py-0.5 text-[11px] font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10"
+                                    title="Réaffecter">Réaffecter</button>
+                        </td>
                         <td class="py-3 text-right text-[var(--text2)]">{{ task.estimate_hours|default:"0" }} h</td>
                         <td class="py-3 text-right text-[var(--text2)]">{{ task.spent_hours|default:"0" }} h</td>
                         <td class="py-3 text-[var(--text2)]">{{ task.due_date|date:"d/m/Y"|default:"—" }}</td>

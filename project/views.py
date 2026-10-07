@@ -35,6 +35,7 @@ from django.utils.text import slugify
 from django.views import View
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView, FormView
 from django.core.exceptions import PermissionDenied
+from django.utils.http import url_has_allowed_host_and_scheme
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Side, Border, Alignment
 
@@ -4270,6 +4271,21 @@ def task_status_update(request):
             pk=task_id,
             workspace_id__in=user_workspace_ids,
         )
+        if task.assignee_id != request.user.id:
+            return JsonResponse(
+                {"success": False, "message": "Cette tâche est assignée à un autre collaborateur."},
+                status=403,
+            )
+
+        def record_time_if_provided():
+            raw_hours = payload.get("spent_hours")
+            if raw_hours in (None, "", 0, "0", "0.0", "0.00"):
+                return
+            from project.services.task_time import TaskTimeError, record_task_time
+            try:
+                record_task_time(task=task, user=request.user, hours=raw_hours)
+            except TaskTimeError as exc:
+                raise ValidationError(str(exc)) from exc
 
         # P5-METHODO : tente la transition via le Workflow Engine.
         # Si pas de workflow configuré → fallback legacy.
@@ -4280,6 +4296,7 @@ def task_status_update(request):
             target_code = status.lower()
             ok, reason = WorkflowEngine.can_transition(task, target_code, request.user)
             if ok:
+                record_time_if_provided()
                 WorkflowEngine.apply_transition(
                     task, target_code, request.user, comment=comment,
                 )
@@ -4298,6 +4315,7 @@ def task_status_update(request):
             logger.warning("WorkflowEngine fallback for task %s: %s", task_id, exc)
 
         # Fallback legacy : changement direct sans validation workflow
+        record_time_if_provided()
         task.status = status
         task.save(update_fields=["status", "updated_at"])
         return JsonResponse({"success": True, "status": task.status,
@@ -4593,31 +4611,45 @@ class TaskQuickAssignView(DevflowBaseMixin, View):
     DevflowBaseMixin hérite déjà de LoginRequiredMixin.
     """
     def post(self, request, pk):
-        task = self.filter_by_workspace(
-            dm.Task.objects.all()
-        ).select_related("project", "workspace").get(pk=pk)
+        from project.services.task_assignment import ReassignError, reassign
 
+        task = get_object_or_404(
+            self.filter_by_workspace(dm.Task.objects.all()).select_related("project", "workspace"), pk=pk,
+        )
         assignee_id = request.POST.get("assignee") or request.POST.get("user")
-
-        if assignee_id:
-            assignee = get_object_or_404(User, pk=assignee_id, is_active=True)
-            task.assign(assignee, assigned_by=request.user)
-            messages.success(request, f"Tâche affectée à {assignee}.")
+        try:
+            new_user = reassign(task, assignee_id, actor=request.user, note=request.POST.get("note", ""))
+        except ReassignError as exc:
+            messages.error(request, str(exc))
         else:
-            task.unassign(actor=request.user)
-            messages.success(request, "Assignation supprimée.")
-
+            messages.success(
+                request,
+                f"Tâche affectée à {new_user.get_full_name() or new_user}." if new_user else "Assignation supprimée.",
+            )
         next_url = request.POST.get("next")
-        return redirect(next_url or request.META.get("HTTP_REFERER") or "task_list")
+        if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+            return redirect(next_url)
+        return redirect("task_detail", pk=task.pk)
 
 
 class TaskQuickStatusView(DevflowBaseMixin, View):
     def post(self, request, pk):
         task = self.filter_by_workspace(dm.Task.objects.all()).select_related("project", "workspace").get(pk=pk)
+        if task.assignee_id != request.user.id:
+            messages.error(request, "Cette tâche est assignée à un autre collaborateur.")
+            return redirect(request.POST.get("next") or "task_list")
         status = request.POST.get("status")
 
         allowed_statuses = {choice[0] for choice in dm.Task.Status.choices}
         if status in allowed_statuses:
+            raw_hours = request.POST.get("spent_hours")
+            if raw_hours not in (None, "", "0", "0.0", "0.00"):
+                from project.services.task_time import TaskTimeError, record_task_time
+                try:
+                    record_task_time(task=task, user=request.user, hours=raw_hours)
+                except TaskTimeError as exc:
+                    messages.error(request, str(exc))
+                    return redirect(request.POST.get("next") or "task_list")
             task.status = status
 
             if status == dm.Task.Status.IN_PROGRESS and not task.started_at:
@@ -4754,6 +4786,19 @@ class TaskKanbanMoveView(LoginRequiredMixin, View):
         allowed_statuses = {choice[0] for choice in dm.Task.Status.choices}
         if new_status not in allowed_statuses:
             return JsonResponse({"ok": False, "error": "Statut invalide."}, status=400)
+        if task.assignee_id != request.user.id:
+            return JsonResponse(
+                {"ok": False, "error": "Cette tâche est assignée à un autre collaborateur."},
+                status=403,
+            )
+
+        raw_hours = request.POST.get("spent_hours")
+        if raw_hours not in (None, "", "0", "0.0", "0.00"):
+            from project.services.task_time import TaskTimeError, record_task_time
+            try:
+                record_task_time(task=task, user=request.user, hours=raw_hours)
+            except TaskTimeError as exc:
+                return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
         try:
             new_position = int(new_position or 0)
