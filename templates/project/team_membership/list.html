@@ -114,6 +114,28 @@
                                    title="Modifier">
                                     <i class="fa-solid fa-pen"></i>
                                 </a>
+                                {% if can_manage_passwords and m.user.is_active and m.user_id != request.user.id and m.user_id != workspace_owner_id and not m.user.is_superuser %}
+                                    <form method="post" action="{% url 'team_membership_password_reset' m.pk %}" class="inline"
+                                          onsubmit="return confirm('Envoyer à {{ m.user.email|escapejs }} un lien pour réinitialiser son mot de passe ?\nSon mot de passe actuel reste valable jusqu’au changement.');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="mode" value="link">
+                                        <button type="submit"
+                                                class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text3)] transition hover:bg-[var(--bg3)] hover:text-amber-500"
+                                                title="Réinitialiser le mot de passe (lien par email)">
+                                            <i class="fa-solid fa-key"></i>
+                                        </button>
+                                    </form>
+                                    <form method="post" action="{% url 'team_membership_password_reset' m.pk %}" class="inline"
+                                          onsubmit="return confirm('Générer un nouveau mot de passe pour {{ m.user.get_full_name|default:m.user.username|escapejs }} ?\nL’ancien est invalidé immédiatement (sessions fermées) et un lien de création est envoyé à {{ m.user.email|escapejs }}.');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="mode" value="force">
+                                        <button type="submit"
+                                                class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text3)] transition hover:bg-red-500/10 hover:text-red-500"
+                                                title="Générer un nouveau mot de passe (ancien invalidé)">
+                                            <i class="fa-solid fa-rotate"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
                                 <a href="{% url 'team_membership_delete' m.pk %}"
                                    class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text3)] transition hover:bg-red-500/10 hover:text-red-500"
                                    title="Retirer">

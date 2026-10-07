@@ -1567,6 +1567,49 @@ class TeamMembershipListView(DevflowListView):
         ws = self.get_current_workspace()
         return dm.Team.objects.filter(workspace=ws, is_archived=False).order_by("name") if ws else dm.Team.objects.none()
 
+    def get_context_data(self, **kwargs):
+        from project.services.password_reset import can_manage_passwords
+        ctx = super().get_context_data(**kwargs)
+        ws = self.get_current_workspace()
+        ctx["can_manage_passwords"] = can_manage_passwords(self.request.user, ws)
+        ctx["workspace_owner_id"] = ws.owner_id if ws else None
+        return ctx
+
+
+class TeamMembershipPasswordResetView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
+    """
+    POST /team-memberships/<pk>/password-reset/  (mode=link|force)
+    Envoie au membre un lien sécurisé pour créer son nouveau mot de passe.
+    """
+
+    def post(self, request, pk):
+        from project.services.password_reset import (
+            MODE_FORCE, PasswordResetError, request_member_password_reset,
+        )
+
+        membership = get_object_or_404(
+            self.filter_by_workspace(dm.TeamMembership.objects.select_related("user", "workspace")), pk=pk,
+        )
+        mode = request.POST.get("mode", "link")
+        target = membership.user
+        try:
+            request_member_password_reset(
+                actor=request.user, target=target, workspace=membership.workspace,
+                request=request, mode=mode,
+            )
+        except PasswordResetError as exc:
+            messages.error(request, str(exc))
+        else:
+            name = target.get_full_name() or target.get_username()
+            if mode == MODE_FORCE:
+                messages.success(
+                    request,
+                    f"Mot de passe de {name} invalidé. Un lien pour en créer un nouveau a été envoyé à {target.email}.",
+                )
+            else:
+                messages.success(request, f"Lien de réinitialisation envoyé à {name} ({target.email}).")
+        return redirect("team_membership_list")
+
 
 class TeamMembershipDetailView(DevflowDetailView):
     model = dm.TeamMembership

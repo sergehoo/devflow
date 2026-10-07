@@ -66,6 +66,7 @@ from project.views import HomeView, DashboardView, WorkspaceListView, WorkspaceC
     ProjectMemberUpdateView, ProjectMemberDetailView, ProjectMemberCreateView, ProjectMemberListView, \
     ProjectArchiveView, ProjectDeleteView, ProjectUpdateView, ProjectDetailView, ProjectCreateView, ProjectListView, \
     TeamMembershipDeleteView, TeamMembershipUpdateView, TeamMembershipDetailView, TeamMembershipCreateView, \
+    TeamMembershipPasswordResetView, \
     TeamMembershipListView, TeamArchiveView, TeamDeleteView, TeamUpdateView, TeamDetailView, TeamCreateView, \
     TeamListView, WorkspaceArchiveView, WorkspaceDeleteView, ProjectBudgetExportExcelView, sprint_status_update, \
     task_status_update, roadmap_item_shift_dates, AInsightDashboardView, TaskToggleFlagView, TaskQuickCommentView, \
@@ -122,6 +123,8 @@ urlpatterns = [
     path("team-memberships/<int:pk>/", TeamMembershipDetailView.as_view(), name="team_membership_detail"),
     path("team-memberships/<int:pk>/update/", TeamMembershipUpdateView.as_view(), name="team_membership_update"),
     path("team-memberships/<int:pk>/delete/", TeamMembershipDeleteView.as_view(), name="team_membership_delete"),
+    path("team-memberships/<int:pk>/password-reset/", TeamMembershipPasswordResetView.as_view(),
+         name="team_membership_password_reset"),
 
     path("projects/", ProjectListView.as_view(), name="project_list"),
     path("projects/<int:pk>/budget/export-excel/", ProjectBudgetExportExcelView.as_view(),

@@ -936,3 +936,37 @@ def timesheet_weekly_manager_report(day_iso=None):
     """Fin de semaine : rapport N+1 (son équipe) et direction (consolidé)."""
     from project.services.timesheet_reminders import send_weekly_reports
     return send_weekly_reports(_parse_day(day_iso))
+
+
+# =============================================================================
+# Membres — réinitialisation du mot de passe par un administrateur
+# =============================================================================
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def send_member_password_reset_email_task(self, user_id, reset_url, forced, actor_name, workspace_name):
+    """Envoie le lien permettant au membre de créer son nouveau mot de passe."""
+    from project.services.password_reset import reset_link_validity_hours
+
+    user = get_user_model().objects.filter(pk=user_id, is_active=True).first()
+    if user is None or not user.email:
+        return {"ok": False, "reason": "user not found / no email"}
+
+    context = {
+        "user": user,
+        "reset_url": reset_url,
+        "forced": forced,
+        "actor_name": actor_name,
+        "workspace_name": workspace_name,
+        "validity_hours": reset_link_validity_hours(),
+    }
+    try:
+        send_mail(
+            subject="[DevFlow] Réinitialisation de votre mot de passe",
+            message=render_to_string("emails/member_password_reset.txt", context),
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+            recipient_list=[user.email],
+            html_message=render_to_string("emails/member_password_reset.html", context),
+        )
+    except Exception as exc:
+        logger.warning("Password reset email failed for user %s: %s", user_id, exc)
+        raise self.retry(exc=exc)
+    return {"ok": True}

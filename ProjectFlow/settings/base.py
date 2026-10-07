@@ -589,3 +589,5 @@ ACCOUNT_RATE_LIMITS = {
 LOGIN_REDIRECT_URL = "/dashboard/"
 ACCOUNT_LOGOUT_REDIRECT_URL = "/"
 ACCOUNT_EMAIL_SUBJECT_PREFIX = "[DevFlow]"
+# Validité des liens de réinitialisation de mot de passe (allauth + reset admin).
+PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT", default=86400, cast=int)
