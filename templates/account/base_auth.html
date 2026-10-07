@@ -264,27 +264,21 @@
             border-radius: 30px;
             overflow: hidden;
             box-shadow: var(--shadow-xl);
-            border: 1px solid rgba(255, 255, 255, .22);
-            background: linear-gradient(180deg, rgba(0, 0, 0, .08), rgba(0, 0, 0, .48)),
-            {#url("{% static 'img/branding/auth-cover.jpg' %}") center/cover no-repeat;#}
+            border: 1px solid rgba(255, 255, 255, .10);
+            background:
+                radial-gradient(circle at 15% 12%, rgba(255, 90, 31, .55), transparent 38%),
+                radial-gradient(circle at 92% 88%, rgba(14, 165, 201, .30), transparent 40%),
+                linear-gradient(160deg, #1d1a17 0%, #241a15 55%, #2d1b11 100%);
         }
 
         .visual-card::before {
             content: "";
             position: absolute;
             inset: 0;
-            background: linear-gradient(135deg, rgba(255, 90, 31, .16), transparent 34%),
-            linear-gradient(315deg, rgba(14, 165, 201, .14), transparent 34%);
-            pointer-events: none;
-        }
-
-        .visual-card::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            {#background: url("{% static 'img/branding/projetc_advisor.jpg' %}") center/cover no-repeat;#}
-            opacity: .80;
-            mix-blend-mode: screen;
+            background-image: linear-gradient(to right, rgba(255, 255, 255, .05) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255, 255, 255, .05) 1px, transparent 1px);
+            background-size: 40px 40px;
+            mask-image: radial-gradient(circle at 30% 30%, black 20%, transparent 75%);
             pointer-events: none;
         }
 
@@ -378,14 +372,13 @@
         }
 
         .metric-card {
-            padding: 16px 16px 14px;
+            padding: 16px;
             border-radius: 20px;
-            background: rgba(255, 255, 255, .12);
-            border: 1px solid rgba(255, 255, 255, .16);
+            background: rgba(255, 255, 255, .07);
+            border: 1px solid rgba(255, 255, 255, .12);
             backdrop-filter: blur(16px);
-            box-shadow: 0 14px 30px rgba(0, 0, 0, .16);
             animation: riseIn .8s ease both;
-            color: rgba(0, 0, 0, 0.7);
+            color: #fff;
         }
 
         .metric-card:nth-child(2) {
@@ -396,23 +389,33 @@
             animation-delay: .16s;
         }
 
-        .metric-label {
-            font-size: 11px;
-            color: rgba(0, 0, 0, 0.7);
+        .metric-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            display: grid;
+            place-items: center;
+            background: rgba(255, 90, 31, .18);
+            color: var(--accent3);
+        }
+
+        .metric-icon svg {
+            width: 18px;
+            height: 18px;
         }
 
         .metric-value {
-            margin-top: 8px;
-            font-family: 'Fraunces', serif;
-            font-size: 28px;
-            line-height: 1;
-            letter-spacing: -1px;
+            margin-top: 12px;
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.3;
         }
 
         .metric-sub {
-            margin-top: 8px;
-            font-size: 11px;
-            color: rgba(255, 255, 255, .74);
+            margin-top: 6px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: rgba(255, 255, 255, .68);
         }
 
         .signin-side {
@@ -602,7 +605,19 @@
             justify-content: space-between;
             gap: 14px;
             flex-wrap: wrap;
-            margin: 6px 0 20px;
+            margin: 2px 0 20px;
+        }
+
+        .auth-check-row .link-inline {
+            margin-left: auto;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .btn-auth:disabled {
+            opacity: .75;
+            cursor: wait;
+            transform: none;
         }
 
         .check-wrap {
@@ -792,45 +807,6 @@
             color: var(--text3);
         }
 
-        .floating-chip {
-            position: absolute;
-            border-radius: 999px;
-            padding: 8px 12px;
-            font-size: 11px;
-            font-weight: 700;
-            background: rgba(255, 255, 255, .62);
-            border: 1px solid rgba(255, 255, 255, .42);
-            backdrop-filter: blur(14px);
-            box-shadow: var(--shadow-md);
-            color: var(--text1);
-            animation: chipFloat 6s ease-in-out infinite;
-        }
-
-        .chip-a {
-            top: 10%;
-            right: 2%;
-        }
-
-        .chip-b {
-            bottom: 13%;
-            left: 2%;
-            animation-delay: 1s;
-        }
-
-        .chip-c {
-            top: 52%;
-            right: -1%;
-            animation-delay: 2s;
-        }
-
-        @keyframes chipFloat {
-            0%, 100% {
-                transform: translateY(0);
-            }
-            50% {
-                transform: translateY(-8px);
-            }
-        }
 
         @keyframes riseIn {
             from {
@@ -843,23 +819,17 @@
             }
         }
 
-        @media (max-width: 1180px) {
+        @media (max-width: 1024px) {
             .auth-container {
                 grid-template-columns: 1fr;
             }
 
             .visual-side {
-                min-height: 420px;
-                padding-bottom: 10px;
-            }
-
-            .visual-card {
-                min-height: 420px;
+                display: none;
             }
 
             .signin-side {
-                padding-top: 10px;
-                padding-bottom: 34px;
+                min-height: 100vh;
             }
 
             .company-logo-top {
@@ -934,9 +904,6 @@
                 border-radius: 16px;
             }
 
-            .floating-chip {
-                display: none;
-            }
         }
     </style>
 
@@ -971,54 +938,52 @@
     </button>
 
     <div class="auth-container">
-
- <section class="visual-side">
+        <section class="visual-side" aria-hidden="true">
             <div class="visual-card">
                 <div class="visual-content">
-                    <div>
-                        <div class="brand-badge">
-           
-{#    <img src="{% static 'img/logo_datarium-black.png' %}" alt="Logo" class="brand-logo-img">#}
-
-
-
-                            <div>
-                                <div class="brand-name">Dev'Flow</div>
-                                <div class="brand-sub">Project workspace intelligence</div>
-                            </div>
+                    <div class="brand-badge">
+                        <div>
+                            <div class="brand-name">Dev'Flow</div>
+                            <div class="brand-sub">Project workspace intelligence</div>
                         </div>
                     </div>
 
                     <div class="visual-hero">
                         <div class="hero-kicker">Pilotage · Exécution · Visibilité</div>
-
+                        <h1 class="hero-title">Vos projets, vos équipes et vos budgets, au même endroit.</h1>
                         <p class="hero-text">
-                            Centralisez vos équipes, vos livrables, vos sprints et vos décisions dans une expérience
-                            moderne,
-                            élégante et orientée performance.
+                            Centralisez livrables, sprints, temps passés et décisions dans un espace de travail
+                            unique, avec une IA qui vous alerte avant que les risques ne deviennent des retards.
                         </p>
 
                         <div class="floating-metrics">
                             <div class="metric-card">
-                                <div class="metric-label">Projets suivis</div>
-                                <div class="metric-value">128+</div>
-                                <div class="metric-sub">Vision consolidée des activités</div>
+                                <div class="metric-icon">
+                                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6h16.5M3.75 12h10.5m-10.5 6h6"/></svg>
+                                </div>
+                                <div class="metric-value">Projets &amp; sprints</div>
+                                <div class="metric-sub">Kanban, roadmap, jalons et méthodologies adaptées.</div>
                             </div>
                             <div class="metric-card">
-                                <div class="metric-label">Vélocité moyenne</div>
-                                <div class="metric-value">+18%</div>
-                                <div class="metric-sub">Progression continue par sprint</div>
+                                <div class="metric-icon">
+                                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m5-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                                </div>
+                                <div class="metric-value">Temps &amp; budgets</div>
+                                <div class="metric-sub">Timesheets, TJM, marges et prévisions de coûts.</div>
                             </div>
                             <div class="metric-card">
-                                <div class="metric-label">Équipes actives</div>
-                                <div class="metric-value">24</div>
-                                <div class="metric-sub">Produit, mobile, backend, ops</div>
+                                <div class="metric-icon">
+                                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z"/></svg>
+                                </div>
+                                <div class="metric-value">IA intégrée</div>
+                                <div class="metric-sub">Risques, estimations et rapports hebdomadaires.</div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
+
         <section class="signin-side">
             <div class="form-wrap">
                 <div class="company-logo-top">
@@ -1027,29 +992,17 @@
                     </div>
                 </div>
 
-                <div class="floating-chip chip-a">Live sprint tracking</div>
-                <div class="floating-chip chip-b">AI workspace</div>
-                <div class="floating-chip chip-c">Team orchestration</div>
-
                 <div class="auth-card">
                     <div class="auth-card-inner">
-                      
-<div class="company-logo-top">
-                    <div class="company-logo-badge">
-                        <div class="company-logo-name">Dev'Flow</div>
-                    </div>
-                </div>                      
-
                         {% block auth_content %}{% endblock %}
 
                         <div class="auth-bottom-note">
-                            Expérience sécurisée · Accès centralisé
+                            Connexion chiffrée · Accès réservé aux membres de votre organisation
                         </div>
                     </div>
                 </div>
             </div>
         </section>
-    
     </div>
 </div>
 

@@ -26,7 +26,8 @@
     </div>
 {% endif %}
 
-<form method="post" action="{% url 'account_login' %}" class="auth-form" novalidate>
+<form method="post" action="{% url 'account_login' %}" class="auth-form" novalidate
+      x-data="{ submitting: false }" @submit="submitting = true">
     {% csrf_token %}
 
     {% if form.non_field_errors %}
@@ -40,7 +41,7 @@
     {% endif %}
 
     <div class="field-group">
-        <label for="{{ form.login.id_for_label }}" class="field-label">Identifiant ou email</label>
+        <label for="{{ form.login.id_for_label }}" class="field-label">Adresse email</label>
         <div class="input-shell">
             <span class="input-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -48,13 +49,18 @@
                 </svg>
             </span>
             <input
-                type="text"
+                type="email"
                 name="{{ form.login.html_name }}"
                 id="{{ form.login.id_for_label }}"
                 value="{{ form.login.value|default_if_none:'' }}"
                 class="auth-input"
-                placeholder="nom d’utilisateur ou adresse email"
+                placeholder="prenom.nom@entreprise.com"
                 autocomplete="username"
+                inputmode="email"
+                autocapitalize="none"
+                spellcheck="false"
+                {% if not form.login.value %}autofocus{% endif %}
+                {% if form.login.errors %}aria-invalid="true"{% endif %}
                 required
             >
         </div>
@@ -77,12 +83,15 @@
                 class="auth-input !pr-14"
                 placeholder="••••••••••••"
                 autocomplete="current-password"
+                {% if form.login.value %}autofocus{% endif %}
+                {% if form.password.errors %}aria-invalid="true"{% endif %}
                 required
             >
 
             <button
                 type="button"
                 @click="show = !show"
+                :aria-label="show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'"
                 class="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text3)] hover:text-[var(--accent)] transition"
             >
                 <svg x-show="!show" xmlns="http://www.w3.org/2000/svg" class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -114,8 +123,9 @@
         <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
     {% endif %}
 
-    <button type="submit" class="btn-auth">
-        Se connecter
+    <button type="submit" class="btn-auth" :disabled="submitting">
+        <span x-show="!submitting">Se connecter</span>
+        <span x-show="submitting" x-cloak>Connexion…</span>
     </button>
 {##}
 {#    {% get_providers as socialaccount_providers %}#}
