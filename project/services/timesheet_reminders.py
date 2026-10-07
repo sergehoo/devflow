@@ -96,9 +96,11 @@ def _notify(user, workspace, *, subject, body, url, critical=False) -> bool:
     if not _email_allowed(user, critical=critical):
         return False
     try:
+        from project.utils.urls import absolute_url
+
         send_mail(
             subject=f"[DevFlow] {subject}",
-            message=body,
+            message=f"{body}\n\nOuvrir dans DevFlow : {absolute_url(url)}",
             from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
             recipient_list=[user.email],
             fail_silently=False,

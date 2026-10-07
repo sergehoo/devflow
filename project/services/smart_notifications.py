@@ -29,6 +29,7 @@ from typing import Any
 from django.utils import timezone
 
 from project import models as dm
+from project.utils.urls import site_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +247,7 @@ def send_digest_email_sync(user, digest: dm.NotificationDigest) -> bool:
         "user": user,
         "digest": digest,
         "payload": digest.payload,
-        "site_url": getattr(settings, "SITE_URL", "").rstrip("/"),
+        "site_url": site_base_url(),
     }
     subject = f"[Dev'Flow] Récap {digest.payload.get('total', 0)} notification(s)"
 
@@ -262,7 +263,7 @@ def send_digest_email_sync(user, digest: dm.NotificationDigest) -> bool:
             f"Récapitulatif de {digest.notifications_count} notification(s) "
             f"de la période :\n\n{highlights}\n\n"
             f"Voir toutes vos notifications : "
-            f"{getattr(settings, 'SITE_URL', '').rstrip('/')}/notifications/"
+            f"{site_base_url()}/notifications/"
         )
 
     try:

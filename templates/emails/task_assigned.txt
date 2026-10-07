@@ -9,7 +9,7 @@ Bonjour {{ recipient.get_full_name|default:recipient.username }},
 
 Ouvrez-la pour découvrir le détail et commencer à avancer :
 
-    /tasks/{{ task.pk }}/
+    {{ task_url }}
 
 Bonne mission,
 L'équipe Dev'Flow

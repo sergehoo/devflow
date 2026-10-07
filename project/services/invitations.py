@@ -17,8 +17,9 @@ def build_invitation_url(invitation, request=None) -> str:
     path = reverse("workspace_invitation_public_accept", args=[invitation.token])
     if request is not None:
         return request.build_absolute_uri(path)
-    base = getattr(settings, "SITE_URL", "http://localhost:8000").rstrip("/")
-    return f"{base}{path}"
+    from project.utils.urls import absolute_url
+
+    return absolute_url(path)
 
 
 def send_invitation_email(invitation, request=None) -> bool:

@@ -32,6 +32,8 @@ def send_task_assignment_email_task(task_id, recipient_id, assigned_by_id=None):
         "assigned_by": assigned_by,
         "project": task.project,
     }
+    from project.utils.urls import absolute_url
+    context["task_url"] = absolute_url(f"/tasks/{task.pk}/")
     message = render_to_string("emails/task_assigned.txt", context)
     try:
         message_html = render_to_string("emails/task_assigned.html", context)

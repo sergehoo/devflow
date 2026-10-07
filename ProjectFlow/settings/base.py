@@ -43,6 +43,9 @@ ALLOWED_HOSTS = _csv(config(
     default="localhost,127.0.0.1,flow.datarium-dev.com,www.flow.datarium-dev.com",
 ))
 
+# URL publique utilisée pour les liens des emails (ex. https://flow.datarium-dev.com).
+SITE_URL = config("SITE_URL", default="")
+
 CSRF_TRUSTED_ORIGINS = _csv(config(
     "CSRF_TRUSTED_ORIGINS",
     default="https://flow.datarium-dev.com,http://flow.datarium-dev.com",

@@ -44,11 +44,9 @@ def _resolve_pm(task):
 
 
 def _build_action_url(view_name, task_pk, request=None) -> str:
-    path = reverse(view_name, args=[task_pk])
-    if request is not None:
-        return request.build_absolute_uri(path)
-    base = getattr(settings, "SITE_URL", "").rstrip("/")
-    return f"{base}{path}" if base else path
+    from project.utils.urls import absolute_url
+
+    return absolute_url(reverse(view_name, args=[task_pk]), request=request)
 
 
 def notify_pm_task_overdue(task, *, request=None, force=False) -> bool:

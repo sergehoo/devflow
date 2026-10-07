@@ -32,6 +32,8 @@ from django.contrib.auth import get_user_model
 from django.core.mail import EmailMultiAlternatives, send_mail
 from django.template.loader import render_to_string
 from django.urls import reverse
+
+from project.utils.urls import absolute_url
 from django.utils import timezone
 
 from project import models as dm
@@ -189,7 +191,7 @@ class TaskReminderService:
             "reason_label": dm.TaskReminder.Reason(reason).label,
             "reason_code": reason,
             "days_overdue": days_overdue,
-            "task_url": cls._task_url(task),
+            "task_url": absolute_url(cls._task_url(task)),
         }
         try:
             text_body = render_to_string("emails/task_reminder.txt", ctx)
@@ -244,7 +246,7 @@ class TaskReminderService:
                     "task": t,
                     "reason_label": dm.TaskReminder.Reason(reason).label,
                     "days_overdue": days,
-                    "task_url": cls._task_url(t),
+                    "task_url": absolute_url(cls._task_url(t)),
                 }
                 for t, reason, days in items
             ],
