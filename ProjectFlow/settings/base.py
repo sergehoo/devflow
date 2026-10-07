@@ -345,7 +345,9 @@ AI_OPENAI_MODEL = os.getenv("AI_OPENAI_MODEL", "gpt-4o-mini")
 AI_OPENAI_BASE_URL = os.getenv("AI_OPENAI_BASE_URL", "") or None
 
 # Local (compatible OpenAI : Ollama, vLLM, LocalAI, llama.cpp...)
-AI_LOCAL_BASE_URL = os.getenv("AI_LOCAL_BASE_URL", "http://localhost:11434/v1")
+# Vide par défaut : le provider local (Ollama, vLLM…) n'est utilisé que s'il est
+# explicitement configuré (le conteneur Ollama n'est plus déployé).
+AI_LOCAL_BASE_URL = os.getenv("AI_LOCAL_BASE_URL", "")
 AI_LOCAL_MODEL = os.getenv("AI_LOCAL_MODEL", "llama3.2:3b")
 AI_LOCAL_API_KEY = os.getenv("AI_LOCAL_API_KEY", "ollama")
 

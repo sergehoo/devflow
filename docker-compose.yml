@@ -268,27 +268,12 @@ services:
 
     
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: devflow_ollama
-    restart: unless-stopped
-    environment:
-      OLLAMA_CONTEXT_LENGTH: 2048
-      OLLAMA_KEEP_ALIVE: 30m
-      OLLAMA_NUM_PARALLEL: 1
-      OLLAMA_MAX_QUEUE: 20
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-
 volumes:
   postgres_data:
   redis_data:
   static_volume:
   media_volume:
   logs_volume:
-  ollama_data:
   devflowminio_data:
 
 
