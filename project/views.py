@@ -4511,7 +4511,18 @@ class SprintArchiveView(ArchiveObjectView):
     success_list_url_name = "sprint_list"
 
 
-class SprintMetricListView(DevflowListView):
+class _SprintChildFilterMixin:
+    """Liste filtrable par sprint (?sprint=<id>) — accès depuis la fiche sprint."""
+    filter_fields = [
+        {"name": "sprint", "label": "Sprint", "type": "model", "queryset": "_sprints_qs", "lookup": "sprint_id"},
+    ]
+
+    def _sprints_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Sprint.objects.filter(workspace=ws).order_by("-start_date") if ws else dm.Sprint.objects.none()
+
+
+class SprintMetricListView(_SprintChildFilterMixin, DevflowListView):
     model = dm.SprintMetric
     template_name = "project/sprint_metric/list.html"
     section = "sprint"
@@ -8646,7 +8657,7 @@ class MessageAttachmentDeleteView(DevflowDeleteView):
     success_list_url_name = "message_attachment_list"
 
 
-class SprintReviewListView(DevflowListView):
+class SprintReviewListView(_SprintChildFilterMixin, DevflowListView):
     model = dm.SprintReview
     template_name = "project/sprint_review/list.html"
     section = "sprint"
@@ -8684,7 +8695,7 @@ class SprintReviewDeleteView(DevflowDeleteView):
     success_list_url_name = "sprint_review_list"
 
 
-class SprintRetrospectiveListView(DevflowListView):
+class SprintRetrospectiveListView(_SprintChildFilterMixin, DevflowListView):
     model = dm.SprintRetrospective
     template_name = "project/sprint_retrospective/list.html"
     section = "sprint"
@@ -8851,6 +8862,13 @@ class KeyResultListView(DevflowListView):
     template_name = "project/key_result/list.html"
     section = "analytics"
     page_title = "Key results"
+    filter_fields = [
+        {"name": "objective", "label": "Objectif", "type": "model", "queryset": "_objectives_qs", "lookup": "objective_id"},
+    ]
+
+    def _objectives_qs(self):
+        ws = self.get_current_workspace()
+        return dm.Objective.objects.filter(workspace=ws).order_by("title") if ws else dm.Objective.objects.none()
     search_fields = (
         "title",
         "unit",

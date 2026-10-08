@@ -78,6 +78,14 @@
         </div>
     </section>
 
+    <section class="flex flex-wrap items-center gap-2">
+        <span class="text-[11px] font-semibold uppercase tracking-wide text-[var(--text3)]">Voir aussi</span>
+        <a href="{% url 'sprint_review_list' %}?sprint={{ object.pk }}" class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"><i class="fa-solid fa-display"></i> Revues du sprint</a>
+        <a href="{% url 'sprint_retrospective_list' %}?sprint={{ object.pk }}" class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"><i class="fa-solid fa-rotate-left"></i> Rétrospectives</a>
+        <a href="{% url 'sprint_metric_list' %}?sprint={{ object.pk }}" class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"><i class="fa-solid fa-chart-line"></i> Métriques</a>
+        <a href="{% url 'backlog_item_list' %}" class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"><i class="fa-solid fa-layer-group"></i> Backlog</a>
+    </section>
+
     <!-- KPI TASKS -->
     <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

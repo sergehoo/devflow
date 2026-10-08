@@ -232,3 +232,18 @@ def full_amount(value):
     if dec_part:
         return f"{sign}{grouped}.{dec_part}"
     return f"{sign}{grouped}"
+
+@register.filter(name="nav_active")
+def nav_active(url_name, prefixes):
+    """
+    Sidebar : « lenk-active » si le nom d'URL courant commence par l'un des
+    préfixes (séparés par des virgules). Ex. :
+        {{ current_url|nav_active:"sprint_,backlog_item_" }}
+    """
+    if not url_name:
+        return ""
+    for prefix in str(prefixes).split(","):
+        prefix = prefix.strip()
+        if prefix and str(url_name).startswith(prefix):
+            return "lenk-active"
+    return ""

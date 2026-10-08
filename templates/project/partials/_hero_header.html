@@ -296,6 +296,9 @@
                          x-transition
                          x-cloak
                          class="absolute right-0 z-30 mt-2 w-72 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-2 shadow-lg">
+                        <a href="{% url 'project_member_list' %}?project={{ project_obj.pk }}" class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
+                            <span>Membres du projet</span>
+                        </a>
                         <a href="{% url 'project_update' project_obj.pk %}" class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--text2)] transition hover:bg-[var(--bg3)] hover:text-[var(--text1)]">
                             <span>Modifier le projet</span>
                         </a>

@@ -114,305 +114,149 @@
 
   <div class="sidebar-scroll">
 
-    <!-- Tableau de bord -->
-    <a class="nav-item {% if current_url == 'dashboard' %}lenk-active{% endif %}" href="{% url 'dashboard' %}">
+    <!-- Accès directs -->
+    <a class="nav-item {{ current_url|nav_active:"dashboard" }}" href="{% url 'dashboard' %}">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="7" height="7" rx="1.5"/>
-        <rect x="14" y="3" width="7" height="7" rx="1.5"/>
-        <rect x="3" y="14" width="7" height="7" rx="1.5"/>
-        <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+        <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+        <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
       </svg>
       <span>Tableau de bord</span>
     </a>
-
-    <!-- Ma journée (Phase 1 — PR9) -->
-    <a class="nav-item {% if current_url == 'my_day' %}lenk-active{% endif %}" href="{% url 'my_day' %}">
+    <a class="nav-item {{ current_url|nav_active:"my_day" }}" href="{% url 'my_day' %}">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="5"/>
         <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
       </svg>
       <span>Ma journée</span>
     </a>
-
-    <!-- Discussions (Chat unifié DM + groupes) -->
-    <a class="nav-item {% if current_url == 'chat' %}lenk-active{% endif %}" href="{% url 'chat' %}">
+    <a class="nav-item {{ current_url|nav_active:"chat" }}" href="{% url 'chat' %}">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
       </svg>
       <span>Messagerie</span>
     </a>
 
-    {# Espace de travail : visible UNIQUEMENT pour SuperAdmin #}
-    {% if rbac_is_super_admin %}
-    <!-- Espace de travail -->
-    <details class="nav-group"
-      {% if current_url == 'workspace_list' or current_url == 'workspace_settings_list' or current_url == 'workspace_invitation_list' or current_url == 'workspace_detail' or current_url == 'workspace_create' or current_url == 'workspace_update' %}
-      open
-      {% endif %}>
+    <details class="nav-group">
       <summary class="nav-item nav-parent">
         <div class="nav-parent-left">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 7h18M3 12h18M3 17h12"/>
-          </svg>
-          <span>Espace de travail</span>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
+          <span>Projets</span>
         </div>
         <span class="nav-caret">⌄</span>
       </summary>
       <div class="nav-submenu">
-        <a class="nav-subitem {% if current_url == 'workspace_list' or current_url == 'workspace_detail' or current_url == 'workspace_create' or current_url == 'workspace_update' %}lenk-active{% endif %}" href="{% url 'workspace_list' %}">
-          Workspaces
-        </a>
-        <a class="nav-subitem {% if current_url == 'workspace_settings_list' or current_url == 'workspace_settings_detail' or current_url == 'workspace_settings_create' or current_url == 'workspace_settings_update' %}lenk-active{% endif %}" href="{% url 'workspace_settings_list' %}">
-          Paramètres workspace
-        </a>
-        <a class="nav-subitem {% if current_url == 'workspace_invitation_list' or current_url == 'workspace_invitation_detail' or current_url == 'workspace_invitation_create' or current_url == 'workspace_invitation_update' or current_url == 'workspace_invitation_accept' %}lenk-active{% endif %}" href="{% url 'workspace_invitation_list' %}">
-          Invitations
-        </a>
-      </div>
-    </details>
-    {% endif %}{# fin SuperAdmin Espace de travail #}
-
-    <!-- Pilotage projet -->
-    <details class="nav-group"
-      {% if current_url == 'project_list' or current_url == 'project_detail' or current_url == 'project_create' or current_url == 'ai_proposal_list' or current_url == 'project_update' or current_url == 'roadmap_list' or current_url == 'roadmap_detail' or current_url == 'roadmap_create' or current_url == 'roadmap_update' or current_url == 'roadmap_item_list' or current_url == 'roadmap_item_detail' or current_url == 'roadmap_item_create' or current_url == 'roadmap_item_update' or current_url == 'milestone_list' or current_url == 'milestone_detail' or current_url == 'milestone_create' or current_url == 'milestone_update' or current_url == 'milestone_task_list' or current_url == 'milestone_task_detail' or current_url == 'milestone_task_create' or current_url == 'milestone_task_update' or current_url == 'release_list' or current_url == 'release_detail' or current_url == 'release_create' or current_url == 'release_update' or current_url == 'objective_list' or current_url == 'objective_detail' or current_url == 'objective_create' or current_url == 'objective_update' or current_url == 'key_result_list' or current_url == 'key_result_detail' or current_url == 'key_result_create' or current_url == 'key_result_update' or current_url == 'risk_list' or current_url == 'risk_detail' or current_url == 'risk_create' or current_url == 'risk_update' or current_url == 'ai_insight_list' or current_url == 'ai_insight_detail' or current_url == 'ai_insight_create' or current_url == 'ai_insight_update' %}
-      open
-      {% endif %} >
-      <summary class="nav-item nav-parent">
-        <div class="nav-parent-left">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 7h18M3 12h18M3 17h12"/>
-          </svg>
-          <span>Pilotage projet</span>
-        </div>
-        <span class="nav-caret">⌄</span>
-      </summary>
-      <div class="nav-submenu">
-        <a class="nav-subitem {% if current_url == 'project_list' or current_url == 'project_detail' or current_url == 'project_create' or current_url == 'project_update' %}lenk-active{% endif %}" href="{% url 'project_list' %}">Projets</a>
-<a class="nav-subitem {% if current_url in 'ai_proposal_list ai_proposal_detail ai_proposal_create ai_proposal_update ai_proposal_validate ai_proposal_apply' %}lenk-active{% endif %}" href="{% url 'ai_proposal_list' %}"> Suggestion IA </a>
-        <a class="nav-subitem {% if current_url == 'roadmap_list' or current_url == 'roadmap_detail' or current_url == 'roadmap_create' or current_url == 'roadmap_update' %}lenk-active{% endif %}" href="{% url 'roadmap_list' %}">Roadmaps</a>
-        <a class="nav-subitem {% if current_url == 'roadmap_item_list' or current_url == 'roadmap_item_detail' or current_url == 'roadmap_item_create' or current_url == 'roadmap_item_update' %}lenk-active{% endif %}" href="{% url 'roadmap_item_list' %}">Éléments roadmap</a>
-        <a class="nav-subitem {% if current_url == 'milestone_list' or current_url == 'milestone_detail' or current_url == 'milestone_create' or current_url == 'milestone_update' %}lenk-active{% endif %}" href="{% url 'milestone_list' %}">Milestones</a>
-        <a class="nav-subitem {% if current_url == 'milestone_task_list' or current_url == 'milestone_task_detail' or current_url == 'milestone_task_create' or current_url == 'milestone_task_update' %}lenk-active{% endif %}" href="{% url 'milestone_task_list' %}">Tâches de milestone</a>
-        <a class="nav-subitem {% if current_url == 'release_list' or current_url == 'release_detail' or current_url == 'release_create' or current_url == 'release_update' %}lenk-active{% endif %}" href="{% url 'release_list' %}">Releases</a>
-        <a class="nav-subitem {% if current_url == 'objective_list' or current_url == 'objective_detail' or current_url == 'objective_create' or current_url == 'objective_update' %}lenk-active{% endif %}" href="{% url 'objective_list' %}">Objectifs</a>
-        <a class="nav-subitem {% if current_url == 'key_result_list' or current_url == 'key_result_detail' or current_url == 'key_result_create' or current_url == 'key_result_update' %}lenk-active{% endif %}" href="{% url 'key_result_list' %}">Key Results</a>
-        <a class="nav-subitem {% if current_url == 'risk_list' or current_url == 'risk_detail' or current_url == 'risk_create' or current_url == 'risk_update' %}lenk-active{% endif %}" href="{% url 'risk_list' %}">Risques</a>
-        <a class="nav-subitem {% if current_url == 'ai_insight_list' or current_url == 'ai_insight_detail' or current_url == 'ai_insight_create' or current_url == 'ai_insight_update' %}lenk-active{% endif %}" href="{% url 'ai_insight_list' %}">AI Insights</a>
+        <a class="nav-subitem {{ current_url|nav_active:"project_list,project_detail,project_create,project_update,project_member_,project_document_,project_import" }}" href="{% url 'project_list' %}">Projets</a>
+        <a class="nav-subitem {{ current_url|nav_active:"roadmap_" }}" href="{% url 'roadmap_list' %}">Roadmaps</a>
+        <a class="nav-subitem {{ current_url|nav_active:"milestone_" }}" href="{% url 'milestone_list' %}">Jalons</a>
+        <a class="nav-subitem {{ current_url|nav_active:"release_" }}" href="{% url 'release_list' %}">Releases</a>
+        <a class="nav-subitem {{ current_url|nav_active:"objective_,key_result_" }}" href="{% url 'objective_list' %}">Objectifs &amp; OKR</a>
+        <a class="nav-subitem {{ current_url|nav_active:"risk_" }}" href="{% url 'risk_list' %}">Risques</a>
+        <a class="nav-subitem {{ current_url|nav_active:"ai_insight_,ai_proposal_" }}" href="{% url 'ai_insight_list' %}">Analyses &amp; suggestions IA</a>
       </div>
     </details>
 
-    <!-- Exécution -->
-    <details class="nav-group"
-      {% if current_url == 'task_list' or current_url == 'task_detail' or current_url == 'task_create' or current_url == 'task_update' or current_url == 'task_assignment_list' or current_url == 'task_assignment_detail' or current_url == 'task_assignment_create' or current_url == 'task_assignment_update' or current_url == 'task_comment_list' or current_url == 'task_comment_detail' or current_url == 'task_comment_create' or current_url == 'task_comment_update' or current_url == 'task_attachment_list' or current_url == 'task_attachment_detail' or current_url == 'task_attachment_create' or current_url == 'task_attachment_update' or current_url == 'task_dependency_list' or current_url == 'task_dependency_detail' or current_url == 'task_dependency_create' or current_url == 'task_dependency_update' or current_url == 'task_checklist_list' or current_url == 'task_checklist_detail' or current_url == 'task_checklist_create' or current_url == 'task_checklist_update' or current_url == 'checklist_item_list' or current_url == 'checklist_item_detail' or current_url == 'checklist_item_create' or current_url == 'checklist_item_update' or current_url == 'board_column_list' or current_url == 'board_column_detail' or current_url == 'board_column_create' or current_url == 'board_column_update' or current_url == 'backlog_item_list' or current_url == 'backlog_item_detail' or current_url == 'backlog_item_create' or current_url == 'backlog_item_update' or current_url == 'sprint_list' or current_url == 'sprint_detail' or current_url == 'sprint_create' or current_url == 'sprint_update' or current_url == 'sprint_metric_list' or current_url == 'sprint_metric_detail' or current_url == 'sprint_metric_create' or current_url == 'sprint_metric_update' or current_url == 'sprint_review_list' or current_url == 'sprint_review_detail' or current_url == 'sprint_review_create' or current_url == 'sprint_review_update' or current_url == 'sprint_retrospective_list' or current_url == 'sprint_retrospective_detail' or current_url == 'sprint_retrospective_create' or current_url == 'sprint_retrospective_update' %}
-      open
-      {% endif %}>
+    <details class="nav-group">
       <summary class="nav-item nav-parent">
         <div class="nav-parent-left">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 11l3 3L22 4"/>
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-          </svg>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           <span>Exécution</span>
         </div>
         <span class="nav-caret">⌄</span>
       </summary>
       <div class="nav-submenu">
-        <a class="nav-subitem {% if current_url == 'task_list' or current_url == 'task_detail' or current_url == 'task_create' or current_url == 'task_update' %}lenk-active{% endif %}" href="{% url 'task_list' %}">Tâches</a>
-        <a class="nav-subitem {% if current_url == 'task_assignment_list' or current_url == 'task_assignment_detail' or current_url == 'task_assignment_create' or current_url == 'task_assignment_update' %}lenk-active{% endif %}" href="{% url 'task_assignment_list' %}">Assignations</a>
-        <a class="nav-subitem {% if current_url == 'task_comment_list' or current_url == 'task_comment_detail' or current_url == 'task_comment_create' or current_url == 'task_comment_update' %}lenk-active{% endif %}" href="{% url 'task_comment_list' %}">Commentaires</a>
-        <a class="nav-subitem {% if current_url == 'task_attachment_list' or current_url == 'task_attachment_detail' or current_url == 'task_attachment_create' or current_url == 'task_attachment_update' %}lenk-active{% endif %}" href="{% url 'task_attachment_list' %}">Pièces jointes</a>
-        <a class="nav-subitem {% if current_url == 'task_dependency_list' or current_url == 'task_dependency_detail' or current_url == 'task_dependency_create' or current_url == 'task_dependency_update' %}lenk-active{% endif %}" href="{% url 'task_dependency_list' %}">Dépendances</a>
-        <a class="nav-subitem {% if current_url == 'task_checklist_list' or current_url == 'task_checklist_detail' or current_url == 'task_checklist_create' or current_url == 'task_checklist_update' %}lenk-active{% endif %}" href="{% url 'task_checklist_list' %}">Checklists</a>
-        <a class="nav-subitem {% if current_url == 'checklist_item_list' or current_url == 'checklist_item_detail' or current_url == 'checklist_item_create' or current_url == 'checklist_item_update' %}lenk-active{% endif %}" href="{% url 'checklist_item_list' %}">Éléments checklist</a>
-        <a class="nav-subitem {% if current_url == 'board_column_list' or current_url == 'board_column_detail' or current_url == 'board_column_create' or current_url == 'board_column_update' %}lenk-active{% endif %}" href="{% url 'board_column_list' %}">Colonnes board</a>
-        <a class="nav-subitem {% if current_url == 'backlog_item_list' or current_url == 'backlog_item_detail' or current_url == 'backlog_item_create' or current_url == 'backlog_item_update' %}lenk-active{% endif %}" href="{% url 'backlog_item_list' %}">Backlog</a>
-        <a class="nav-subitem {% if current_url == 'sprint_list' or current_url == 'sprint_detail' or current_url == 'sprint_create' or current_url == 'sprint_update' %}lenk-active{% endif %}" href="{% url 'sprint_list' %}">Sprints</a>
-        <a class="nav-subitem {% if current_url == 'sprint_metric_list' or current_url == 'sprint_metric_detail' or current_url == 'sprint_metric_create' or current_url == 'sprint_metric_update' %}lenk-active{% endif %}" href="{% url 'sprint_metric_list' %}">Métriques sprint</a>
-        <a class="nav-subitem {% if current_url == 'sprint_review_list' or current_url == 'sprint_review_detail' or current_url == 'sprint_review_create' or current_url == 'sprint_review_update' %}lenk-active{% endif %}" href="{% url 'sprint_review_list' %}">Sprint reviews</a>
-        <a class="nav-subitem {% if current_url == 'sprint_retrospective_list' or current_url == 'sprint_retrospective_detail' or current_url == 'sprint_retrospective_create' or current_url == 'sprint_retrospective_update' %}lenk-active{% endif %}" href="{% url 'sprint_retrospective_list' %}">Rétrospectives</a>
+        <a class="nav-subitem {{ current_url|nav_active:"task_list,task_detail,task_create,task_update,task_extend,task_assignment_,task_comment_,task_attachment_,task_dependency_,task_checklist_,checklist_item_,board_column_" }}" href="{% url 'task_list' %}">Tâches</a>
+        <a class="nav-subitem {{ current_url|nav_active:"backlog_item_" }}" href="{% url 'backlog_item_list' %}">Backlog</a>
+        <a class="nav-subitem {{ current_url|nav_active:"sprint_" }}" href="{% url 'sprint_list' %}">Sprints</a>
+        <a class="nav-subitem {{ current_url|nav_active:"pull_request_" }}" href="{% url 'pull_request_list' %}">Pull requests</a>
       </div>
     </details>
 
-    <!-- Équipes & ressources -->
-    <details class="nav-group"
-      {% if current_url == 'team_list' or current_url == 'team_detail' or current_url == 'team_create' or current_url == 'team_update' or current_url == 'team_membership_list' or current_url == 'team_membership_detail' or current_url == 'team_membership_create' or current_url == 'team_membership_update' or current_url == 'project_member_list' or current_url == 'project_member_detail' or current_url == 'project_member_create' or current_url == 'project_member_update' or current_url == 'timesheet_entry_list' or current_url == 'timesheet_entry_detail' or current_url == 'timesheet_entry_create' or current_url == 'timesheet_entry_update' %}
-      open
-      {% endif %}>
+    <details class="nav-group">
       <summary class="nav-item nav-parent">
         <div class="nav-parent-left">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
-          <span>Équipes & ressources</span>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          <span>Équipes &amp; temps</span>
         </div>
         <span class="nav-caret">⌄</span>
       </summary>
       <div class="nav-submenu">
-        <a class="nav-subitem {% if current_url == 'team_list' or current_url == 'team_detail' or current_url == 'team_create' or current_url == 'team_update' %}lenk-active{% endif %}" href="{% url 'team_list' %}">Équipes</a>
-        <a class="nav-subitem {% if current_url == 'team_membership_list' or current_url == 'team_membership_detail' or current_url == 'team_membership_create' or current_url == 'team_membership_update' %}lenk-active{% endif %}" href="{% url 'team_membership_list' %}">Membres d’équipe</a>
-        <a class="nav-subitem {% if current_url == 'project_member_list' or current_url == 'project_member_detail' or current_url == 'project_member_create' or current_url == 'project_member_update' %}lenk-active{% endif %}" href="{% url 'project_member_list' %}">Membres projets</a>
-        <a class="nav-subitem {% if current_url == 'timesheet_calendar' %}lenk-active{% endif %}" href="{% url 'timesheet_calendar' %}">Timesheets · Calendrier</a>
-        <a class="nav-subitem {% if current_url == 'timesheet_entry_list' or current_url == 'timesheet_entry_detail' or current_url == 'timesheet_entry_create' or current_url == 'timesheet_entry_update' %}lenk-active{% endif %}" href="{% url 'timesheet_entry_list' %}">Timesheets · Liste</a>
+        <a class="nav-subitem {{ current_url|nav_active:"team_list,team_detail,team_create,team_update" }}" href="{% url 'team_list' %}">Équipes</a>
+        <a class="nav-subitem {{ current_url|nav_active:"team_membership_" }}" href="{% url 'team_membership_list' %}">Membres</a>
+        <a class="nav-subitem {{ current_url|nav_active:"timesheet_calendar" }}" href="{% url 'timesheet_calendar' %}">Mes timesheets</a>
+        <a class="nav-subitem {{ current_url|nav_active:"timesheet_entry_,timesheet_week" }}" href="{% url 'timesheet_entry_list' %}">Validation des timesheets</a>
       </div>
     </details>
 
-    
-      {% if rbac_permissions|has_perm:"budget.view" %}
-    <!-- Finance & TJM -->
-    <details class="nav-group"
-      {% if current_url == 'project_expense_list' or current_url == 'project_expense_detail' or current_url == 'project_expense_create' or current_url == 'project_expense_update' or current_url == 'project_budget_create' or current_url == 'project_budget_detail' or current_url == 'project_budget_update' or current_url == 'project_revenue_create' or current_url == 'workspace_financial_portfolio' or current_url == 'project_financial_ai_forecast' or current_url == 'project_financial_ai_risks' or current_url == 'workspace_financial_ai_allocation_template' %}
-      open
-      {% endif %}>
+    {% if rbac_permissions|has_perm:"budget.view" or rbac_permissions|has_perm:"billing.view" %}
+    <details class="nav-group">
       <summary class="nav-item nav-parent">
         <div class="nav-parent-left">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="1" x2="12" y2="23"/>
-            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-          </svg>
-          <span>Finance & TJM</span>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <span>Finance</span>
         </div>
         <span class="nav-caret">⌄</span>
       </summary>
       <div class="nav-submenu">
-        <a class="nav-subitem {% if current_url == 'project_expense_list' or current_url == 'project_expense_detail' or current_url == 'project_expense_create' or current_url == 'project_expense_update' %}lenk-active{% endif %}" href="{% url 'project_expense_list' %}">Dépenses projet</a>
+        {% if rbac_permissions|has_perm:"budget.view" %}{% if request.user.profile.workspace_id %}
+        <a class="nav-subitem {{ current_url|nav_active:"workspace_financial_portfolio" }}" href="{% url 'workspace_financial_portfolio' request.user.profile.workspace_id %}">Cockpit financier</a>
+        {% endif %}
+        <a class="nav-subitem {{ current_url|nav_active:"project_expense_,project_budget_,project_estimate_line_,project_revenue_,billing_rate_,project_financial_ai_" }}" href="{% url 'project_expense_list' %}">Dépenses</a>
         {% if request.user.profile.workspace_id %}
-            <a class="nav-subitem {% if current_url == 'workspace_financial_portfolio' %}lenk-active{% endif %}" href="{% url 'workspace_financial_portfolio' request.user.profile.workspace_id %}">Cockpit portfolio</a>
-            <a class="nav-subitem {% if current_url == 'workspace_financial_ai_allocation_template' %}lenk-active{% endif %}" href="{% url 'workspace_financial_ai_allocation_template' request.user.profile.workspace_id %}">IA · Allocation ressources</a>
+        <a class="nav-subitem {{ current_url|nav_active:"workspace_financial_ai_allocation" }}" href="{% url 'workspace_financial_ai_allocation_template' request.user.profile.workspace_id %}">Allocation IA des ressources</a>
+        {% endif %}{% endif %}
+        {% if rbac_permissions|has_perm:"billing.view" %}
+        <a class="nav-subitem {{ current_url|nav_active:"invoice_list,invoice_detail,invoice_create,invoice_update,invoice_line_,invoice_payment_,invoice_generate,invoice_pdf,invoice_docx" }}" href="{% url 'invoice_list' %}">Factures</a>
+        <a class="nav-subitem {{ current_url|nav_active:"invoice_client_" }}" href="{% url 'invoice_client_list' %}">Clients</a>
         {% endif %}
       </div>
     </details>
-    {% endif %}{# fin RBAC budget.view #}
+    {% endif %}{# fin RBAC finance #}
 
-    {# Facturation visible uniquement aux rôles "billing.view" (Owner, SuperAdmin) #}
-    {% if rbac_permissions|has_perm:"billing.view" %}
-    <!-- Facturation -->
-    <details class="nav-group"
-      {% if current_url == 'invoice_list' or current_url == 'invoice_detail' or current_url == 'invoice_create' or current_url == 'invoice_update' or current_url == 'invoice_print' or current_url == 'invoice_client_list' or current_url == 'invoice_client_detail' or current_url == 'invoice_client_create' or current_url == 'invoice_client_update' or current_url == 'invoice_generate_from_project' %}
-      open
-      {% endif %}>
+    <details class="nav-group">
       <summary class="nav-item nav-parent">
         <div class="nav-parent-left">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="9" y1="13" x2="15" y2="13"/>
-            <line x1="9" y1="17" x2="15" y2="17"/>
-          </svg>
-          <span>Facturation</span>
-        </div>
-        <span class="nav-caret">⌄</span>
-      </summary>
-      <div class="nav-submenu">
-        <a class="nav-subitem {% if current_url == 'invoice_list' or current_url == 'invoice_detail' or current_url == 'invoice_create' or current_url == 'invoice_update' or current_url == 'invoice_print' %}lenk-active{% endif %}" href="{% url 'invoice_list' %}">Factures</a>
-        <a class="nav-subitem {% if current_url == 'invoice_client_list' or current_url == 'invoice_client_detail' or current_url == 'invoice_client_create' or current_url == 'invoice_client_update' %}lenk-active{% endif %}" href="{% url 'invoice_client_list' %}">Clients</a>
-        <a class="nav-subitem {% if current_url == 'workspace_branding' %}lenk-active{% endif %}" href="{% url 'workspace_branding' %}">Identité &amp; papier en-tête</a>
-        {% if request.user.is_superuser %}
-        <a class="nav-subitem {% if current_url in 'methodology_admin_list methodology_admin_detail methodology_admin_create methodology_admin_update' %}lenk-active{% endif %}"
-           href="{% url 'methodology_admin_list' %}">Méthodologies</a>
-        {% endif %}
-      </div>
-    </details>
-    {% endif %}{# fin RBAC billing.view #}
-
-    <!-- Collaboration -->
-    <details class="nav-group"
-      {% if current_url == 'direct_channel_list' or current_url == 'direct_channel_detail' or current_url == 'direct_channel_create' or current_url == 'direct_channel_update' or current_url == 'channel_membership_list' or current_url == 'channel_membership_detail' or current_url == 'channel_membership_create' or current_url == 'channel_membership_update' or current_url == 'message_list' or current_url == 'message_detail' or current_url == 'message_create' or current_url == 'message_update' or current_url == 'message_attachment_list' or current_url == 'message_attachment_detail' or current_url == 'message_attachment_create' or current_url == 'message_attachment_update' or current_url == 'reaction_list' or current_url == 'reaction_detail' or current_url == 'reaction_create' or current_url == 'reaction_update' or current_url == 'notification_list' or current_url == 'notification_detail' or current_url == 'notification_create' or current_url == 'notification_update' or current_url == 'activity_log_list' or current_url == 'activity_log_detail' or current_url == 'activity_log_create' or current_url == 'activity_log_update' %}
-      open
-      {% endif %}>
-      <summary class="nav-item nav-parent">
-        <div class="nav-parent-left">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          <span>Collaboration</span>
-        </div>
-        <span class="nav-caret">⌄</span>
-      </summary>
-      <div class="nav-submenu">
-        <a class="nav-subitem {% if current_url == 'notification_list' or current_url == 'notification_detail' or current_url == 'notification_create' or current_url == 'notification_update' %}lenk-active{% endif %}" href="{% url 'notification_list' %}">Notifications</a>
-        <a class="nav-subitem {% if current_url == 'activity_log_list' or current_url == 'activity_log_detail' or current_url == 'activity_log_create' or current_url == 'activity_log_update' %}lenk-active{% endif %}" href="{% url 'activity_log_list' %}">Journal d’activités</a>
-      </div>
-    </details>
-
-    <!-- ─────────────────────────────────────────────────────────────────
-         Réunions (section dédiée — PR-MEET-4 / -9 / -10)
-         Top-level pour faciliter l'accès au tableau de bord, à la liste,
-         aux séries récurrentes et au registre transversal des décisions.
-    ───────────────────────────────────────────────────────────────────── -->
-    <details class="nav-group"
-      {% if current_url == 'meeting_dashboard' or current_url == 'meeting_list' or current_url == 'meeting_detail' or current_url == 'meeting_create' or current_url == 'meeting_update' or current_url == 'meeting_series_list' or current_url == 'meeting_series_detail' or current_url == 'meeting_series_create' or current_url == 'meeting_series_update' or current_url == 'meeting_decisions_list' or current_url == 'meeting_recordings_list' or current_url == 'recording_speakers' or current_url == 'recording_summary' %}
-      open
-      {% endif %}>
-      <summary class="nav-item nav-parent">
-        <div class="nav-parent-left">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-            <line x1="16" y1="2" x2="16" y2="6"/>
-            <line x1="8" y1="2" x2="8" y2="6"/>
-            <line x1="3" y1="10" x2="21" y2="10"/>
-          </svg>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
           <span>Réunions</span>
         </div>
         <span class="nav-caret">⌄</span>
       </summary>
       <div class="nav-submenu">
-        <a class="nav-subitem {% if current_url == 'meeting_dashboard' %}lenk-active{% endif %}" href="{% url 'meeting_dashboard' %}">Tableau de bord</a>
-        <a class="nav-subitem {% if current_url == 'meeting_list' or current_url == 'meeting_detail' or current_url == 'meeting_create' or current_url == 'meeting_update' %}lenk-active{% endif %}" href="{% url 'meeting_list' %}">Toutes les réunions</a>
-        <a class="nav-subitem {% if current_url == 'meeting_series_list' or current_url == 'meeting_series_detail' or current_url == 'meeting_series_create' or current_url == 'meeting_series_update' %}lenk-active{% endif %}" href="{% url 'meeting_series_list' %}">Séries récurrentes</a>
-        <a class="nav-subitem {% if current_url == 'meeting_decisions_list' %}lenk-active{% endif %}" href="{% url 'meeting_decisions_list' %}">Registre des décisions</a>
+        <a class="nav-subitem {{ current_url|nav_active:"meeting_dashboard,meeting_list,meeting_detail,meeting_create,meeting_update,meeting_recording,meeting_minutes,meeting_action" }}" href="{% url 'meeting_dashboard' %}">Réunions</a>
+        <a class="nav-subitem {{ current_url|nav_active:"meeting_series_" }}" href="{% url 'meeting_series_list' %}">Séries récurrentes</a>
+        <a class="nav-subitem {{ current_url|nav_active:"meeting_decision" }}" href="{% url 'meeting_decisions_list' %}">Registre des décisions</a>
       </div>
     </details>
 
-    <!-- Qualité & gouvernance -->
-    <details class="nav-group"
-      {% if current_url == 'pull_request_list' or current_url == 'pull_request_detail' or current_url == 'pull_request_create' or current_url == 'pull_request_update' or current_url == 'label_list' or current_url == 'label_detail' or current_url == 'label_create' or current_url == 'label_update' or current_url == 'task_label_list' or current_url == 'task_label_detail' or current_url == 'task_label_create' or current_url == 'task_label_update' or current_url == 'project_label_list' or current_url == 'project_label_detail' or current_url == 'project_label_create' or current_url == 'project_label_update' or current_url == 'dashboard_snapshot_list' or current_url == 'dashboard_snapshot_detail' or current_url == 'dashboard_snapshot_create' or current_url == 'dashboard_snapshot_update' or current_url == 'user_preference_list' or current_url == 'user_preference_detail' or current_url == 'user_preference_create' or current_url == 'user_preference_update' %}
-      open
-      {% endif %}>
+    <details class="nav-group">
       <summary class="nav-item nav-parent">
         <div class="nav-parent-left">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-          <span>Qualité & gouvernance</span>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Paramètres</span>
         </div>
         <span class="nav-caret">⌄</span>
       </summary>
       <div class="nav-submenu">
-        <a class="nav-subitem {% if current_url == 'pull_request_list' or current_url == 'pull_request_detail' or current_url == 'pull_request_create' or current_url == 'pull_request_update' %}lenk-active{% endif %}" href="{% url 'pull_request_list' %}">Pull requests</a>
-        <a class="nav-subitem {% if current_url == 'label_list' or current_url == 'label_detail' or current_url == 'label_create' or current_url == 'label_update' %}lenk-active{% endif %}" href="{% url 'label_list' %}">Labels</a>
-        <a class="nav-subitem {% if current_url == 'task_label_list' or current_url == 'task_label_detail' or current_url == 'task_label_create' or current_url == 'task_label_update' %}lenk-active{% endif %}" href="{% url 'task_label_list' %}">Labels tâches</a>
-        <a class="nav-subitem {% if current_url == 'project_label_list' or current_url == 'project_label_detail' or current_url == 'project_label_create' or current_url == 'project_label_update' %}lenk-active{% endif %}" href="{% url 'project_label_list' %}">Labels projets</a>
-        <a class="nav-subitem {% if current_url == 'dashboard_snapshot_list' or current_url == 'dashboard_snapshot_detail' or current_url == 'dashboard_snapshot_create' or current_url == 'dashboard_snapshot_update' %}lenk-active{% endif %}" href="{% url 'dashboard_snapshot_list' %}">Snapshots dashboard</a>
-        <a class="nav-subitem {% if current_url == 'user_preference_list' or current_url == 'user_preference_detail' or current_url == 'user_preference_create' or current_url == 'user_preference_update' %}lenk-active{% endif %}" href="{% url 'user_preference_list' %}">Préférences utilisateur</a>
+        {% if rbac_is_super_admin %}
+        <a class="nav-subitem {{ current_url|nav_active:"workspace_list,workspace_detail,workspace_create,workspace_update" }}" href="{% url 'workspace_list' %}">Workspaces</a>
+        <a class="nav-subitem {{ current_url|nav_active:"workspace_settings_" }}" href="{% url 'workspace_settings_list' %}">Paramètres du workspace</a>
+        <a class="nav-subitem {{ current_url|nav_active:"workspace_invitation_" }}" href="{% url 'workspace_invitation_list' %}">Invitations</a>
+        {% endif %}
+        {% if rbac_permissions|has_perm:"billing.view" %}
+        <a class="nav-subitem {{ current_url|nav_active:"workspace_branding" }}" href="{% url 'workspace_branding' %}">Identité &amp; papier en-tête</a>
+        {% endif %}
+        {% if request.user.is_superuser %}
+        <a class="nav-subitem {{ current_url|nav_active:"methodology_admin_" }}" href="{% url 'methodology_admin_list' %}">Méthodologies</a>
+        {% endif %}
+        <a class="nav-subitem {{ current_url|nav_active:"label_,task_label_,project_label_" }}" href="{% url 'label_list' %}">Labels</a>
+        {% if rbac_permissions|has_perm:"integration.manage" or rbac_permissions|has_perm:"settings.manage" %}
+        <a class="nav-subitem {{ current_url|nav_active:"integration_" }}" href="{% url 'integration_list' %}">Intégrations</a>
+        <a class="nav-subitem {{ current_url|nav_active:"webhook_" }}" href="{% url 'webhook_list' %}">Webhooks</a>
+        <a class="nav-subitem {{ current_url|nav_active:"api_key_" }}" href="{% url 'api_key_list' %}">Clés API</a>
+        {% endif %}
+        <a class="nav-subitem {{ current_url|nav_active:"activity_log_,notification_,dashboard_snapshot_,user_preference_" }}" href="{% url 'activity_log_list' %}">Journal d'activité</a>
       </div>
     </details>
 
-    {# Intégrations / Webhooks / API Keys = sensible (Owner & SuperAdmin) #}
-    {% if rbac_permissions|has_perm:"integration.manage" or rbac_permissions|has_perm:"settings.manage" %}
-    <!-- Intégrations -->
-    <details class="nav-group"
-      {% if current_url == 'integration_list' or current_url == 'integration_detail' or current_url == 'integration_create' or current_url == 'integration_update' or current_url == 'webhook_list' or current_url == 'webhook_detail' or current_url == 'webhook_create' or current_url == 'webhook_update' or current_url == 'api_key_list' or current_url == 'api_key_detail' or current_url == 'api_key_create' or current_url == 'api_key_update' %}
-      open
-      {% endif %}>
-      <summary class="nav-item nav-parent">
-        <div class="nav-parent-left">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2v20M2 12h20"/>
-          </svg>
-          <span>Intégrations</span>
-        </div>
-        <span class="nav-caret">⌄</span>
-      </summary>
-      <div class="nav-submenu">
-        <a class="nav-subitem {% if current_url == 'integration_list' or current_url == 'integration_detail' or current_url == 'integration_create' or current_url == 'integration_update' %}lenk-active{% endif %}" href="{% url 'integration_list' %}">Intégrations</a>
-        <a class="nav-subitem {% if current_url == 'webhook_list' or current_url == 'webhook_detail' or current_url == 'webhook_create' or current_url == 'webhook_update' %}lenk-active{% endif %}" href="{% url 'webhook_list' %}">Webhooks</a>
-        <a class="nav-subitem {% if current_url == 'api_key_list' or current_url == 'api_key_detail' or current_url == 'api_key_create' or current_url == 'api_key_update' %}lenk-active{% endif %}" href="{% url 'api_key_list' %}">API Keys</a>
-      </div>
-    </details>
-    {% endif %}{# fin RBAC integration.manage #}
 
   </div>
 
