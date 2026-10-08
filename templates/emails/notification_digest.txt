@@ -1,0 +1,12 @@
+Bonjour {{ user.first_name|default:user.username }},
+
+Récapitulatif DevFlow : {{ payload.total }} notification{{ payload.total|pluralize }}{% if period_start %} du {{ period_start|date:"d/m/Y H:i" }} au {{ period_end|date:"d/m/Y H:i" }}{% endif %}.
+{% if payload.by_type %}
+{% for t in payload.by_type %}- {{ t.label }} : {{ t.count }}
+{% endfor %}{% endif %}
+À retenir :
+{% for h in highlights %}- {{ h.title }}
+  {{ h.url }}
+{% endfor %}{% if hidden_count %}… et {{ hidden_count }} autre(s).
+{% endif %}
+Voir toutes vos notifications : {{ cta_url }}

@@ -82,8 +82,9 @@ def _in_app_allowed(user) -> bool:
     return prefs.channel_in_app and prefs.notify_frequency != dm.NotificationPreference.NotifyFrequency.DISABLED
 
 
-def _notify(user, workspace, *, subject, body, url, critical=False) -> bool:
-    """In-app + email selon préférences. Retourne True si un email est parti."""
+def _notify(user, workspace, *, subject, body, url, critical=False,
+            eyebrow="Timesheets", badge="", details="", cta_label="Ouvrir mon timesheet") -> bool:
+    """In-app + email (design DevFlow) selon préférences. True si un email est parti."""
     from project.services.notifications import create_in_app_notification
 
     if _in_app_allowed(user):
@@ -96,11 +97,19 @@ def _notify(user, workspace, *, subject, body, url, critical=False) -> bool:
     if not _email_allowed(user, critical=critical):
         return False
     try:
+        from django.template.loader import render_to_string
         from project.utils.urls import absolute_url
 
+        link = absolute_url(url)
+        html = render_to_string("emails/notification.html", {
+            "subject": subject, "eyebrow": eyebrow, "title": subject, "subtitle": workspace.name,
+            "intro": body, "badge": badge, "critical": critical, "details": details,
+            "cta_url": link, "cta_label": cta_label,
+        })
         send_mail(
             subject=f"[DevFlow] {subject}",
-            message=f"{body}\n\nOuvrir dans DevFlow : {absolute_url(url)}",
+            html_message=html,
+            message=f"{body}\n\n{details + chr(10) * 2 if details else ''}Ouvrir dans DevFlow : {link}",
             from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
             recipient_list=[user.email],
             fail_silently=False,
@@ -159,6 +168,7 @@ def send_daily_reminders(day: date | None = None) -> dict:
                     "Merci de compléter votre timesheet."
                 ),
                 url=f"/timesheets/?date={day:%Y-%m-%d}",
+                badge="Saisie attendue",
             )
             log.email_sent = sent
             log.save(update_fields=["email_sent", "updated_at"])
@@ -198,7 +208,10 @@ def send_weekly_checks(day: date | None = None) -> dict:
                     f"(il manque {_fmt_h(summary.missing_hours)}). Merci de le compléter puis de le soumettre."
                 )
             url = f"/timesheets/?date={monday:%Y-%m-%d}"
-            sent = _notify(user, ws, subject=subject, body=body, url=url, critical=missing)
+            sent = _notify(
+                user, ws, subject=subject, body=body, url=url, critical=missing,
+                badge="Aucune saisie" if missing else f"Saisi : {ratio}",
+            )
 
             profile = tw.get_profile(user, ws)
             if profile and profile.manager_id:
@@ -353,7 +366,9 @@ def send_weekly_reports(day: date | None = None) -> dict:
             body = render_report(report, title="Rapport hebdomadaire consolidé")
             sent = _notify(
                 top, ws, subject=f"Rapport hebdomadaire consolidé — {ws.name}",
-                body=body, url="/timesheets/list/", critical=True,
+                body=f"Bonjour {top.first_name or _name(top)},\nVoici la synthèse de la semaine pour toutes les équipes.",
+                details=body, url="/timesheets/list/", critical=True,
+                eyebrow="Rapport hebdomadaire", cta_label="Voir les timesheets",
             )
             log.email_sent = sent
             log.save(update_fields=["email_sent", "updated_at"])
@@ -371,7 +386,9 @@ def send_weekly_reports(day: date | None = None) -> dict:
             body = render_report(report, rows=rows, tasks=tasks, title="Rapport hebdomadaire de votre équipe")
             sent = _notify(
                 manager, ws, subject=f"Rapport hebdomadaire de votre équipe — {ws.name}",
-                body=body, url="/timesheets/list/", critical=True,
+                body=f"Bonjour {manager.first_name or _name(manager)},\nVoici la synthèse de la semaine pour vos collaborateurs directs.",
+                details=body, url="/timesheets/list/", critical=True,
+                eyebrow="Rapport hebdomadaire", cta_label="Valider les timesheets",
             )
             log.email_sent = sent
             log.save(update_fields=["email_sent", "updated_at"])

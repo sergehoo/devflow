@@ -1,0 +1,48 @@
+{% extends "emails/_layout.html" %}
+{% block html_title %}Récapitulatif DevFlow{% endblock %}
+{% block eyebrow %}DevFlow · Récapitulatif{% endblock %}
+{% block title %}{{ payload.total }} notification{{ payload.total|pluralize }}{% endblock %}
+{% block subtitle %}{% if period_start %}Du {{ period_start|date:"d/m/Y H:i" }} au {{ period_end|date:"d/m/Y H:i" }}{% endif %}{% endblock %}
+{% block content %}
+<p style="font-size:14px;line-height:22px;color:#374151;">
+  Bonjour {{ user.first_name|default:user.username }},<br>
+  Voici ce qui s'est passé pendant votre absence.
+</p>
+
+{% if payload.by_type %}
+<div style="margin-top:12px;">
+  {% for t in payload.by_type %}
+    <span style="display:inline-block;margin:0 6px 6px 0;background:#FFE6D6;color:#FF4E00;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;">{{ t.label }} · {{ t.count }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if highlights %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;background:#F9FAFB;border-radius:12px;">
+  {% for h in highlights %}
+  <tr>
+    <td style="padding:12px 16px;font-size:13px;color:#374151;{% if not forloop.last %}border-bottom:1px solid #EEF0F2;{% endif %}">
+      <a href="{{ h.url }}" style="color:#111827;text-decoration:none;font-weight:600;">{{ h.title }}</a>
+      {% if h.body %}<div style="margin-top:3px;font-size:12px;color:#6B7280;">{{ h.body }}</div>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% if hidden_count %}
+<p style="margin:8px 0 0;font-size:12px;color:#6B7280;">… et {{ hidden_count }} autre{{ hidden_count|pluralize }} notification{{ hidden_count|pluralize }}.</p>
+{% endif %}
+{% endif %}
+
+{% if payload.by_project %}
+<p style="margin:20px 0 6px;font-size:12px;font-weight:600;color:#111827;">Par projet</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;color:#374151;">
+  {% for p in payload.by_project %}
+  <tr>
+    <td style="padding:6px 0;border-bottom:1px solid #F3F4F6;">{{ p.name }}</td>
+    <td style="padding:6px 0;border-bottom:1px solid #F3F4F6;text-align:right;font-weight:600;">{{ p.count }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}
+{% block footer %}Récapitulatif envoyé selon vos préférences de notification (mode {{ payload.frequency|default:"quotidien"|lower }}). Modifiez-les depuis votre profil.{% endblock %}

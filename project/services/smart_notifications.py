@@ -243,13 +243,28 @@ def send_digest_email_sync(user, digest: dm.NotificationDigest) -> bool:
     if not user.email or digest.notifications_count == 0:
         return False
 
+    from django.utils.dateparse import parse_datetime
+    from project.utils.urls import absolute_url
+
+    payload = digest.payload or {}
+    highlights = [
+        {**h, "url": absolute_url(h.get("url") or "/notifications/")}
+        for h in payload.get("highlights", [])
+    ]
+    total = payload.get("total", digest.notifications_count)
     ctx = {
         "user": user,
         "digest": digest,
-        "payload": digest.payload,
+        "payload": payload,
+        "highlights": highlights,
+        "hidden_count": max(0, total - len(highlights)),
+        "period_start": parse_datetime(payload.get("period_start") or ""),
+        "period_end": parse_datetime(payload.get("period_end") or ""),
         "site_url": site_base_url(),
+        "cta_url": absolute_url("/notifications/"),
+        "cta_label": "Voir toutes mes notifications",
     }
-    subject = f"[Dev'Flow] Récap {digest.payload.get('total', 0)} notification(s)"
+    subject = f"[DevFlow] Récapitulatif — {total} notification{'s' if total > 1 else ''}"
 
     try:
         message_txt = render_to_string("emails/notification_digest.txt", ctx)
