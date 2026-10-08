@@ -404,7 +404,7 @@ def reverse_spent_hours_to_timesheet_on_done(sender, instance, created, **kwargs
     Logique :
       - Détecte le passage `status: * → DONE` via `instance._before_state`.
       - Calcule `delta = spent_hours - somme des entries timesheet déjà saisies
-        sur (user, task)`.
+        sur la tâche, tous mandataires confondus.
       - Si delta > 0, crée UNE entrée d'ajustement à la date de clôture.
         Si la semaine de cette date est déjà APPROVED, on bascule sur la
         semaine en cours pour ne pas violer le verrou de validation.
@@ -431,7 +431,7 @@ def reverse_spent_hours_to_timesheet_on_done(sender, instance, created, **kwargs
 
         already = (
             dm.TimesheetEntry.objects.filter(
-                user_id=user_id, task=instance,
+                task=instance,
             ).aggregate(s=Sum("hours"))["s"] or Decimal("0")
         )
         delta = (spent - already)

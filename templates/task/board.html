@@ -36,6 +36,7 @@
                 priority: '{{ task.priority }}',
                 priority_label: '{{ task.get_priority_display|escapejs }}',
                 assignee: {% if task.assignee %}{{ task.assignee|stringformat:'\"%s\"'|escapejs|safe }}{% else %}null{% endif %},
+                can_act: {% if task.assignee_id == request.user.id %}true{% else %}false{% endif %},
                 project_name: {{ task.project.name|default_if_none:''|escapejs|stringformat:'\"%s\"'|safe }},
                 due_date: '{{ task.due_date|date:'Y-m-d'|default:'' }}',
                 detail_url: '{% url 'task_detail' task.pk %}'
@@ -89,9 +90,10 @@
                     <template x-for="task in tasksFor(col.status)" :key="task.id">
                         <div
                             class="rounded-lg border border-devborder bg-devbg3 p-3
-                                   shadow-soft cursor-grab active:cursor-grabbing
-                                   hover:border-devaccent transition"
+                                   shadow-soft transition"
+                            :class="task.can_act ? 'cursor-grab active:cursor-grabbing hover:border-devaccent' : 'cursor-not-allowed opacity-50 grayscale'"
                             :data-id="task.id"
+                            :data-can-act="task.can_act ? 'true' : 'false'"
                         >
                             <a :href="task.detail_url"
                                class="block text-sm font-medium text-devtext1 hover:text-devaccent">
@@ -163,6 +165,7 @@
                         group: "devflow-kanban",
                         animation: 150,
                         ghostClass: "opacity-40",
+                        filter: '[data-can-act="false"]',
                         onEnd: (evt) => this.onDrop(evt, col.status),
                     });
                 });
@@ -172,9 +175,44 @@
                 const card = evt.item;
                 const taskId = parseInt(card.dataset.id, 10);
                 const newPosition = evt.newIndex;
+                const item = this.items.find(t => t.id === taskId);
+
+                if (!item || !item.can_act) {
+                    window.devflowToast("Cette tâche est assignée à un autre collaborateur.", "error");
+                    window.location.reload();
+                    return;
+                }
 
                 // Source = colonne d'origine. Si même colonne → juste un repositionnement.
                 const oldStatus = (evt.from && evt.from.dataset && evt.from.dataset.status) || null;
+                if (oldStatus !== newStatus) {
+                    const spentHours = window.prompt(
+                        "Temps passé sur cette tâche (en heures). Saisissez 0 si vous ne souhaitez pas ajouter de temps.",
+                        "0"
+                    );
+                    if (spentHours === null) {
+                        window.location.reload();
+                        return;
+                    }
+                    try {
+                        const result = await window.devflowApi.post(
+                            `/api/v1/tasks/${taskId}/move-kanban/`,
+                            { status: newStatus, position: newPosition, spent_hours: spentHours }
+                        );
+                        if (result === null) {
+                            window.devflowToast("Déplacement refusé — tâche hors workspace", "error");
+                            setTimeout(() => window.location.reload(), 1200);
+                            return;
+                        }
+                        item.status = result.status || newStatus;
+                        window.devflowToast(`Statut → ${result.status_label || newStatus}`, "success");
+                        return;
+                    } catch (err) {
+                        window.devflowToast("Erreur réseau — vue actualisée", "error");
+                        setTimeout(() => window.location.reload(), 1200);
+                        return;
+                    }
+                }
 
                 try {
                     const result = await window.devflowApi.post(
@@ -188,7 +226,6 @@
                         return;
                     }
                     // Mise à jour locale du modèle
-                    const item = this.items.find(t => t.id === taskId);
                     if (item) item.status = result.status || newStatus;
                     if (oldStatus !== newStatus) {
                         window.devflowToast(

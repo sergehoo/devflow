@@ -4682,6 +4682,9 @@ class TaskQuickStatusView(DevflowBaseMixin, View):
 class TaskQuickCommentView(DevflowBaseMixin, View):
     def post(self, request, pk):
         task = self.filter_by_workspace(dm.Task.objects.all()).select_related("project", "workspace").get(pk=pk)
+        if task.assignee_id != request.user.id:
+            messages.error(request, "Cette tâche est assignée à un autre collaborateur.")
+            return redirect(request.POST.get("next") or "task_detail", pk=task.pk)
         body = (request.POST.get("body") or "").strip()
         is_internal = request.POST.get("is_internal") == "1"
 
@@ -4716,6 +4719,9 @@ class TaskQuickCommentView(DevflowBaseMixin, View):
 class TaskToggleFlagView(DevflowBaseMixin, View):
     def post(self, request, pk):
         task = self.filter_by_workspace(dm.Task.objects.all()).select_related("project", "workspace").get(pk=pk)
+        if task.assignee_id != request.user.id:
+            messages.error(request, "Cette tâche est assignée à un autre collaborateur.")
+            return redirect(request.POST.get("next") or "task_list")
         task.is_flagged = not task.is_flagged
         task.save(update_fields=["is_flagged", "updated_at"])
 
@@ -4747,6 +4753,9 @@ class TaskQuickAttachmentView(LoginRequiredMixin, View):
             is_archived=False,
             workspace_id__in=user_workspace_ids,
         )
+        if task.assignee_id != request.user.id:
+            messages.error(request, "Cette tâche est assignée à un autre collaborateur.")
+            return redirect(request.META.get("HTTP_REFERER", "task_list"))
         uploaded = request.FILES.get("file")
 
         if not uploaded:

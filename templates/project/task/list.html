@@ -193,10 +193,16 @@
                             <article
                                 data-task-id="{{ task.pk }}"
                                 data-status="{{ task.status }}"
+                                data-can-act="{% if task.assignee_id == request.user.id %}true{% else %}false{% endif %}"
+                                {% if task.assignee_id == request.user.id %}
                                 draggable="true"
                                 @dragstart="onDragStart($event, '{{ task.pk }}')"
                                 @dragend="onDragEnd()"
-                                class="group relative overflow-visible rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                                {% else %}
+                                draggable="false"
+                                aria-disabled="true"
+                                {% endif %}
+                                class="group relative overflow-visible rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-4 shadow-sm transition duration-200 {% if task.assignee_id == request.user.id %}cursor-grab hover:-translate-y-0.5 hover:shadow-md{% else %}cursor-not-allowed opacity-50 grayscale{% endif %}"
                             >
                                 <div class="absolute inset-x-0 top-0 h-1 rounded-t-[24px] bg-[linear-gradient(90deg,var(--accent),var(--accent2))]"></div>
 
@@ -306,7 +312,13 @@
                                     </div>
                                 </div>
 
-                                <div class="mt-4 grid grid-cols-3 gap-2">
+                                <button type="button"
+                                        @click.stop="devflowQuickUpdate({{ task.pk }}, '{{ task.title|escapejs }}')"
+                                        class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)]/10 px-3 py-2 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent)] hover:text-white">
+                                    <i class="fa-solid fa-bolt"></i> Mettre à jour
+                                </button>
+
+                                <div class="mt-2 grid grid-cols-3 gap-2">
                                     <button type="button"
                                             @click.stop="openAssignModal('{{ task.pk }}', '{{ task.title|escapejs }}', '{{ task.assignee_id|default:'' }}')"
                                             title="Réaffecter"
@@ -319,7 +331,8 @@
                                         <button type="button"
                                                 data-popover-trigger="true"
                                                 @click.stop="toggleCommentPopover('{{ task.pk }}')"
-                                                class="w-full rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                                                {% if task.assignee_id != request.user.id %}disabled title="Lecture seule : tâche assignée à {{ task.assignee|default:'un autre collaborateur' }}"{% endif %}
+                                                class="w-full rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)] disabled:cursor-not-allowed disabled:opacity-50">
                                             <span >{{ task.comments_count|default:0 }} <i class="fa-solid fa-comment"></i></span>
                                         </button>
 
@@ -384,7 +397,8 @@
                                         <button type="button"
                                                 data-popover-trigger="true"
                                                 @click.stop="toggleAttachmentPopover('{{ task.pk }}')"
-                                                class="w-full rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)]">
+                                                {% if task.assignee_id != request.user.id %}disabled title="Lecture seule : tâche assignée à {{ task.assignee|default:'un autre collaborateur' }}"{% endif %}
+                                                class="w-full rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:text-[var(--text1)] disabled:cursor-not-allowed disabled:opacity-50">
                                           <i class="fa-solid fa-file"></i>
                                         </button>
 
@@ -516,6 +530,17 @@ function taskKanbanBoard() {
             const oldStatus = card.dataset.status;
             if (oldStatus === newStatus) return;
 
+            if (card.dataset.canAct !== "true") {
+                window.devflowToast?.("Cette tâche est assignée à un autre collaborateur.", "error");
+                return;
+            }
+
+            const spentHours = window.prompt(
+                "Temps passé sur cette tâche (en heures). Saisissez 0 si vous ne souhaitez pas ajouter de temps.",
+                "0"
+            );
+            if (spentHours === null) return;
+
             const body = column.querySelector(".column-body");
             body.appendChild(card);
 
@@ -526,6 +551,7 @@ function taskKanbanBoard() {
             const formData = new FormData();
             formData.append("status", newStatus);
             formData.append("position", 0);
+            formData.append("spent_hours", spentHours);
             formData.append("csrfmiddlewaretoken", this.getCsrfToken());
 
             try {

@@ -90,7 +90,7 @@
             </thead>
             <tbody class="divide-y divide-devborder/40">
                 {% for task in items %}
-                <tr class="hover:bg-devbg3/30 transition" x-data="{ removed: false }" x-show="!removed">
+                <tr class="transition {% if task.assignee_id == request.user.id %}hover:bg-devbg3/30{% else %}opacity-50 grayscale{% endif %}" x-data="{ removed: false, loading: false }" x-show="!removed">
                     <td class="px-4 py-3">
                         <a href="{% url 'task_detail' task.pk %}"
                            class="font-medium text-devtext1 hover:text-devaccent">
@@ -107,7 +107,7 @@
                         {{ task.project|default:"—" }}
                     </td>
                     <td class="px-4 py-3 text-devtext2 hidden lg:table-cell">
-                        {{ task.assignee|default:"—" }}
+                        <span data-task-assignee="{{ task.pk }}">{{ task.assignee|default:"—" }}</span>
                     </td>
                     <td class="px-4 py-3">
                         <span class="badge
@@ -132,19 +132,32 @@
                            silencieusement "" (bug bouton "Marquer fait" my-day). #}
                         {% with task_id=task.pk|stringformat:"s" %}
                         <div class="flex items-center justify-end gap-1.5">
-                            {% include "components/_quick_action_button.html" with
-                                endpoint="/api/v1/tasks/"|add:task_id|add:"/toggle-complete/"
-                                label="Terminer"
-                                variant="success" size="xs"
-                                success_message="Statut basculé"
-                                on_success="removed = true;" %}
-                            {% include "components/_quick_action_button.html" with
-                                endpoint="/api/v1/tasks/"|add:task_id|add:"/snooze/"
-                                label="Snoozer 1j"
-                                variant="ghost" size="xs"
-                                payload_json='{"until": new Date(Date.now()+86400000).toISOString()}'
-                                success_message="Reportée à demain"
-                                on_success="removed = true;" %}
+                            <button type="button"
+                                    @click="window.devflowReassign({{ task.pk }}, '{{ task.title|escapejs }}')"
+                                    class="rounded-lg border border-devborder bg-devbg3 px-2.5 py-1 text-[11px] font-medium text-devtext2 hover:text-devtext1">
+                                Réaffecter
+                            </button>
+                            {% if task.assignee_id == request.user.id %}
+                            <button type="button" :disabled="loading"
+                                    @click="
+                                        const spentHours = window.prompt('Temps passé sur cette tâche (en heures). Saisissez 0 si vous ne souhaitez pas ajouter de temps.', '0');
+                                        if (spentHours === null) return;
+                                        loading = true;
+                                        window.devflowApi.post('/api/v1/tasks/{{ task_id }}/toggle-complete/', { spent_hours: spentHours })
+                                            .then(result => { if (result !== null) { window.devflowToast('Statut basculé', 'success'); removed = true; } })
+                                            .finally(() => loading = false);
+                                    "
+                                    class="rounded-lg bg-devgreen px-2.5 py-1 text-[11px] font-medium text-white disabled:opacity-50">
+                                <span x-text="loading ? '…' : 'Terminer'"></span>
+                            </button>
+                            <button type="button" :disabled="loading"
+                                    @click="loading = true; window.devflowApi.post('/api/v1/tasks/{{ task_id }}/snooze/', { until: new Date(Date.now()+86400000).toISOString() }).then(result => { if (result !== null) { window.devflowToast('Reportée à demain', 'success'); removed = true; } }).finally(() => loading = false)"
+                                    class="rounded-lg px-2.5 py-1 text-[11px] font-medium text-devtext2 hover:bg-devbg3 disabled:opacity-50">
+                                Snoozer 1j
+                            </button>
+                            {% else %}
+                            <span class="text-[11px] text-devtext3">Lecture seule</span>
+                            {% endif %}
                         </div>
                         {% endwith %}
                     </td>

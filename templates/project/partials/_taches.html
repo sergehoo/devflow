@@ -104,6 +104,9 @@
                             <button type="button" onclick="devflowReassign({{ task.pk }}, '{{ task.title|escapejs }}')"
                                     class="ml-1 rounded-lg px-1.5 py-0.5 text-[11px] font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10"
                                     title="Réaffecter">Réaffecter</button>
+                            <button type="button" onclick="devflowQuickUpdate({{ task.pk }}, '{{ task.title|escapejs }}')"
+                                    class="rounded-lg px-1.5 py-0.5 text-[11px] font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10"
+                                    title="Mise à jour rapide"><i class="fa-solid fa-bolt"></i></button>
                         </td>
                         <td class="py-3 text-right text-[var(--text2)]">{{ task.estimate_hours|default:"0" }} h</td>
                         <td class="py-3 text-right text-[var(--text2)]">{{ task.spent_hours|default:"0" }} h</td>

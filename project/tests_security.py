@@ -619,6 +619,7 @@ class QuickActionsSecurityTests(MultiTenantSetupMixin, TestCase):
     # --- snooze ----------------------------------------------------------
     def test_snooze_sets_snoozed_until(self):
         task_a = self._make_task(self.workspace_a, self.project_a)
+        task_a.assign(self.user_a, assigned_by=self.user_a)
         client = self.login_as(self.user_a, "pw-alice-1")
         resp = client.post(
             f"/api/v1/tasks/{task_a.pk}/snooze/",

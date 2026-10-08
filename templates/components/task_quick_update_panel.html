@@ -1,0 +1,85 @@
+{% comment %}
+Contenu du panneau « Mise à jour rapide » — à inclure dans un scope
+x-data="devflowTaskQuickUpdate({...})" (fiche tâche ou fenêtre globale).
+{% endcomment %}
+<div>
+  <p x-show="loading" class="py-4 text-sm text-[var(--text3)]">Chargement…</p>
+
+  <template x-if="state && !state.can_update">
+    <p class="rounded-2xl bg-[var(--bg3)] px-4 py-3 text-sm text-[var(--text2)]">
+      <i class="fa-solid fa-lock mr-1 text-[var(--text3)]"></i>
+      Lecture seule : seule la personne assignée
+      (<strong x-text="state.assignee_name || 'personne'"></strong>) peut mettre à jour cette tâche.
+      Utilisez « Réaffecter » pour changer de mandataire.
+    </p>
+  </template>
+
+  <div x-show="state && state.can_update" class="space-y-5">
+    <!-- Actions en un clic -->
+    <div class="flex flex-wrap gap-2">
+      <template x-for="a in shortcuts()" :key="a.label">
+        <button type="button" @click="send(a.payload)" :disabled="saving"
+                class="inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition disabled:opacity-50"
+                :class="a.primary ? 'bg-[var(--accent)] text-white hover:opacity-90' : 'border border-[var(--border)] bg-[var(--bg3)] text-[var(--text1)] hover:border-[var(--accent)]'">
+          <i class="fa-solid" :class="a.icon"></i><span x-text="a.label"></span>
+        </button>
+      </template>
+      <span class="mx-1 hidden w-px bg-[var(--border)] sm:block"></span>
+      <template x-for="h in [0.5, 1, 2, 4]" :key="h">
+        <button type="button" @click="send({ spent_hours: h })" :disabled="saving"
+                class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-sm font-semibold text-[var(--text1)] transition hover:border-[var(--accent)] disabled:opacity-50"
+                :title="'Ajouter ' + h + ' h à votre timesheet du jour'"
+                x-text="'+' + (h < 1 ? '30 min' : h + ' h')"></button>
+      </template>
+    </div>
+
+    <!-- Mise à jour détaillée -->
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div>
+        <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text3)]">Statut</p>
+        <div class="flex flex-wrap gap-1.5">
+          <template x-for="s in state ? state.statuses : []" :key="s.value">
+            <button type="button" @click="form.status = s.value"
+                    class="rounded-full border px-3 py-1 text-xs font-semibold transition"
+                    :class="form.status === s.value
+                      ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                      : 'border-[var(--border)] bg-[var(--bg2)] text-[var(--text2)] hover:border-[var(--accent)]'"
+                    x-text="s.label"></button>
+          </template>
+        </div>
+      </div>
+      <div>
+        <p class="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-[var(--text3)]">
+          Avancement <span class="text-sm normal-case text-[var(--text1)]" x-text="form.progress + ' %'"></span>
+        </p>
+        <input type="range" min="0" max="100" step="5" x-model.number="form.progress" :disabled="form.status === 'DONE'"
+               class="w-full accent-[var(--accent)]">
+      </div>
+      <div>
+        <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text3)]">Temps passé aujourd'hui (h)</p>
+        <input type="number" min="0" max="24" step="0.25" x-model="form.hours" placeholder="0"
+               class="w-full rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-sm text-[var(--text1)] outline-none focus:border-[var(--accent)]">
+        <p class="mt-1 text-[11px] text-[var(--text3)]">
+          Ajouté à votre timesheet · total passé : <span x-text="state ? state.spent_hours : 0"></span> h
+          <template x-if="state && state.estimate_hours"><span x-text="' / ' + state.estimate_hours + ' h estimées'"></span></template>
+        </p>
+      </div>
+      <div>
+        <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text3)]">
+          Commentaire <span x-show="form.status === 'BLOCKED'" class="normal-case text-red-500">(raison du blocage obligatoire)</span>
+        </p>
+        <textarea x-model="form.comment" rows="2" placeholder="Point d'avancement, blocage, prochaine étape…"
+                  class="w-full resize-none rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-sm text-[var(--text1)] outline-none focus:border-[var(--accent)]"></textarea>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-end gap-3">
+      <p x-show="error" x-text="error" class="mr-auto text-sm text-red-500"></p>
+      <button type="button" @click="submitForm()" :disabled="saving || !dirty()"
+              class="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40">
+        <i class="fa-solid fa-check"></i>
+        <span x-text="saving ? 'Enregistrement…' : 'Enregistrer la mise à jour'"></span>
+      </button>
+    </div>
+  </div>
+</div>

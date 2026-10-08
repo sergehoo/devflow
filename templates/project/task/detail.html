@@ -146,6 +146,18 @@
         </div>
     </section>
 
+    <!-- Mise à jour rapide -->
+    <section class="rounded-[24px] border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-soft"
+             x-data="devflowTaskQuickUpdate({ taskId: {{ item.pk }}, inline: true })" x-init="load()">
+        <div class="mb-4 flex items-center justify-between gap-3">
+            <div>
+                <h2 class="text-lg font-semibold text-[var(--text1)]"><i class="fa-solid fa-bolt mr-1 text-[var(--accent)]"></i> Mise à jour rapide</h2>
+                <p class="mt-1 text-xs text-[var(--text3)]">Statut, avancement, temps passé et commentaire en un clic.</p>
+            </div>
+        </div>
+        {% include "components/task_quick_update_panel.html" %}
+    </section>
+
     {% if is_overdue and item.status != "EXPIRED" %}
     <section class="rounded-[24px] border border-amber-500/30 bg-amber-500/5 p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-start gap-3">

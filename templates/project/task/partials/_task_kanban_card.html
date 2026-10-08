@@ -86,7 +86,13 @@
              style="width: {{ task.progress_percent|default:0 }}%"></div>
     </div>
 
-    <div class="mt-4 grid grid-cols-3 gap-2">
+    <button type="button"
+            @click.stop="devflowQuickUpdate({{ task.pk }}, '{{ task.title|escapejs }}')"
+            class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)]/10 px-3 py-2 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent)] hover:text-white">
+        <i class="fa-solid fa-bolt"></i> Mettre à jour
+    </button>
+
+    <div class="mt-2 grid grid-cols-3 gap-2">
         <button type="button"
                 @click.stop="openAssignModal({{ task.pk }}, '{{ task.title|escapejs }}', '{{ task.assignee_id|default:'' }}')"
                 class="rounded-xl border border-[var(--border)] bg-[var(--bg3)] px-3 py-2 text-xs font-semibold text-[var(--text2)] transition hover:bg-[var(--bg2)] hover:text-[var(--text1)]">

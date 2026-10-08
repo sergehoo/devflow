@@ -1,0 +1,110 @@
+{% comment %}
+Mise à jour rapide des tâches (incluse dans layout/base.html).
+  * devflowTaskQuickUpdate({taskId, inline}) — composant Alpine (fiche tâche) ;
+  * devflowQuickUpdate(taskId, title)        — ouvre la fenêtre globale (liste, kanban).
+API : /api/v1/tasks/<id>/quick-update/ (GET état, POST mise à jour ; assigné uniquement).
+{% endcomment %}
+{% if request.user.is_authenticated %}
+<script>
+  window.devflowQuickUpdate = function (taskId, title) {
+    window.dispatchEvent(new CustomEvent("devflow:open-quick-update", { detail: { taskId: taskId, title: title || "" } }));
+  };
+  window.devflowTaskQuickUpdate = function (opts) {
+    const csrf = () => (typeof getCookie === "function" ? getCookie("csrftoken") : "");
+    return {
+      taskId: opts.taskId || null, inline: !!opts.inline, open: false, title: "",
+      loading: false, saving: false, error: "", state: null,
+      form: { status: "", progress: 0, hours: "", comment: "" },
+
+      async load() {
+        if (!this.taskId) return;
+        this.loading = true; this.error = "";
+        try {
+          const res = await fetch(`/api/v1/tasks/${this.taskId}/quick-update/`, { credentials: "same-origin" });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Tâche introuvable.");
+          this.state = data;
+          this.title = this.title || data.title;
+          this.form = { status: data.status, progress: data.progress_percent, hours: "", comment: "" };
+        } catch (e) { this.error = e.message; }
+        this.loading = false;
+      },
+
+      async show(detail) {
+        Object.assign(this, { taskId: detail.taskId, title: detail.title, state: null, open: true });
+        await this.load();
+      },
+
+      shortcuts() {
+        const s = this.state ? this.state.status : "";
+        const go = (label, icon, status, primary) => ({ label, icon, primary, payload: { status } });
+        if (s === "TODO") return [go("Démarrer", "fa-play", "IN_PROGRESS", true)];
+        if (s === "IN_PROGRESS") return [go("Terminer", "fa-check", "DONE", true), go("Envoyer en review", "fa-eye", "REVIEW")];
+        if (s === "REVIEW") return [go("Valider / terminer", "fa-check", "DONE", true), go("Reprendre", "fa-rotate-left", "IN_PROGRESS")];
+        if (s === "BLOCKED") return [go("Débloquer", "fa-unlock", "IN_PROGRESS", true)];
+        if (s === "DONE") return [go("Rouvrir", "fa-rotate-left", "IN_PROGRESS")];
+        return [go("Démarrer", "fa-play", "IN_PROGRESS", true)];
+      },
+
+      dirty() {
+        if (!this.state) return false;
+        return this.form.status !== this.state.status
+          || Number(this.form.progress) !== this.state.progress_percent
+          || (this.form.hours !== "" && Number(this.form.hours) > 0)
+          || this.form.comment.trim() !== "";
+      },
+
+      submitForm() {
+        const payload = {};
+        if (this.form.status !== this.state.status) payload.status = this.form.status;
+        if (Number(this.form.progress) !== this.state.progress_percent) payload.progress_percent = this.form.progress;
+        if (this.form.hours !== "" && Number(this.form.hours) > 0) payload.spent_hours = this.form.hours;
+        if (this.form.comment.trim()) payload.comment = this.form.comment.trim();
+        return this.send(payload);
+      },
+
+      async send(payload) {
+        if (this.saving) return;
+        this.saving = true; this.error = "";
+        try {
+          const res = await fetch(`/api/v1/tasks/${this.taskId}/quick-update/`, {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Mise à jour impossible.");
+          this.state = data;
+          if (window.devflowToast) window.devflowToast("Tâche mise à jour.", "success");
+          setTimeout(() => window.location.reload(), 500);
+        } catch (e) {
+          this.error = e.message;
+          if (window.devflowToast) window.devflowToast(e.message, "error");
+        }
+        this.saving = false;
+      },
+    };
+  };
+</script>
+
+<div x-data="devflowTaskQuickUpdate({})" x-cloak
+     @devflow:open-quick-update.window="show($event.detail)"
+     @keydown.escape.window="open = false">
+  <div x-show="open" x-transition.opacity class="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
+       @click.self="open = false">
+    <div class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-[28px] border border-[var(--border)] bg-[var(--bg2)] shadow-2xl sm:rounded-[28px]"
+         role="dialog" aria-modal="true" aria-labelledby="quick-update-title">
+      <header class="flex items-start justify-between gap-3 border-b border-[var(--border)] px-6 py-4">
+        <div class="min-w-0">
+          <h3 id="quick-update-title" class="text-lg font-semibold text-[var(--text1)]">Mise à jour rapide</h3>
+          <p class="mt-0.5 truncate text-sm text-[var(--text2)]" x-text="title"></p>
+        </div>
+        <button type="button" @click="open = false" class="rounded-lg p-1 text-[var(--text3)] hover:bg-[var(--bg3)]" aria-label="Fermer">✕</button>
+      </header>
+      <div class="px-6 py-5">
+        {% include "components/task_quick_update_panel.html" %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}

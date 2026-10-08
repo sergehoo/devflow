@@ -61,6 +61,7 @@ def _task_payload(task: dm.Task) -> dict:
         "assignee_id": task.assignee_id,
         "project_id": task.project_id,
         "position": task.position,
+        "spent_hours": str(task.spent_hours or 0),
         "is_flagged": bool(task.is_flagged),
     }
 
@@ -81,6 +82,30 @@ def _maybe_log(task: dm.Task, actor, activity_type, title, description=""):
         pass
 
 
+def _assignee_required(task: dm.Task, user):
+    """Empêche toute action opérationnelle sur la tâche d'un collègue."""
+    if task.assignee_id == user.id:
+        return None
+    return Response(
+        {"detail": "Cette tâche est assignée à un autre collaborateur."},
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def _record_optional_time(task: dm.Task, user, data):
+    """Enregistre la durée éventuellement fournie par les interfaces rapides."""
+    raw_hours = (data or {}).get("spent_hours")
+    if raw_hours in (None, "", 0, "0", "0.0", "0.00"):
+        return None
+
+    from project.services.task_time import TaskTimeError, record_task_time
+
+    try:
+        return record_task_time(task=task, user=user, hours=raw_hours)
+    except TaskTimeError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 # ---------------------------------------------------------------------------
 # 1) Toggle complete — bascule DONE ↔ TODO selon l'état courant
 # ---------------------------------------------------------------------------
@@ -89,6 +114,13 @@ class TaskToggleCompleteView(APIView):
 
     def post(self, request, pk):
         task = _get_task_or_404(request, pk)
+        denied = _assignee_required(task, request.user)
+        if denied:
+            return denied
+        try:
+            _record_optional_time(task, request.user, request.data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         now = timezone.now()
 
         if task.status == dm.Task.Status.DONE:
@@ -127,6 +159,14 @@ class TaskUpdateStatusView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        denied = _assignee_required(task, request.user)
+        if denied:
+            return denied
+        try:
+            _record_optional_time(task, request.user, request.data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         previous = task.status
         task.status = new_status
         now = timezone.now()
@@ -155,6 +195,9 @@ class TaskSnoozeView(APIView):
 
     def post(self, request, pk):
         task = _get_task_or_404(request, pk)
+        denied = _assignee_required(task, request.user)
+        if denied:
+            return denied
         raw = (request.data or {}).get("until")
 
         if raw in (None, "", "null"):
@@ -178,6 +221,29 @@ class TaskSnoozeView(APIView):
 # ---------------------------------------------------------------------------
 # 4) Quick assign — body: {user_id?: int}, null/absent = unassign
 # ---------------------------------------------------------------------------
+class TaskQuickUpdateView(APIView):
+    """
+    GET  — état courant pour le panneau « Mise à jour rapide ».
+    POST {status?, progress_percent?, spent_hours?, comment?} — mise à jour atomique (assigné uniquement).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        from project.services.task_quick_update import task_state
+
+        return Response(task_state(_get_task_or_404(request, pk), request.user))
+
+    def post(self, request, pk):
+        from project.services.task_quick_update import QuickUpdateError, apply_quick_update
+
+        task = _get_task_or_404(request, pk)
+        try:
+            return Response(apply_quick_update(task, request.user, request.data))
+        except QuickUpdateError as exc:
+            code = status.HTTP_403_FORBIDDEN if "assigné" in str(exc) else status.HTTP_400_BAD_REQUEST
+            return Response({"detail": str(exc)}, status=code)
+
+
 class TaskQuickAssignJSONView(APIView):
     """POST {user_id?: int, note?: str} — réaffecte (null/absent = retirer l'assignation)."""
     permission_classes = [permissions.IsAuthenticated]
@@ -246,6 +312,14 @@ class TaskMoveKanbanJSONView(APIView):
                 {"detail": "Statut invalide.", "allowed": sorted(allowed)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        denied = _assignee_required(task, request.user)
+        if denied:
+            return denied
+        try:
+            _record_optional_time(task, request.user, data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         if new_status:
             task.status = new_status
