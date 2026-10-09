@@ -177,16 +177,12 @@ def _send_recording_email(recording, kind, title, body, target_url, recipients):
         if not emails:
             return
 
-        text_body = (
-            f"{body}\n\n"
-            f"→ {absolute_url}\n\n"
-            f"— DevFlow"
-        )
-        msg = EmailMessage(
-            subject=f"[DevFlow] {title}",
-            body=text_body,
-            from_email=from_email,
-            to=[],
+        from project.services.email_render import devflow_email
+        from project.utils.urls import absolute_url as _absolute
+
+        msg = devflow_email(
+            subject=f"[DevFlow] {title}", eyebrow="Enregistrement", title=title,
+            intro=body, cta_url=_absolute(target_url), cta_label="Ouvrir l'enregistrement",
             bcc=emails,
         )
         msg.send(fail_silently=True)

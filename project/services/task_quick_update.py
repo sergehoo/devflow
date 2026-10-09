@@ -53,6 +53,7 @@ def apply_quick_update(task, user, data) -> dict:
         raise QuickUpdateError("Seul le collaborateur assigné peut mettre à jour cette tâche.")
 
     data = data or {}
+    task._updated_by = user  # auteur pour la notification au chef de projet
     new_status = data.get("status") or None
     progress = data.get("progress_percent")
     hours = data.get("spent_hours")

@@ -1,14 +1,14 @@
 Bonjour {{ pm.first_name|default:pm.username }},
 
-Mise à jour sur le projet « {{ project.name }} » que vous pilotez :
+{% if actor_name %}{{ actor_name }} a mis à jour{% else %}Mise à jour d'{% endif %} une tâche du projet « {{ project.name }} » que vous pilotez.
 
-  Tâche : {{ task.title }}
-  {{ message }}
-  {% if task.assignee %}Responsable : {{ task.assignee }}{% endif %}
-  Statut : {{ task.get_status_display }}
-  Progression : {{ task.progress_percent }}%
+Tâche : {{ task.title }}
+{% for c in changes %}- {{ c.label }} : {{ c.before }} → {{ c.after }}
+{% endfor %}
+Responsable : {{ assignee_name|default:"Non assignée" }}
+Statut : {{ task.get_status_display }}
+Progression : {{ task.progress_percent|default:0 }} %
 
-Ouvrir la tâche : /tasks/{{ task.pk }}/
+Ouvrir la tâche : {{ task_url }}
 
-— Notification automatique Dev'Flow
-Pour ne plus recevoir ces digests, ajustez vos préférences dans votre profil.
+— DevFlow · Choisissez le mode immédiat ou récapitulatif dans vos préférences de notification.

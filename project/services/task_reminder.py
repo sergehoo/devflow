@@ -31,6 +31,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import EmailMultiAlternatives, send_mail
 from django.template.loader import render_to_string
+from django.db import transaction
 from django.urls import reverse
 
 from project.utils.urls import absolute_url
@@ -338,53 +339,60 @@ class TaskUpdateNotifier:
         if not pm or pm == actor:  # pas la peine d'auto-notifier le PM si c'est lui qui a édité
             return
 
+        status_labels = dict(dm.Task.Status.choices)
         changes = []
         if before.get("status") != task.status:
-            changes.append(
-                f"statut « {before.get('status') or '—'} » → « {task.get_status_display()} »"
-            )
+            changes.append({
+                "label": "Statut",
+                "before": status_labels.get(before.get("status"), before.get("status") or "—"),
+                "after": task.get_status_display(),
+            })
         if before.get("assignee_id") != task.assignee_id:
-            changes.append(
-                f"affectation : {before.get('assignee_label') or '—'} → {task.assignee or '—'}"
-            )
+            changes.append({
+                "label": "Affectation",
+                "before": before.get("assignee_label") or "Non assignée",
+                "after": (task.assignee.get_full_name() or task.assignee.get_username()) if task.assignee_id else "Non assignée",
+            })
         if before.get("progress_percent") is not None:
             delta = (task.progress_percent or 0) - (before.get("progress_percent") or 0)
             if abs(delta) >= cls.SIGNIFICANT_PROGRESS_DELTA:
-                changes.append(f"progression {before.get('progress_percent')}% → {task.progress_percent}%")
+                changes.append({
+                    "label": "Progression",
+                    "before": f"{before.get('progress_percent')} %",
+                    "after": f"{task.progress_percent} %",
+                })
 
         if not changes:
             return
 
-        message = "Mise à jour : " + ", ".join(changes)
+        message = " · ".join(f"{c['label']} : {c['before']} → {c['after']}" for c in changes)
+        actor_name = (actor.get_full_name() or actor.get_username()) if actor else ""
 
         try:
-            dm.Notification.objects.create(
+            notification = dm.Notification.objects.create(
                 workspace=task.workspace,
                 recipient=pm,
                 notification_type=dm.Notification.NotificationType.TASK,
-                title=f"Tâche mise à jour — {task.title}",
+                title=f"Tâche mise à jour — {task.title}"[:180],
                 body=message,
-                metadata={"task_id": task.pk},
+                url=TaskReminderService._task_url(task),
+                metadata={"task_id": task.pk, "actor_id": actor.pk if actor else None},
             )
         except Exception:
-            pass
+            return
 
-        if pm.email:
-            ctx = {
-                "task": task,
-                "project": task.project,
-                "pm": pm,
-                "changes": changes,
-                "actor": actor,
-                "message": message,
-            }
+        # Email immédiat seulement si les préférences du PM le permettent
+        # (sinon la notification rejoint son récapitulatif).
+        from project.services.smart_notifications import SmartNotificationDispatcher
+
+        if not SmartNotificationDispatcher.should_send_email_now(notification):
+            return
+        from project.tasks import send_task_pm_update_email_task
+
+        def _enqueue():
             try:
-                send_mail(
-                    subject=f"[DevFlow] Mise à jour — {task.title}",
-                    message=render_to_string("emails/task_pm_update.txt", ctx),
-                    from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@devflow.local"),
-                    recipient_list=[pm.email],
-                    fail_silently=True,
-                )
+                send_task_pm_update_email_task.delay(task.pk, pm.pk, changes, actor_name)
             except Exception as exc:
-                logger.warning("PM update email failed for task %s: %s", task.pk, exc)
+                logger.warning("PM update email enqueue failed for task %s: %s", task.pk, exc)
+
+        transaction.on_commit(_enqueue)

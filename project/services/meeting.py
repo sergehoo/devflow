@@ -578,7 +578,7 @@ class MeetingService:
             (meeting.notes or "")
             + "\n\n— Compte-rendu DevFlow"
         )
-        subject = f"[CR] {meeting.title} — {timezone.localtime(meeting.scheduled_at).strftime('%d/%m/%Y')}"
+        subject = f"[DevFlow] Compte-rendu — {meeting.title} — {timezone.localtime(meeting.scheduled_at).strftime('%d/%m/%Y')}"
 
         from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) \
             or getattr(settings, "EMAIL_HOST_USER", None) \
@@ -587,11 +587,11 @@ class MeetingService:
         sent = 0
         for to in recipients:
             try:
-                msg = EmailMessage(
-                    subject=subject,
-                    body=body_text,
-                    from_email=from_email,
-                    to=[to],
+                from project.services.email_render import devflow_email
+                msg = devflow_email(
+                    subject=subject, eyebrow="Compte-rendu", title=meeting.title, subtitle=timezone.localtime(meeting.scheduled_at).strftime('%d/%m/%Y'),
+                    intro="Veuillez trouver ci-dessous le compte-rendu de la réunion (version complète en pièce jointe).",
+                    details=body_text, to=[to],
                 )
                 if docx_bytes:
                     filename = f"CR-{meeting.title.replace(' ', '_')}.docx"

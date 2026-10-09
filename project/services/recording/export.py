@@ -369,7 +369,7 @@ def send_recording_email(
         timezone.localtime(meeting.scheduled_at).strftime("%d/%m/%Y")
         if meeting else timezone.localtime(recording.created_at).strftime("%d/%m/%Y")
     )
-    subject = f"[CR] {meeting.title if meeting else 'Réunion'} — {meeting_date}"
+    subject = f"[DevFlow] Compte-rendu — {meeting.title if meeting else 'Réunion'} — {meeting_date}"
 
     from_email = (
         getattr(settings, "DEFAULT_FROM_EMAIL", None)
@@ -380,11 +380,11 @@ def send_recording_email(
     sent = 0
     for to in recipients:
         try:
-            msg = EmailMessage(
-                subject=subject,
-                body=body_text,
-                from_email=from_email,
-                to=[to],
+            from project.services.email_render import devflow_email
+            msg = devflow_email(
+                subject=subject, eyebrow="Compte-rendu", title=(meeting.title if meeting else 'Réunion'), subtitle=meeting_date,
+                intro="Veuillez trouver ci-dessous le compte-rendu de la réunion (version complète en pièce jointe).",
+                details=body_text, to=[to],
             )
             if docx_bytes:
                 # Nom de fichier propre

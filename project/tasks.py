@@ -771,18 +771,24 @@ def send_meeting_reminders_sweep(self):
             )
             continue
         try:
-            msg = EmailMessage(
+            from project.services.email_render import devflow_email
+            from project.utils.urls import absolute_url
+
+            when = timezone.localtime(meeting.scheduled_at)
+            msg = devflow_email(
                 subject=f"[DevFlow] Rappel : {meeting.title} demain",
-                body=(
-                    f"Rappel : la réunion '{meeting.title}' est prévue le "
-                    f"{meeting.scheduled_at.strftime('%d/%m/%Y à %H:%M')}.\n\n"
+                eyebrow="Réunions", title=meeting.title,
+                subtitle=f"Demain · {when:%d/%m/%Y à %H:%M}",
+                intro=f"Rappel : la réunion « {meeting.title} » a lieu demain.",
+                details=(
+                    f"Date : {when:%d/%m/%Y à %H:%M}\n"
                     f"Lieu : {meeting.location or '—'}\n"
-                    f"Lien : {meeting.meeting_link or '—'}\n\n"
-                    f"— DevFlow"
+                    f"Lien visio : {meeting.meeting_link or '—'}"
                 ),
-                from_email=getattr(dj_settings, "DEFAULT_FROM_EMAIL", "noreply@devflow.local"),
+                badge="Demain",
+                cta_url=meeting.meeting_link or absolute_url(f"/meetings/{meeting.pk}/"),
+                cta_label="Rejoindre la réunion" if meeting.meeting_link else "Voir la réunion",
                 bcc=emails,
-                to=[],
             )
             msg.send(fail_silently=True)
             dm.MeetingFollowUp.objects.create(
@@ -821,14 +827,19 @@ def send_meeting_reminders_sweep(self):
             )
             continue
         try:
-            msg = EmailMessage(
-                subject=f"[DevFlow] Compte-rendu de '{meeting.title}' ?",
-                body=(
-                    f"Bonjour,\n\nLa réunion '{meeting.title}' s'est terminée. "
-                    f"Pensez à finaliser et envoyer le compte-rendu aux participants.\n\n"
-                    f"— DevFlow"
+            from project.services.email_render import devflow_email
+            from project.utils.urls import absolute_url
+
+            msg = devflow_email(
+                subject=f"[DevFlow] Compte-rendu de « {meeting.title} » ?",
+                eyebrow="Réunions", title=meeting.title,
+                subtitle=f"{timezone.localtime(meeting.scheduled_at):%d/%m/%Y à %H:%M}",
+                intro=(
+                    f"Bonjour {target.first_name or target.get_username()},\n"
+                    "La réunion s'est terminée. Pensez à finaliser et envoyer le compte-rendu aux participants."
                 ),
-                from_email=getattr(dj_settings, "DEFAULT_FROM_EMAIL", "noreply@devflow.local"),
+                badge="Compte-rendu attendu",
+                cta_url=absolute_url(f"/meetings/{meeting.pk}/"), cta_label="Rédiger le compte-rendu",
                 to=[target.email],
             )
             msg.send(fail_silently=True)
@@ -970,5 +981,44 @@ def send_member_password_reset_email_task(self, user_id, reset_url, forced, acto
         )
     except Exception as exc:
         logger.warning("Password reset email failed for user %s: %s", user_id, exc)
+        raise self.retry(exc=exc)
+    return {"ok": True}
+
+
+# =============================================================================
+# Chef de projet — notification de mise à jour de tâche (design DevFlow)
+# =============================================================================
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def send_task_pm_update_email_task(self, task_id, pm_id, changes, actor_name=""):
+    from project.services.task_reminder import TaskReminderService
+    from project.utils.urls import absolute_url
+
+    task = dm.Task.objects.select_related("project", "assignee").filter(pk=task_id).first()
+    pm = get_user_model().objects.filter(pk=pm_id, is_active=True).first()
+    if task is None or pm is None or not pm.email:
+        return {"ok": False, "reason": "task or recipient missing"}
+
+    task_url = absolute_url(TaskReminderService._task_url(task))
+    context = {
+        "task": task,
+        "project": task.project,
+        "pm": pm,
+        "changes": changes,
+        "actor_name": actor_name,
+        "assignee_name": (task.assignee.get_full_name() or task.assignee.get_username()) if task.assignee_id else "",
+        "task_url": task_url,
+        "cta_url": task_url,
+        "cta_label": "Ouvrir la tâche",
+    }
+    try:
+        send_mail(
+            subject=f"[DevFlow] Mise à jour — {task.title}",
+            message=render_to_string("emails/task_pm_update.txt", context),
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+            recipient_list=[pm.email],
+            html_message=render_to_string("emails/task_pm_update.html", context),
+        )
+    except Exception as exc:
+        logger.warning("PM update email failed for task %s: %s", task_id, exc)
         raise self.retry(exc=exc)
     return {"ok": True}

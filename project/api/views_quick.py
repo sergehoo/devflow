@@ -35,12 +35,14 @@ User = get_user_model()
 def _get_task_or_404(request, task_pk: int) -> dm.Task:
     """Charge la tâche en filtrant par workspace user. 404 si cross-tenant."""
     workspace_ids = get_user_workspace_ids(request.user)
-    return get_object_or_404(
+    task = get_object_or_404(
         dm.Task.objects.select_related("project", "workspace", "assignee"),
         pk=task_pk,
         workspace_id__in=workspace_ids,
         is_archived=False,
     )
+    task._updated_by = request.user  # auteur transmis aux notifications (signal post_save)
+    return task
 
 
 def _task_payload(task: dm.Task) -> dict:

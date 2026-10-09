@@ -303,10 +303,11 @@ def cache_task_state_before_save(sender, instance, **kwargs):
     instance._before_state["progress_percent"] = previous.progress_percent
     if previous.assignee_id:
         try:
-            instance._before_state["assignee_label"] = str(
-                dm.Task._meta.get_field("assignee").remote_field.model.objects.get(
-                    pk=previous.assignee_id
-                )
+            previous_user = dm.Task._meta.get_field("assignee").remote_field.model.objects.get(
+                pk=previous.assignee_id
+            )
+            instance._before_state["assignee_label"] = (
+                previous_user.get_full_name() or previous_user.get_username()
             )
         except Exception:
             pass
@@ -328,7 +329,8 @@ def notify_pm_on_task_change(sender, instance, created, **kwargs):
         try:
             from project.services.task_reminder import TaskUpdateNotifier
 
-            TaskUpdateNotifier.notify_pm(instance, before, actor=None)
+            actor = getattr(instance, "_updated_by", None) or getattr(instance, "_assigned_by", None)
+            TaskUpdateNotifier.notify_pm(instance, before, actor=actor)
         except Exception:
             pass
 

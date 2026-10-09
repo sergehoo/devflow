@@ -113,3 +113,96 @@ class DigestEmailDesignTests(TestCase):
         self.assertIn("Saisie attendue", html)
         self.assertIn(f'href="{SITE}/timesheets/?date=2026-10-07"', html)
         self.assertIn("Ouvrir mon timesheet", html)
+
+
+@override_settings(SITE_URL=SITE)
+class PMUpdateEmailTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.pm = User.objects.create_user("pm", "serge.pm@a.test", "pw", first_name="Serge", last_name="OGAH")
+        cls.dev = User.objects.create_user("dev", "fabien@a.test", "pw", first_name="Fabien", last_name="OUREGA")
+        cls.ws = dm.Workspace.objects.create(name="KAYDAN", owner=cls.pm)
+        for u in (cls.pm, cls.dev):
+            dm.UserProfile.objects.create(user=u, workspace=cls.ws)
+            dm.TeamMembership.objects.create(user=u, workspace=cls.ws)
+            dm.NotificationPreference.objects.update_or_create(
+                user=u, defaults={"quiet_hours_start": 0, "quiet_hours_end": 0},
+            )
+        cls.project = dm.Project.objects.create(workspace=cls.ws, name="G-stock", product_manager=cls.pm)
+
+    def setUp(self):
+        self.task = dm.Task.objects.create(
+            workspace=self.ws, project=self.project, assignee=self.dev,
+            title="Notification GeStock lors création depuis Contrat",
+        )
+
+    def complete_as_assignee(self):
+        from unittest import mock
+        from project.services.task_quick_update import apply_quick_update
+
+        with mock.patch("project.tasks.send_task_pm_update_email_task.delay") as delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                apply_quick_update(self.task, self.dev, {"status": "DONE"})
+        return delay
+
+    def test_pm_notified_with_readable_changes_and_actor(self):
+        delay = self.complete_as_assignee()
+        delay.assert_called_once()
+        task_id, pm_id, changes, actor_name = delay.call_args.args
+        self.assertEqual((task_id, pm_id, actor_name), (self.task.pk, self.pm.pk, "Fabien OUREGA"))
+        self.assertIn({"label": "Statut", "before": "À faire", "after": "Terminé"}, changes)
+        self.assertIn({"label": "Progression", "before": "0 %", "after": "100 %"}, changes)
+        notif = dm.Notification.objects.get(recipient=self.pm)
+        self.assertEqual(notif.url, f"/tasks/{self.task.pk}/")
+
+    def test_email_design_and_absolute_link(self):
+        from project.tasks import send_task_pm_update_email_task
+
+        self.task.status, self.task.progress_percent = "DONE", 100
+        self.task.save()
+        mail.outbox = []
+        send_task_pm_update_email_task.run(
+            self.task.pk, self.pm.pk,
+            [{"label": "Statut", "before": "À faire", "after": "Terminé"}], "Fabien OUREGA",
+        )
+        email = mail.outbox[-1]
+        html = email.alternatives[0][0]
+        self.assertIn("DevFlow · Mise à jour de tâche", html)
+        self.assertIn("<strong>Fabien OUREGA</strong> a mis à jour", html)
+        self.assertIn(f'href="{SITE}/tasks/{self.task.pk}/"', html)
+        self.assertIn("Fabien OUREGA", html)        # responsable affiché par son nom, pas son email
+        self.assertNotIn("TODO", html + email.body)
+        self.assertIn(f"{SITE}/tasks/{self.task.pk}/", email.body)
+
+    def test_digest_preference_skips_immediate_email(self):
+        dm.NotificationPreference.objects.filter(user=self.pm).update(notify_frequency="DAILY")
+        delay = self.complete_as_assignee()
+        delay.assert_not_called()
+        self.assertTrue(dm.Notification.objects.filter(recipient=self.pm).exists())
+
+
+@override_settings(SITE_URL=SITE)
+class MeetingEmailDesignTests(TestCase):
+    def test_meeting_reminder_and_minutes_prompt_use_devflow_design(self):
+        from project.tasks import send_meeting_reminders_sweep
+
+        org = User.objects.create_user("org", "org@a.test", "pw", first_name="Awa")
+        guest = User.objects.create_user("guest", "guest@a.test", "pw")
+        ws = dm.Workspace.objects.create(name="KAYDAN", owner=org)
+        tomorrow = dm.ProjectMeeting.objects.create(
+            workspace=ws, title="Comité hebdo", organizer=org,
+            scheduled_at=timezone.now() + timedelta(hours=24), meeting_link="https://meet.example/abc",
+        )
+        tomorrow.internal_participants.add(guest)
+        done = dm.ProjectMeeting.objects.create(
+            workspace=ws, title="Revue sprint", organizer=org, scheduled_at=timezone.now() - timedelta(hours=2),
+        )
+        mail.outbox = []
+        send_meeting_reminders_sweep()
+        reminder = [m for m in mail.outbox if "guest@a.test" in m.bcc][0]
+        html = reminder.alternatives[0][0]
+        self.assertIn("DevFlow · Réunions", html)
+        self.assertIn('href="https://meet.example/abc"', html)
+        prompt = [m for m in mail.outbox if "org@a.test" in m.to][0]
+        self.assertIn(f'href="{SITE}/meetings/{done.pk}/"', prompt.alternatives[0][0])
+        self.assertIn("Rédiger le compte-rendu", prompt.alternatives[0][0])

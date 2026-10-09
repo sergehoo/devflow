@@ -490,6 +490,7 @@ class DevflowUpdateView(WorkspaceSecurityMixin, DevflowBaseMixin, UpdateView):
         return reverse_lazy(self.success_list_url_name)
 
     def form_valid(self, form):
+        form.instance._updated_by = self.request.user  # auteur pour les notifications
         messages.success(self.request, f"{self.model._meta.verbose_name.title()} mis à jour avec succès.")
         return super().form_valid(form)
 
