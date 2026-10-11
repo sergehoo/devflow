@@ -32,6 +32,7 @@ from django.contrib.auth import get_user_model
 from django.core.mail import EmailMultiAlternatives, send_mail
 from django.template.loader import render_to_string
 from django.db import transaction
+from django.db.models import Q
 from django.urls import reverse
 
 from project.utils.urls import absolute_url
@@ -100,6 +101,11 @@ class TaskReminderService:
                 result.skipped_cooldown += 1
                 continue
 
+            if dm.Task.objects.filter(pk=task.pk).filter(
+                Q(status__in=[dm.Task.Status.DONE, dm.Task.Status.CANCELLED, dm.Task.Status.EXPIRED])
+                | Q(progress_percent__gte=100) | Q(is_archived=True)
+            ).exists():
+                continue
             try:
                 if not dry_run:
                     cls._send_assignee_reminder(task, reason, days_overdue)
@@ -133,7 +139,8 @@ class TaskReminderService:
         stale_cutoff = timezone.now() - timedelta(days=stale_days)
         due_soon_limit = today + timedelta(days=due_soon_days)
 
-        terminal = [dm.Task.Status.DONE, dm.Task.Status.CANCELLED]
+        # Tâches closes (terminées, annulées, expirées par le PM) : jamais de relance.
+        terminal = [dm.Task.Status.DONE, dm.Task.Status.CANCELLED, dm.Task.Status.EXPIRED]
 
         from django.db.models import Q
         qs = (
@@ -149,6 +156,8 @@ class TaskReminderService:
                 project__status__in=cls.ACTIVE_PROJECT_STATUSES,
             )
             .exclude(status__in=terminal)
+            .exclude(progress_percent__gte=100)                      # finie mais pas encore « Terminé »
+            .exclude(snoozed_until__gt=timezone.now())               # mise en pause par l'assigné
             .filter(
                 Q(due_date__isnull=False, due_date__lte=due_soon_limit)
                 | Q(updated_at__lt=stale_cutoff)

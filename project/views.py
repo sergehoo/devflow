@@ -4845,6 +4845,8 @@ class TaskKanbanMoveView(LoginRequiredMixin, View):
         })
 class TaskListView(DevflowListView):
     model = dm.Task
+    # Board kanban : toutes les tâches filtrées (la pagination à 25 masquait le reste).
+    paginate_by = None
     template_name = "project/task/list.html"
     section = "task"
     page_title = "Tâches"
