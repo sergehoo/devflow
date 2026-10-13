@@ -237,13 +237,18 @@ class ProjectAIStructureService:
             payload = cls._heuristic_payload(project)
             used_provider = used_provider or "heuristic"
 
-        proposal.raw_payload = payload
-        proposal.used_provider = used_provider
-        proposal.summary = (payload.get("summary") or "")[:5000]
-        proposal.risks_summary = (payload.get("risks") or "")[:5000]
-        proposal.recommendations = payload.get("recommendations") or []
-
-        items_created = cls._instantiate_items(proposal, payload, project)
+        try:
+            # Savepoint : une sortie IA mal typée ne laisse aucun élément partiel.
+            with transaction.atomic():
+                items_created = cls._apply_payload(proposal, payload, project, used_provider)
+        except Exception as exc:
+            if used_provider == "heuristic":
+                raise
+            logger.exception("AI payload unusable for project %s, heuristic fallback: %s", project.pk, exc)
+            proposal.error_message = f"Sortie IA inexploitable ({exc}) — proposition heuristique."[:1000]
+            payload, used_provider = cls._heuristic_payload(project), "heuristic"
+            with transaction.atomic():
+                items_created = cls._apply_payload(proposal, payload, project, used_provider)
 
         proposal.status = dm.ProjectAIProposal.Status.READY
         proposal.save()
@@ -264,6 +269,36 @@ class ProjectAIStructureService:
     # ---------------------------------------------------------------------
     # AI call
     # ---------------------------------------------------------------------
+    @staticmethod
+    def _as_text(value) -> str:
+        """Les LLM renvoient parfois listes/objets là où on attend du texte."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return "\n".join(f"{k} : {v}" for k, v in value.items())
+        if isinstance(value, (list, tuple)):
+            return "\n".join(
+                f"- {item.get('title') or item.get('name') or item}" if isinstance(item, dict) else f"- {item}"
+                for item in value
+            )
+        return str(value)
+
+    @classmethod
+    def _apply_payload(cls, proposal, payload, project, used_provider) -> int:
+        if not isinstance(payload, dict):
+            raise ValueError("la réponse n'est pas un objet JSON")
+        recommendations = payload.get("recommendations") or []
+        if not isinstance(recommendations, list):
+            recommendations = [cls._as_text(recommendations)]
+        proposal.raw_payload = payload
+        proposal.used_provider = used_provider
+        proposal.summary = cls._as_text(payload.get("summary"))[:5000]
+        proposal.risks_summary = cls._as_text(payload.get("risks"))[:5000]
+        proposal.recommendations = recommendations
+        return cls._instantiate_items(proposal, payload, project)
+
     @classmethod
     def _call_ai(cls, project: dm.Project, proposal: dm.ProjectAIProposal) -> tuple[dict, str]:
         provider = get_ai_provider()

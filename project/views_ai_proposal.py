@@ -511,12 +511,27 @@ class ProjectAIProposalTriggerView(LoginRequiredMixin, View):
                 "status": proposal.status,
             })
 
-        result = ProjectAIStructureService.generate_for_project(
-            project=project,
-            triggered_by=request.user,
-            use_ai=True,
-        )
-        messages.success(request, "Proposition IA générée.")
+        try:
+            result = ProjectAIStructureService.generate_for_project(
+                project=project,
+                triggered_by=request.user,
+                use_ai=True,
+            )
+        except Exception as exc:
+            logger.exception("AI proposal generation failed for project %s", project.pk)
+            dm.ProjectAIProposal.objects.filter(
+                project=project, status=dm.ProjectAIProposal.Status.GENERATING,
+            ).update(status=dm.ProjectAIProposal.Status.FAILED, error_message=str(exc)[:1000])
+            messages.error(
+                request,
+                "La génération de la proposition IA a échoué. Réessayez dans quelques instants ; "
+                "l'incident a été enregistré.",
+            )
+            return redirect("project_detail", pk=project.pk)
+        if result.used_provider == "heuristic" and result.proposal.error_message:
+            messages.warning(request, "L'IA n'a pas renvoyé de résultat exploitable : proposition générée par l'assistant de secours.")
+        else:
+            messages.success(request, "Proposition IA générée.")
         return redirect("ai_proposal_detail", pk=result.proposal.pk)
 
 
