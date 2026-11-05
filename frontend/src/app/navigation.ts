@@ -1,0 +1,100 @@
+import {
+  BarChart3, Briefcase, CalendarDays, CheckSquare, LayoutDashboard, MessageSquare, Settings, Sun, Users,
+  type LucideIcon,
+} from "lucide-react";
+import { can } from "@/lib/permissions";
+import type { Me } from "@/types/auth";
+
+/**
+ * Navigation (miroir de la sidebar Django simplifiée).
+ * `to` = page React migrée ; `legacy` = page encore servie par l'ancien frontend.
+ * Les droits ne sont qu'un filtre d'affichage : Django reste l'autorité.
+ */
+export interface NavItem {
+  label: string;
+  to?: string;
+  legacy?: string | ((me: Me) => string | null);
+  visible?: (me: Me) => boolean;
+}
+
+export interface NavGroup {
+  label: string;
+  icon: LucideIcon;
+  to?: string;
+  legacy?: string;
+  items?: NavItem[];
+  visible?: (me: Me) => boolean;
+}
+
+const anyOf = (...actions: string[]) => (me: Me) => actions.some((a) => can(me.permissions, a));
+const superuser = (me: Me) => me.is_superuser;
+
+export const NAVIGATION: NavGroup[] = [
+  { label: "Tableau de bord", icon: LayoutDashboard, to: "/" },
+  { label: "Ma journée", icon: Sun, to: "/my-day" },
+  { label: "Messagerie", icon: MessageSquare, to: "/messenger" },
+  {
+    label: "Projets", icon: Briefcase, items: [
+      { label: "Projets", to: "/projects" },
+      { label: "Roadmaps", to: "/m/roadmap" },
+      { label: "Jalons", to: "/m/milestone" },
+      { label: "Releases", to: "/m/release" },
+      { label: "Objectifs & OKR", to: "/m/objective" },
+      { label: "Risques", to: "/m/risk" },
+      { label: "Analyses & suggestions IA", to: "/m/ai-insight" },
+    ],
+  },
+  {
+    label: "Exécution", icon: CheckSquare, items: [
+      { label: "Tâches", to: "/tasks" },
+      { label: "Backlog", to: "/m/backlog-item" },
+      { label: "Sprints", to: "/m/sprint" },
+      { label: "Pull requests", to: "/m/pull-request" },
+    ],
+  },
+  {
+    label: "Équipes & temps", icon: Users, items: [
+      { label: "Équipes", to: "/teams" },
+      { label: "Membres", to: "/members" },
+      { label: "Mes timesheets", to: "/timesheets" },
+      { label: "Validation des timesheets", to: "/timesheets/validation" },
+    ],
+  },
+  {
+    label: "Finance", icon: BarChart3, visible: anyOf("budget.view", "billing.view"), items: [
+      { label: "Cockpit financier", visible: anyOf("budget.view"),
+        legacy: (me) => (me.workspace ? `/workspaces/${me.workspace.id}/financial-ai/portfolio/` : null) },
+      { label: "Dépenses", to: "/m/project-expense", visible: anyOf("budget.view") },
+      { label: "Allocation IA des ressources", visible: anyOf("budget.view"),
+        legacy: (me) => (me.workspace ? `/workspaces/${me.workspace.id}/financial-ai/allocation/view/` : null) },
+      { label: "Factures", to: "/m/invoice", visible: anyOf("billing.view") },
+      { label: "Clients", to: "/m/invoice-client", visible: anyOf("billing.view") },
+    ],
+  },
+  {
+    label: "Réunions", icon: CalendarDays, items: [
+      { label: "Réunions", to: "/m/meeting" },
+      { label: "Séries récurrentes", to: "/m/meeting-series" },
+      { label: "Registre des décisions", to: "/m/meeting-decision" },
+    ],
+  },
+  {
+    label: "Paramètres", icon: Settings, items: [
+      { label: "Workspaces", to: "/workspaces", visible: superuser },
+      { label: "Paramètres du workspace", to: "/m/workspace-settings", visible: superuser },
+      { label: "Invitations", to: "/m/workspace-invitation", visible: superuser },
+      { label: "Identité & papier en-tête", to: "/branding", visible: anyOf("billing.view") },
+      { label: "Méthodologies", to: "/m/methodology", visible: superuser },
+      { label: "Labels", to: "/m/label" },
+      { label: "Intégrations", to: "/m/integration", visible: anyOf("integration.manage", "settings.manage") },
+      { label: "Webhooks", to: "/m/webhook", visible: anyOf("integration.manage", "settings.manage") },
+      { label: "Clés API", to: "/m/api-key", visible: anyOf("integration.manage", "settings.manage") },
+      { label: "Journal d'activité", to: "/m/activity-log" },
+    ],
+  },
+];
+
+export function resolveLegacy(item: { legacy?: NavItem["legacy"] }, me: Me): string | null {
+  if (!item.legacy) return null;
+  return typeof item.legacy === "function" ? item.legacy(me) : item.legacy;
+}

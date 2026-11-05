@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Charte DevFlow (identique à l'ancien frontend) — clair / sombre */
+:root {
+  --background: #f6f3ef;
+  --card: #ffffff;
+  --muted: #f2ede7;
+  --border: rgba(0, 0, 0, 0.08);
+  --foreground: #1d1a17;
+  --muted-foreground: #6d655d;
+  --subtle-foreground: #a79f97;
+  --primary: #ff5a1f;
+  --primary-foreground: #ffffff;
+  --ring: #ff8758;
+  --destructive: #e8453c;
+  --success: #34a853;
+  --warning: #e8950a;
+  --info: #0ea5c9;
+}
+.dark {
+  --background: #11100f;
+  --card: #181715;
+  --muted: #22201e;
+  --border: rgba(255, 255, 255, 0.09);
+  --foreground: #f5efe8;
+  --muted-foreground: #a59c94;
+  --subtle-foreground: #6f665e;
+}
+
+@theme inline {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Fraunces", Georgia, serif;
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --radius-xl: 14px;
+  --radius-2xl: 20px;
+}
+
+@layer base {
+  * { border-color: var(--border); }
+  html, body, #root { height: 100%; }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
