@@ -61,6 +61,7 @@ from .utils.workspaces import (
     ensure_workspace,
     get_user_workspace_ids,
     users_for_user,
+    users_in_workspaces,
     workspace_lookup_for_model,
 )
 
@@ -553,6 +554,78 @@ class ArchiveObjectView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             obj.archive()
             messages.success(request, f"{self.model._meta.verbose_name.title()} archivé avec succès.")
         return redirect(reverse_lazy(self.success_list_url_name))
+
+
+TASK_RIGHT_DENIED = "Vous n'avez pas les droits nécessaires sur cette tâche."
+
+
+def task_right_allowed(user, task, right: str) -> bool:
+    """Droits sur la tâche réelle (source unique : services/task_permissions)."""
+    from project.services import task_permissions as tp
+    from project.services.task_assignment import can_reassign
+
+    if task is None:
+        return True
+    if right == "delete":
+        return tp.can_delete_task(user, task)
+    if right == "reassign":
+        return can_reassign(user, task)
+    return tp.can_edit_task(user, task)
+
+
+def _follow(obj, path: str):
+    for part in filter(None, path.split(".")):
+        obj = getattr(obj, part, None) if obj is not None else None
+    return obj
+
+
+class TaskRightsMixin:
+    """
+    SECURITY (P0 phase 5) — en plus du scoping workspace, contrôle les droits
+    sur la tâche réelle (mêmes règles que l'API REST), pour les vues Django
+    ET le pont React (``form_bridge`` exécute ces vues).
+
+    * ``task_right``   : "edit" | "delete" | "reassign" requis sur l'objet ;
+    * ``task_path``    : chemin objet → tâche ("" = l'objet est la tâche) ;
+    * ``task_fields``  : champs de formulaire → chemin vers la tâche, contrôlés
+      à l'enregistrement (création ou déplacement vers une autre tâche) ;
+    * ``actor_fields`` : champs « auteur » forcés à l'utilisateur courant
+      (création) et verrouillés (modification) — empêche l'usurpation.
+    """
+
+    task_right = "edit"
+    task_path = ""
+    task_fields: dict[str, str] = {}
+    actor_fields: tuple[str, ...] = ()
+
+    def object_allowed(self, obj) -> bool:
+        return task_right_allowed(self.request.user, _follow(obj, self.task_path), self.task_right)
+
+    def get_object(self, queryset=None):
+        obj = super().get_object(queryset)
+        if not self.object_allowed(obj):
+            raise PermissionDenied(TASK_RIGHT_DENIED)
+        return obj
+
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        for name in self.actor_fields:
+            if name in form.fields:
+                form.fields[name].disabled = True
+                form.fields[name].required = False
+        return form
+
+    def form_valid(self, form):
+        for name, path in self.task_fields.items():
+            task = _follow(form.cleaned_data.get(name), path)
+            if task is not None and not task_right_allowed(self.request.user, task, self.task_right):
+                form.add_error(name, TASK_RIGHT_DENIED)
+                return self.form_invalid(form)
+        instance = getattr(form, "instance", None)  # DeleteView : simple Form
+        if instance is not None and instance.pk is None:
+            for name in self.actor_fields:
+                setattr(instance, name, self.request.user)
+        return super().form_valid(form)
 
 
 class ProfileDetailView(DevflowBaseMixin, WorkspaceSecurityMixin, LoginRequiredMixin, DetailView):
@@ -3730,91 +3803,10 @@ class ProjectCreateView(DevflowCreateView):
 
         try:
             with transaction.atomic():
-                obj = form.save(commit=False)
-
-                obj.workspace = workspace
-
-                if not getattr(obj, "owner_id", None) and self.request.user.is_authenticated:
-                    obj.owner = self.request.user
-
-                if obj.progress_percent is None:
-                    obj.progress_percent = 0
-
-                if hasattr(obj, "risk_score") and obj.risk_score is None:
-                    obj.risk_score = 0
-
-                obj.save()
-                form.save_m2m()
-
-                # ── Multi-équipes : si pas d'équipe principale mais des
-                # équipes contributrices, on prend la première comme principale.
-                contributing_teams = list(obj.teams.all())
-                if not obj.team_id and contributing_teams:
-                    obj.team = contributing_teams[0]
-                    obj.save(update_fields=["team", "updated_at"])
-
-                # ── Auto-création des ProjectMember pour tous les membres
-                # actifs des équipes contributrices. Le rôle est repris du
-                # TeamMembership.role pour faciliter ensuite les affectations
-                # IA selon profil.
-                team_ids = {t.id for t in contributing_teams}
-                if obj.team_id:
-                    team_ids.add(obj.team_id)
-                if team_ids:
-                    memberships = dm.TeamMembership.objects.filter(
-                        workspace=obj.workspace,
-                        team_id__in=team_ids,
-                        status=dm.TeamMembership.Status.ACTIVE,
-                    ).select_related("user", "team")
-                    created_count = 0
-                    for m in memberships:
-                        _, created = dm.ProjectMember.objects.get_or_create(
-                            project=obj,
-                            user=m.user,
-                            defaults={
-                                "team": m.team,
-                                "role": m.get_role_display(),
-                                "allocation_percent": 50,
-                            },
-                        )
-                        if created:
-                            created_count += 1
-                    if created_count:
-                        messages.info(
-                            self.request,
-                            f"{created_count} membre(s) d'équipe ajouté(s) automatiquement au projet.",
-                        )
-
-                if hasattr(dm, "ProjectBudget"):
-                    dm.ProjectBudget.objects.get_or_create(
-                        project=obj,
-                        defaults={
-                            "status": dm.ProjectBudget.Status.DRAFT,
-                            "currency": "XOF",
-                        },
-                    )
-
-                # PR4-METHODO : applique automatiquement la configuration
-                # de la méthodologie choisie (statuts, rôles, cérémonies,
-                # KPIs, artefacts, phases si Waterfall, etc.).
-                # Best-effort : un échec ne doit pas bloquer la création.
-                try:
-                    from project.services.ai.services.methodology_postprocess import (
-                        MethodologyPostProcessor,
-                    )
-                    result = MethodologyPostProcessor.run(obj, actor=self.request.user)
-                    if result.get("items_created"):
-                        messages.info(
-                            self.request,
-                            f"Configuration {obj.get_methodology_display()} appliquée : "
-                            f"{result['items_created']} élément(s) initialisé(s).",
-                        )
-                except Exception as exc:
-                    logger.warning(
-                        "MethodologyPostProcessor failed for project %s: %s",
-                        obj.pk, exc,
-                    )
-
+                from project.services.project_creation import create_project_from_form
+                obj, infos = create_project_from_form(form, workspace=workspace, user=self.request.user)
+                for info in infos:
+                    messages.info(self.request, info)
                 self.object = obj
 
         except ValidationError as e:
@@ -5236,7 +5228,7 @@ class TaskCreateView(DevflowCreateView):
         messages.error(self.request, "Veuillez corriger les erreurs du formulaire.")
         return self.render_to_response(self.get_context_data(form=form))
 
-class TaskUpdateView(DevflowUpdateView):
+class TaskUpdateView(TaskRightsMixin, DevflowUpdateView):
     model = dm.Task
     form_class = TaskForm
     template_name = "project/task/form.html"
@@ -5245,6 +5237,13 @@ class TaskUpdateView(DevflowUpdateView):
     success_list_url_name = "task_list"
 
     def form_valid(self, form):
+        # SECURITY (P0) : la réaffectation suit task_assignment.can_reassign,
+        # évaluée sur l'état en base (l'instance du formulaire est déjà modifiée).
+        if "assignee" in form.changed_data:
+            current = dm.Task.objects.select_related("project").get(pk=form.instance.pk)
+            if not task_right_allowed(self.request.user, current, "reassign"):
+                form.add_error("assignee", "Vous ne pouvez pas réaffecter cette tâche.")
+                return self.form_invalid(form)
         messages.success(self.request, "Tâche modifiée avec succès.")
         return super().form_valid(form)
 
@@ -5253,7 +5252,8 @@ class TaskUpdateView(DevflowUpdateView):
         return self.render_to_response(self.get_context_data(form=form))
 
 
-class TaskDeleteView(DevflowDeleteView):
+class TaskDeleteView(TaskRightsMixin, DevflowDeleteView):
+    task_right = "delete"
     model = dm.Task
     section = "task"
     page_title = "Supprimer tâche"
@@ -5264,10 +5264,19 @@ class TaskArchiveView(ArchiveObjectView):
     model = dm.Task
     success_list_url_name = "task_list"
 
+    def post(self, request, pk):
+        # SECURITY (P0) : archiver = retirer la tâche des listes → droit de suppression.
+        task = get_object_or_404(self.filter_by_workspace(dm.Task.objects.select_related("project")), pk=pk)
+        if not task_right_allowed(request.user, task, "delete"):
+            raise PermissionDenied(TASK_RIGHT_DENIED)
+        return super().post(request, pk)
+
 
 class TaskMoveView(DevflowBaseMixin, View):
     def post(self, request, pk):
-        task = self.filter_by_workspace(dm.Task.objects.all()).get(pk=pk)
+        task = get_object_or_404(self.filter_by_workspace(dm.Task.objects.all()), pk=pk)
+        if not task_right_allowed(request.user, task, "edit"):
+            raise PermissionDenied(TASK_RIGHT_DENIED)
         status = request.POST.get("status")
         position = request.POST.get("position")
         if status in dict(dm.Task.Status.choices):
@@ -5402,7 +5411,9 @@ class TaskMarkExpiredView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
 
 class TaskMarkDoneView(DevflowBaseMixin, View):
     def post(self, request, pk):
-        task = self.filter_by_workspace(dm.Task.objects.all()).get(pk=pk)
+        task = get_object_or_404(self.filter_by_workspace(dm.Task.objects.all()), pk=pk)
+        if not task_right_allowed(request.user, task, "edit"):
+            raise PermissionDenied(TASK_RIGHT_DENIED)
         task.status = dm.Task.Status.DONE
         task.progress_percent = 100
         task.completed_at = timezone.now()
@@ -5443,7 +5454,11 @@ class TaskAssignmentDetailView(DevflowDetailView):
     page_title = "Détail affectation"
 
 
-class TaskAssignmentCreateView(DevflowCreateView):
+class TaskAssignmentCreateView(TaskRightsMixin, DevflowCreateView):
+    task_right = "reassign"
+    task_path = "task"
+    task_fields = {"task": ""}
+    actor_fields = ("assigned_by",)
     model = dm.TaskAssignment
     form_class = TaskAssignmentForm
     template_name = "project/task_assignment/form.html"
@@ -5462,7 +5477,11 @@ class TaskAssignmentCreateView(DevflowCreateView):
         return initial
 
 
-class TaskAssignmentUpdateView(DevflowUpdateView):
+class TaskAssignmentUpdateView(TaskRightsMixin, DevflowUpdateView):
+    task_right = "reassign"
+    task_path = "task"
+    task_fields = {"task": ""}
+    actor_fields = ("assigned_by",)
     model = dm.TaskAssignment
     form_class = TaskAssignmentForm
     template_name = "project/task_assignment/form.html"
@@ -5471,7 +5490,11 @@ class TaskAssignmentUpdateView(DevflowUpdateView):
     success_list_url_name = "task_assignment_list"
 
 
-class TaskAssignmentDeleteView(DevflowDeleteView):
+class TaskAssignmentDeleteView(TaskRightsMixin, DevflowDeleteView):
+    task_right = "reassign"
+    task_path = "task"
+    task_fields = {"task": ""}
+    actor_fields = ("assigned_by",)
     model = dm.TaskAssignment
     section = "task"
     page_title = "Supprimer affectation tâche"
@@ -5571,7 +5594,8 @@ class TaskCommentDetailView(DevflowDetailView):
     page_title = "Détail commentaire"
 
 
-class TaskCommentCreateView(DevflowCreateView):
+class TaskCommentCreateView(TaskRightsMixin, DevflowCreateView):
+    actor_fields = ("author",)
     model = dm.TaskComment
     form_class = TaskCommentForm
     section = "task"
@@ -5579,7 +5603,12 @@ class TaskCommentCreateView(DevflowCreateView):
     success_list_url_name = "task_comment_list"
 
 
-class TaskCommentUpdateView(DevflowUpdateView):
+class TaskCommentUpdateView(TaskRightsMixin, DevflowUpdateView):
+    actor_fields = ("author",)
+
+    def object_allowed(self, obj):
+        # Auteur, ou responsable sur la tâche (modération).
+        return obj.author_id == self.request.user.pk or task_right_allowed(self.request.user, obj.task, "delete")
     model = dm.TaskComment
     form_class = TaskCommentForm
     section = "task"
@@ -5587,7 +5616,12 @@ class TaskCommentUpdateView(DevflowUpdateView):
     success_list_url_name = "task_comment_list"
 
 
-class TaskCommentDeleteView(DevflowDeleteView):
+class TaskCommentDeleteView(TaskRightsMixin, DevflowDeleteView):
+    actor_fields = ("author",)
+
+    def object_allowed(self, obj):
+        # Auteur, ou responsable sur la tâche (modération).
+        return obj.author_id == self.request.user.pk or task_right_allowed(self.request.user, obj.task, "delete")
     model = dm.TaskComment
     section = "task"
     page_title = "Supprimer commentaire"
@@ -5609,7 +5643,10 @@ class TaskAttachmentDetailView(DevflowDetailView):
     page_title = "Détail pièce jointe tâche"
 
 
-class TaskAttachmentCreateView(DevflowCreateView):
+class TaskAttachmentCreateView(TaskRightsMixin, DevflowCreateView):
+    task_path = "task"
+    task_fields = {"task": ""}
+    actor_fields = ("uploaded_by",)
     model = dm.TaskAttachment
     form_class = TaskAttachmentForm
     section = "task"
@@ -5617,7 +5654,12 @@ class TaskAttachmentCreateView(DevflowCreateView):
     success_list_url_name = "task_attachment_list"
 
 
-class TaskAttachmentUpdateView(DevflowUpdateView):
+class TaskAttachmentUpdateView(TaskRightsMixin, DevflowUpdateView):
+    actor_fields = ("uploaded_by",)
+
+    def object_allowed(self, obj):
+        # Auteur, ou éditeur sur la tâche (modération).
+        return obj.uploaded_by_id == self.request.user.pk or task_right_allowed(self.request.user, obj.task, "edit")
     model = dm.TaskAttachment
     form_class = TaskAttachmentForm
     section = "task"
@@ -5625,7 +5667,12 @@ class TaskAttachmentUpdateView(DevflowUpdateView):
     success_list_url_name = "task_attachment_list"
 
 
-class TaskAttachmentDeleteView(DevflowDeleteView):
+class TaskAttachmentDeleteView(TaskRightsMixin, DevflowDeleteView):
+    actor_fields = ("uploaded_by",)
+
+    def object_allowed(self, obj):
+        # Auteur, ou éditeur sur la tâche (modération).
+        return obj.uploaded_by_id == self.request.user.pk or task_right_allowed(self.request.user, obj.task, "edit")
     model = dm.TaskAttachment
     section = "task"
     page_title = "Supprimer pièce jointe tâche"
@@ -6118,22 +6165,54 @@ class NotificationDetailView(DevflowDetailView):
 
 
 class NotificationCreateView(DevflowCreateView):
+    """
+    SECURITY (P0 phase 5) : émettre une notification manuelle vers un autre
+    utilisateur = administration du workspace (``workspace.manage``), sinon
+    n'importe quel membre pouvait usurper une notification système.
+    """
     model = dm.Notification
     form_class = NotificationForm
     section = "notification"
     page_title = "Créer notification"
     success_list_url_name = "notification_list"
 
+    def form_valid(self, form):
+        from project.services.rbac import RBACService
 
-class NotificationUpdateView(DevflowUpdateView):
+        workspace = form.cleaned_data.get("workspace") or self.get_current_workspace()
+        if not workspace or not RBACService.can(self.request.user, "workspace.manage", workspace=workspace):
+            raise PermissionDenied("Création de notification réservée aux administrateurs du workspace.")
+        recipient = form.cleaned_data.get("recipient")
+        if recipient and not users_in_workspaces([workspace.pk]).filter(pk=recipient.pk).exists():
+            form.add_error("recipient", "Ce destinataire n'appartient pas au workspace.")
+            return self.form_invalid(form)
+        return super().form_valid(form)
+
+
+class _OwnNotificationMixin:
+    """SECURITY (P0 phase 5) : seules les notifications dont on est destinataire."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(recipient=self.request.user)
+
+
+class NotificationUpdateView(_OwnNotificationMixin, DevflowUpdateView):
     model = dm.Notification
     form_class = NotificationForm
     section = "notification"
     page_title = "Modifier notification"
     success_list_url_name = "notification_list"
 
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        # Destinataire et workspace ne se réattribuent pas.
+        for name in ("recipient", "workspace"):
+            if name in form.fields:
+                form.fields[name].disabled = True
+        return form
 
-class NotificationDeleteView(DevflowDeleteView):
+
+class NotificationDeleteView(_OwnNotificationMixin, DevflowDeleteView):
     model = dm.Notification
     section = "notification"
     page_title = "Supprimer notification"
@@ -6142,7 +6221,9 @@ class NotificationDeleteView(DevflowDeleteView):
 
 class NotificationMarkReadView(DevflowBaseMixin, View):
     def post(self, request, pk):
-        notification = self.filter_by_workspace(dm.Notification.objects.filter(recipient=request.user)).get(pk=pk)
+        notification = get_object_or_404(
+            self.filter_by_workspace(dm.Notification.objects.filter(recipient=request.user)), pk=pk,
+        )
         notification.is_read = True
         notification.read_at = timezone.now()
         notification.save(update_fields=["is_read", "read_at", "updated_at"])
@@ -6566,6 +6647,10 @@ class TimesheetCalendarView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
         return monday, days
 
     def get(self, request, *args, **kwargs):
+        return render(request, self.template_name, self.get_week_context(request))
+
+    def get_week_context(self, request):
+        """Contexte de la semaine (partagé avec l'API React ``timesheet/week``)."""
         from datetime import timedelta as _td
         from django.db.models import Sum
 
@@ -6760,7 +6845,7 @@ class TimesheetCalendarView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             "week_summary": week_summary,
             "projects": projects_qs,
         }
-        return render(request, self.template_name, ctx)
+        return ctx
 
     @staticmethod
     def _compute_week_status(entry_qs):
@@ -7081,7 +7166,10 @@ class TaskLabelDetailView(DevflowDetailView):
     page_title = "Détail label de tâche"
 
 
-class TaskLabelCreateView(DevflowCreateView):
+class TaskLabelCreateView(TaskRightsMixin, DevflowCreateView):
+    task_path = "task"
+    task_fields = {"task": ""}
+    actor_fields = ("added_by",)
     model = dm.TaskLabel
     form_class = TaskLabelForm
     section = "task"
@@ -7089,7 +7177,10 @@ class TaskLabelCreateView(DevflowCreateView):
     success_list_url_name = "task_label_list"
 
 
-class TaskLabelUpdateView(DevflowUpdateView):
+class TaskLabelUpdateView(TaskRightsMixin, DevflowUpdateView):
+    task_path = "task"
+    task_fields = {"task": ""}
+    actor_fields = ("added_by",)
     model = dm.TaskLabel
     form_class = TaskLabelForm
     section = "task"
@@ -7097,7 +7188,10 @@ class TaskLabelUpdateView(DevflowUpdateView):
     success_list_url_name = "task_label_list"
 
 
-class TaskLabelDeleteView(DevflowDeleteView):
+class TaskLabelDeleteView(TaskRightsMixin, DevflowDeleteView):
+    task_path = "task"
+    task_fields = {"task": ""}
+    actor_fields = ("added_by",)
     model = dm.TaskLabel
     section = "task"
     page_title = "Supprimer label de tâche"
@@ -7157,7 +7251,10 @@ class TaskDependencyDetailView(DevflowDetailView):
     page_title = "Détail dépendance tâche"
 
 
-class TaskDependencyCreateView(DevflowCreateView):
+class TaskDependencyCreateView(TaskRightsMixin, DevflowCreateView):
+    task_path = "from_task"
+    task_fields = {"from_task": ""}
+    actor_fields = ("created_by",)
     model = dm.TaskDependency
     form_class = TaskDependencyForm
     section = "task"
@@ -7165,7 +7262,10 @@ class TaskDependencyCreateView(DevflowCreateView):
     success_list_url_name = "task_dependency_list"
 
 
-class TaskDependencyUpdateView(DevflowUpdateView):
+class TaskDependencyUpdateView(TaskRightsMixin, DevflowUpdateView):
+    task_path = "from_task"
+    task_fields = {"from_task": ""}
+    actor_fields = ("created_by",)
     model = dm.TaskDependency
     form_class = TaskDependencyForm
     section = "task"
@@ -7173,7 +7273,10 @@ class TaskDependencyUpdateView(DevflowUpdateView):
     success_list_url_name = "task_dependency_list"
 
 
-class TaskDependencyDeleteView(DevflowDeleteView):
+class TaskDependencyDeleteView(TaskRightsMixin, DevflowDeleteView):
+    task_path = "from_task"
+    task_fields = {"from_task": ""}
+    actor_fields = ("created_by",)
     model = dm.TaskDependency
     section = "task"
     page_title = "Supprimer dépendance tâche"
@@ -7200,7 +7303,9 @@ class TaskChecklistDetailView(DevflowDetailView):
         return ctx
 
 
-class TaskChecklistCreateView(DevflowCreateView):
+class TaskChecklistCreateView(TaskRightsMixin, DevflowCreateView):
+    task_path = "task"
+    task_fields = {"task": ""}
     model = dm.TaskChecklist
     form_class = TaskChecklistForm
     section = "task"
@@ -7208,7 +7313,9 @@ class TaskChecklistCreateView(DevflowCreateView):
     success_list_url_name = "task_checklist_list"
 
 
-class TaskChecklistUpdateView(DevflowUpdateView):
+class TaskChecklistUpdateView(TaskRightsMixin, DevflowUpdateView):
+    task_path = "task"
+    task_fields = {"task": ""}
     model = dm.TaskChecklist
     form_class = TaskChecklistForm
     section = "task"
@@ -7216,7 +7323,9 @@ class TaskChecklistUpdateView(DevflowUpdateView):
     success_list_url_name = "task_checklist_list"
 
 
-class TaskChecklistDeleteView(DevflowDeleteView):
+class TaskChecklistDeleteView(TaskRightsMixin, DevflowDeleteView):
+    task_path = "task"
+    task_fields = {"task": ""}
     model = dm.TaskChecklist
     section = "task"
     page_title = "Supprimer checklist"
@@ -7238,7 +7347,9 @@ class ChecklistItemDetailView(DevflowDetailView):
     page_title = "Détail élément checklist"
 
 
-class ChecklistItemCreateView(DevflowCreateView):
+class ChecklistItemCreateView(TaskRightsMixin, DevflowCreateView):
+    task_path = "checklist.task"
+    task_fields = {"checklist": "task"}
     model = dm.ChecklistItem
     form_class = ChecklistItemForm
     section = "task"
@@ -7246,7 +7357,9 @@ class ChecklistItemCreateView(DevflowCreateView):
     success_list_url_name = "checklist_item_list"
 
 
-class ChecklistItemUpdateView(DevflowUpdateView):
+class ChecklistItemUpdateView(TaskRightsMixin, DevflowUpdateView):
+    task_path = "checklist.task"
+    task_fields = {"checklist": "task"}
     model = dm.ChecklistItem
     form_class = ChecklistItemForm
     section = "task"
@@ -7254,7 +7367,9 @@ class ChecklistItemUpdateView(DevflowUpdateView):
     success_list_url_name = "checklist_item_list"
 
 
-class ChecklistItemDeleteView(DevflowDeleteView):
+class ChecklistItemDeleteView(TaskRightsMixin, DevflowDeleteView):
+    task_path = "checklist.task"
+    task_fields = {"checklist": "task"}
     model = dm.ChecklistItem
     section = "task"
     page_title = "Supprimer élément checklist"

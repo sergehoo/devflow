@@ -11,6 +11,7 @@ from django.views import View
 from django.views.generic import DetailView
 
 from project import models as dm
+from project.utils.workspaces import get_user_workspace_ids
 from project.forms_budget import (
     ProjectBudgetForm,
     ProjectEstimateLineForm,
@@ -25,11 +26,11 @@ class ProjectFinancialPermissionMixin:
     def get_project_from_request(self):
         project_id = self.request.GET.get("project") or self.kwargs.get("project_id")
         if project_id:
-            return (
-                dm.Project.objects
-                .select_related("workspace", "owner", "product_manager")
-                .filter(pk=project_id)
-                .first()
+            # SECURITY (phase 5) : projet hors des workspaces de l'utilisateur → 404
+            # (auparavant : None, ce qui sautait le contrôle financier).
+            return get_object_or_404(
+                dm.Project.objects.select_related("workspace", "owner", "product_manager"),
+                pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user),
             )
 
         obj = getattr(self, "object", None)
@@ -161,7 +162,7 @@ class ProjectBudgetCreateView(ProjectFinancialPermissionMixin, DevflowCreateView
     def form_valid(self, form):
         project_id = self.request.GET.get("project")
         if project_id:
-            form.instance.project = get_object_or_404(dm.Project, pk=project_id)
+            form.instance.project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user))
         messages.success(self.request, "Budget projet enregistré avec succès.")
         return super().form_valid(form)
 
@@ -190,7 +191,7 @@ class ProjectEstimateLineCreateView(ProjectFinancialPermissionMixin, DevflowCrea
     def form_valid(self, form):
         project_id = self.request.GET.get("project")
         if project_id:
-            form.instance.project = get_object_or_404(dm.Project, pk=project_id)
+            form.instance.project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user))
         form.instance.created_by = self.request.user
         messages.success(self.request, "Ligne d'estimation ajoutée.")
         return super().form_valid(form)
@@ -209,7 +210,7 @@ class ProjectRevenueCreateView(ProjectFinancialPermissionMixin, DevflowCreateVie
     def form_valid(self, form):
         project_id = self.request.GET.get("project")
         if project_id:
-            form.instance.project = get_object_or_404(dm.Project, pk=project_id)
+            form.instance.project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user))
         messages.success(self.request, "Prévision de revenu enregistrée.")
         return super().form_valid(form)
 
@@ -368,7 +369,7 @@ class ProjectExpenseListView(ProjectFinancialPermissionMixin, DevflowListView):
         ctx = super().get_context_data(**kwargs)
 
         project_id = self.request.GET.get("project")
-        project = get_object_or_404(dm.Project, pk=project_id) if project_id else None
+        project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user)) if project_id else None
 
         money_field = DecimalField(max_digits=14, decimal_places=2)
         base_qs = self.get_queryset()
@@ -512,7 +513,7 @@ class ProjectExpenseCreateView(ProjectFinancialPermissionMixin, DevflowCreateVie
     def form_valid(self, form):
         project_id = self.request.GET.get("project")
         if project_id:
-            form.instance.project = get_object_or_404(dm.Project, pk=project_id)
+            form.instance.project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user))
         form.instance.created_by = self.request.user
         messages.success(self.request, "Dépense ajoutée.")
         return super().form_valid(form)
@@ -520,7 +521,8 @@ class ProjectExpenseCreateView(ProjectFinancialPermissionMixin, DevflowCreateVie
 
 class GenerateEstimateLinesFromTasksView(ProjectFinancialPermissionMixin, LoginRequiredMixin, View):
     def post(self, request, project_id):
-        project = get_object_or_404(dm.Project, pk=project_id)
+        # SECURITY (phase 5) : projet résolu dans les workspaces de l'utilisateur.
+        project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(request.user))
         if not self.can_view_financials(project):
             messages.error(request, "Accès non autorisé.")
             return redirect("project_detail", pk=project.pk)
@@ -540,7 +542,8 @@ class GenerateEstimateLinesFromTasksView(ProjectFinancialPermissionMixin, LoginR
 
 class RecalculateProjectBudgetView(ProjectFinancialPermissionMixin, LoginRequiredMixin, View):
     def post(self, request, project_id):
-        project = get_object_or_404(dm.Project, pk=project_id)
+        # SECURITY (phase 5) : projet résolu dans les workspaces de l'utilisateur.
+        project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(request.user))
         if not self.can_view_financials(project):
             messages.error(request, "Accès non autorisé.")
             return redirect("project_detail", pk=project.pk)
@@ -558,7 +561,8 @@ class RefreshProjectFinancialsView(ProjectFinancialPermissionMixin, LoginRequire
     """Recalcul intelligent global : RAF + budget + overview."""
 
     def post(self, request, project_id):
-        project = get_object_or_404(dm.Project, pk=project_id)
+        # SECURITY (phase 5) : projet résolu dans les workspaces de l'utilisateur.
+        project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(request.user))
         if not self.can_view_financials(project):
             messages.error(request, "Accès non autorisé.")
             return redirect("project_detail", pk=project.pk)

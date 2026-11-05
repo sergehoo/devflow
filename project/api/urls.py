@@ -13,6 +13,20 @@ from drf_spectacular.views import (
 )
 from rest_framework.routers import DefaultRouter
 
+from project.api.resources import (  # noqa: E402
+    ResourceActionView, ResourceDeleteView, ResourceDetailView, ResourceListView, ResourceRegistryView,
+)
+from project.api.form_bridge import LegacyActionView, LegacyFormView
+from project.api.views_dashboard import DashboardSummaryView
+from project.api.views_teams import TeamMembersView
+from project.api.views_timesheets import TimesheetEntriesView, TimesheetWeeksView, TimesheetWeekView
+from project.api.views_auth import (
+    CsrfView,
+    LoginView,
+    LogoutView,
+    MeView,
+    WorkspaceSwitchView,
+)
 from project.api.views_chat import (
     ChatChannelMembersView,
     ChatChannelMessagesView,
@@ -24,6 +38,10 @@ from project.api.views_chat import (
     ChatMarkReadView,
     ChatReactionView,
     ChatUnreadCountView,
+)
+from project.api.views_notifications import (  # noqa: E402
+    NotificationDeleteView, NotificationListView, NotificationPreferenceView, NotificationReadAllView,
+    NotificationReadView, NotificationSummaryView,
 )
 from project.api.views_presence import (
     PresenceBatchView,
@@ -133,6 +151,27 @@ urlpatterns = [
     path("ai/chat/stream/", AIChatStreamView.as_view(), name="api-ai-chat-stream"),
 
     # ────── Chat collaborateurs (DM + groupes) — PR Chat ──────
+    # Frontend React — authentification par session
+    path("dashboard/summary/", DashboardSummaryView.as_view(), name="api-dashboard-summary"),
+    path("resources/", ResourceRegistryView.as_view(), name="api-resources"),
+    path("resources/<slug:name>/", ResourceListView.as_view(), name="api-resource-list"),
+    path("resources/<slug:name>/<int:pk>/", ResourceDetailView.as_view(), name="api-resource-detail"),
+    path("resources/<slug:name>/<int:pk>/delete/", ResourceDeleteView.as_view(), name="api-resource-delete"),
+    path("resources/<slug:name>/<int:pk>/actions/<slug:action>/", ResourceActionView.as_view(),
+         name="api-resource-action"),
+    path("forms/<slug:name>/", LegacyFormView.as_view(), name="api-form"),
+    path("forms/<slug:name>/<int:pk>/", LegacyFormView.as_view(), name="api-form-instance"),
+    path("team-members/", TeamMembersView.as_view(), name="api-team-members"),
+    path("timesheet/week/", TimesheetWeekView.as_view(), name="api-timesheet-week"),
+    path("timesheet/weeks/", TimesheetWeeksView.as_view(), name="api-timesheet-weeks"),
+    path("timesheet/entries/", TimesheetEntriesView.as_view(), name="api-timesheet-entries"),
+    path("actions/<slug:name>/", LegacyActionView.as_view(), name="api-action"),
+    path("actions/<slug:name>/<int:pk>/", LegacyActionView.as_view(), name="api-action-instance"),
+    path("auth/csrf/", CsrfView.as_view(), name="api-auth-csrf"),
+    path("auth/me/", MeView.as_view(), name="api-auth-me"),
+    path("auth/login/", LoginView.as_view(), name="api-auth-login"),
+    path("auth/logout/", LogoutView.as_view(), name="api-auth-logout"),
+    path("auth/workspace/", WorkspaceSwitchView.as_view(), name="api-auth-workspace"),
     path("me/chat/conversations/", ChatConversationsView.as_view(), name="api-chat-conversations"),
     path("me/chat/messages/<int:pk>/reactions/", ChatReactionView.as_view(), name="api-chat-reaction"),
     path("me/chat/channels/",
@@ -159,6 +198,14 @@ urlpatterns = [
     path("me/chat/channels/<int:pk>/members/",
          ChatChannelMembersView.as_view(),
          name="api-chat-channel-members"),
+
+    # ────── Notifications (frontend React, Phase 4) ──────
+    path("me/notifications/", NotificationListView.as_view(), name="api-notifications"),
+    path("me/notifications/summary/", NotificationSummaryView.as_view(), name="api-notifications-summary"),
+    path("me/notifications/read-all/", NotificationReadAllView.as_view(), name="api-notifications-read-all"),
+    path("me/notifications/<int:pk>/read/", NotificationReadView.as_view(), name="api-notification-read"),
+    path("me/notifications/<int:pk>/", NotificationDeleteView.as_view(), name="api-notification-delete"),
+    path("me/notification-preferences/", NotificationPreferenceView.as_view(), name="api-notification-preferences"),
 
     # ────── Présence en ligne / inactif (PR-CHAT-1) ──────
     path("me/presence/heartbeat/",

@@ -93,9 +93,11 @@ class ProjectScrumWorkspaceView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             .order_by("status", "-start_date")
             .first()
         )
+        # FIX (phase 5) : BacklogItem n'a pas de champ ``status`` (FieldError au rendu) ;
+        # « ouvert » = non archivé.
         backlog_items = (
             project.backlog_items
-            .exclude(status__in=["DONE", "CLOSED", "CANCELLED"])
+            .filter(is_archived=False)
             .order_by("rank", "-created_at")[:50]
         )
         sprint_items = []

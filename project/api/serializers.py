@@ -17,17 +17,61 @@ from project import models as dm
 # Workspace / Team
 # =========================================================================
 class WorkspaceSerializer(serializers.ModelSerializer):
+    """Champs du formulaire Django ``WorkspaceForm`` + compteurs et droits (UX React)."""
+
+    owner_name = serializers.SerializerMethodField()
+    teams_count = serializers.IntegerField(read_only=True, default=None)
+    projects_count = serializers.IntegerField(read_only=True, default=None)
+    memberships_count = serializers.IntegerField(read_only=True, default=None)
+    can_manage = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
+
     class Meta:
         model = dm.Workspace
-        fields = ["id", "name", "slug", "is_archived", "created_at", "updated_at"]
-        read_only_fields = ["slug", "created_at", "updated_at"]
+        fields = [
+            "id", "name", "slug", "is_archived", "created_at", "updated_at",
+            "description", "logo", "owner", "owner_name", "is_active", "timezone", "quarter_label",
+            "legal_name", "tagline", "legal_rccm", "legal_cc", "legal_tax_id",
+            "address_line1", "address_line2", "postal_code", "city", "country",
+            "phone", "website", "email", "bank_details", "invoice_footer_text", "accent_color",
+            "teams_count", "projects_count", "memberships_count", "can_manage", "can_delete",
+        ]
+        read_only_fields = ["slug", "is_archived", "created_at", "updated_at"]
+        extra_kwargs = {"owner": {"required": False}}
+
+    def get_owner_name(self, obj):
+        return (obj.owner.get_full_name() or obj.owner.get_username()) if obj.owner_id else ""
+
+    def _can(self, obj, rbac_action):
+        from project.services.rbac import RBACService
+
+        request = self.context.get("request")
+        return bool(request and RBACService.can(request.user, rbac_action, target=obj))
+
+    def get_can_manage(self, obj):
+        return self._can(obj, "workspace.manage")
+
+    def get_can_delete(self, obj):
+        return self._can(obj, "workspace.delete")
 
 
 class TeamSerializer(serializers.ModelSerializer):
+    # Lecture seule (frontend React) — ajout rétrocompatible.
+    team_type_label = serializers.CharField(source="get_team_type_display", read_only=True)
+    lead_name = serializers.SerializerMethodField()
+    members_count = serializers.IntegerField(read_only=True, default=None)
+    projects_count = serializers.IntegerField(read_only=True, default=None)
+
     class Meta:
         model = dm.Team
-        fields = ["id", "name", "team_type", "workspace", "created_at"]
-        read_only_fields = ["created_at"]
+        fields = ["id", "name", "team_type", "workspace", "created_at", "description", "color", "is_active",
+                  "is_archived", "velocity_target", "velocity_current", "team_type_label", "lead_name",
+                  "members_count", "projects_count"]
+        read_only_fields = ["created_at", "description", "color", "is_active", "is_archived",
+                            "velocity_target", "velocity_current"]
+
+    def get_lead_name(self, obj):
+        return (obj.lead.get_full_name() or obj.lead.get_username()) if obj.lead_id else ""
 
 
 # =========================================================================
@@ -36,6 +80,17 @@ class TeamSerializer(serializers.ModelSerializer):
 class ProjectSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source="owner.get_full_name", read_only=True)
     members_count = serializers.IntegerField(source="members.count", read_only=True)
+    # Libellés lisibles (frontend React) — lecture seule, ajout rétrocompatible.
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    priority_label = serializers.CharField(source="get_priority_display", read_only=True)
+    health_status_label = serializers.CharField(source="get_health_status_display", read_only=True)
+    methodology_label = serializers.CharField(source="get_methodology_display", read_only=True)
+    team_name = serializers.CharField(source="team.name", read_only=True, default="")
+    product_manager_name = serializers.SerializerMethodField()
+
+    def get_product_manager_name(self, obj):
+        pm = obj.product_manager
+        return (pm.get_full_name() or pm.get_username()) if pm else ""
 
     class Meta:
         model = dm.Project
@@ -64,8 +119,17 @@ class ProjectSerializer(serializers.ModelSerializer):
             "members_count",
             "created_at",
             "updated_at",
+            "is_archived",
+            "methodology",
+            "status_label",
+            "priority_label",
+            "health_status_label",
+            "methodology_label",
+            "team_name",
+            "product_manager_name",
         ]
         read_only_fields = [
+            "is_archived",
             "slug",
             "code",
             "risk_score",
@@ -289,6 +353,16 @@ class SprintSerializer(serializers.ModelSerializer):
 
 class TaskSerializer(serializers.ModelSerializer):
     assignee_label = serializers.CharField(source="assignee.__str__", read_only=True, default="")
+    # Lecture seule (frontend React) — ajout rétrocompatible.
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    priority_label = serializers.CharField(source="get_priority_display", read_only=True)
+    project_name = serializers.CharField(source="project.name", read_only=True, default="")
+    sprint_name = serializers.CharField(source="sprint.name", read_only=True, default="")
+    assignee_name = serializers.SerializerMethodField()
+
+    def get_assignee_name(self, obj):
+        u = obj.assignee
+        return (u.get_full_name() or u.get_username()) if u else ""
 
     class Meta:
         model = dm.Task
@@ -310,8 +384,19 @@ class TaskSerializer(serializers.ModelSerializer):
             "due_date",
             "is_archived",
             "created_at",
+            "start_date",
+            "completed_at",
+            "progress_percent",
+            "is_flagged",
+            "status_label",
+            "priority_label",
+            "project_name",
+            "sprint_name",
+            "assignee_name",
         ]
-        read_only_fields = ["created_at"]
+        read_only_fields = ["created_at", "start_date", "completed_at", "progress_percent", "is_flagged"]
+        # Déduit du projet côté serveur (project/api/guards.py).
+        extra_kwargs = {"workspace": {"required": False}}
 
 
 class TimesheetEntrySerializer(serializers.ModelSerializer):
@@ -335,6 +420,8 @@ class TimesheetEntrySerializer(serializers.ModelSerializer):
             "computed_cost",
         ]
         read_only_fields = ["approval_status", "approved_by", "approved_at", "computed_cost"]
+        # Imposés côté serveur (project/api/guards.py) : facultatifs dans le payload.
+        extra_kwargs = {"user": {"required": False}, "workspace": {"required": False}}
 
     def get_computed_cost(self, obj):
         snap = getattr(obj, "cost_snapshot", None)

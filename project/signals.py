@@ -546,3 +546,18 @@ def chat_sync_project_member(sender, instance, **kwargs):
     from project.services.chat import ChatService
     if dm.Project.objects.filter(pk=instance.project_id).exists():
         _sync_chat(ChatService.sync_project_channel, instance.project)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 (React) — notifications temps réel sur le flux personnel /ws/me/
+# ---------------------------------------------------------------------------
+@receiver(post_save, sender=dm.Notification)
+def push_notification_realtime(sender, instance, created, **kwargs):
+    if not created:
+        return
+    from django.db import transaction
+    from project.services.realtime import push_to_users, serialize_notification
+
+    transaction.on_commit(lambda: push_to_users(
+        [instance.recipient_id], "notification", {"notification": serialize_notification(instance)},
+    ))

@@ -318,6 +318,17 @@ class RBACService:
 # ---------------------------------------------------------------------------
 # Permission DRF — pour viewsets API
 # ---------------------------------------------------------------------------
+def rbac_workspace_ids(user, action: str) -> list[int]:
+    """Workspaces de l'utilisateur où il détient ``action`` (RBAC)."""
+    from project import models as dm
+    from project.utils.workspaces import get_user_workspace_ids
+
+    if getattr(user, "is_superuser", False):
+        return list(get_user_workspace_ids(user))
+    workspaces = dm.Workspace.objects.filter(id__in=get_user_workspace_ids(user))
+    return [ws.pk for ws in workspaces if RBACService.can(user, action, workspace=ws)]
+
+
 class HasRBACPermission:
     """
     Permission DRF basée sur RBAC. À utiliser ainsi sur un viewset :
@@ -336,8 +347,14 @@ class HasRBACPermission:
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
-        # has_object_permission fait le check fin sur les actions detail
-        return True
+        # SECURITY (phase 5) : les actions sans objet (list, create…) étaient
+        # laissées passer sans contrôle → un MEMBER listait/créait des TJM.
+        # Il faut désormais détenir l'action dans au moins un workspace ; la
+        # liste est en plus restreinte à ces workspaces (WorkspaceScopedViewSetMixin).
+        action = getattr(view, "rbac_action_map", {}).get(getattr(view, "action", None))
+        if not action or getattr(view, "detail", False) or request.user.is_superuser:
+            return True  # actions detail : has_object_permission fait le check fin
+        return bool(rbac_workspace_ids(request.user, action))
 
     def has_object_permission(self, request, view, obj):
         action_map = getattr(view, "rbac_action_map", {})

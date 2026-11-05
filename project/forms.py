@@ -1614,6 +1614,13 @@ class NotificationForm(BaseStyledModelForm):
             "metadata": forms.Textarea(attrs={"rows": 4}),
         }
 
+    def clean_url(self):
+        # SECURITY (P0 phase 5) : lien interne uniquement (pas de javascript:/redirection externe).
+        url = (self.cleaned_data.get("url") or "").strip()
+        if url and (not url.startswith("/") or url.startswith("//") or url.startswith("/\\")):
+            raise forms.ValidationError("Le lien doit être un chemin interne (ex. /tasks/12/).")
+        return url
+
 
 class ActivityLogForm(BaseStyledModelForm):
     class Meta:

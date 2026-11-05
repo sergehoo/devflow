@@ -69,7 +69,7 @@ def _resolve_object_workspace_id(obj):
     return None
 
 
-def scope_queryset_to_user_workspaces(queryset, user):
+def scope_queryset_to_user_workspaces(queryset, user, workspace_ids=None):
     """
     Filtre un queryset DRF aux workspaces accessibles à l'utilisateur.
 
@@ -77,7 +77,8 @@ def scope_queryset_to_user_workspaces(queryset, user):
     alignée sur ``DevflowBaseMixin.filter_by_workspace`` utilisée par les
     vues HTML pour rester cohérent entre les deux surfaces.
     """
-    workspace_ids = get_user_workspace_ids(user)
+    if workspace_ids is None:
+        workspace_ids = get_user_workspace_ids(user)
     if not workspace_ids:
         return queryset.none()
 
@@ -157,6 +158,12 @@ class WorkspaceScopedViewSetMixin:
         user = getattr(self.request, "user", None)
         if not user or not user.is_authenticated:
             return queryset.none()
+        # SECURITY (phase 5) : liste d'un viewset RBAC → seulement les workspaces
+        # où l'utilisateur détient l'action (ex. ``billing.view`` pour les TJM).
+        rbac_action = (getattr(self, "rbac_action_map", None) or {}).get(getattr(self, "action", None))
+        if rbac_action and getattr(self, "action", None) == "list":
+            from project.services.rbac import rbac_workspace_ids
+            return scope_queryset_to_user_workspaces(queryset, user, rbac_workspace_ids(user, rbac_action))
         return scope_queryset_to_user_workspaces(queryset, user)
 
     def get_serializer(self, *args, **kwargs):

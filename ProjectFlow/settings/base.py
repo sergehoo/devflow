@@ -176,6 +176,9 @@ STATIC_URL = "/static/"
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# Build du frontend React (frontend/dist → /static/frontend/…), s'il existe.
+STATICFILES_DIRS = [("frontend", BASE_DIR / "frontend" / "dist")] if (BASE_DIR / "frontend" / "dist").is_dir() else []
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"
 # Prod derrière nginx : déléguer l'envoi des MEDIA autorisés à nginx

@@ -933,6 +933,11 @@ if settings.DEBUG:
         path("preview/error/<str:code>/", _preview_error, name="preview_error"),
     ]
 
+# Frontend React (coexistence avec l'ancien frontend) — voir MIGRATION_REACT.md.
+from project.views_spa import spa_index  # noqa: E402
+
+urlpatterns += [re_path(r"^app(?:/(?P<path>.*))?$", spa_index, name="react_app")]
+
 # SECURITY — MEDIA servis uniquement après contrôle d'accès (workspace).
 from project.views_media import protected_media  # noqa: E402
 

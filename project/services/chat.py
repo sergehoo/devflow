@@ -519,6 +519,12 @@ class ChatService:
         payload = _message_to_dict(message)
         payload["client_id"] = client_id
         _broadcast(channel.pk, {"type": "chat.message", "message": payload})
+        # Flux personnel des participants (badges, liste des conversations, autres onglets).
+        from project.services.realtime import push_to_users
+        push_to_users(
+            channel.memberships.values_list("user_id", flat=True), "chat.activity",
+            {"channel_id": channel.pk, "message_id": message.pk, "author_id": author.pk},
+        )
         return PostMessageResult(message=message, channel=channel)
 
     # ─── Réactions ──────────────────────────────────────────────────────
@@ -661,6 +667,8 @@ class ChatService:
             "type": "chat.event", "event": "read",
             "data": {"user_id": user.pk, "last_read_at": now.isoformat()},
         })
+        from project.services.realtime import push_to_users
+        push_to_users([user.pk], "chat.read", {"channel_id": channel.pk})
         return {
             "channel_id": channel.pk,
             "last_read_at": now.isoformat(),

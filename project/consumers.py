@@ -304,3 +304,41 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
         )
+
+class UserEventsConsumer(AsyncWebsocketConsumer):
+    """
+    Flux personnel ``/ws/me/`` : notifications et activité Messenger du
+    seul utilisateur authentifié (groupe ``user_<id>``). Aucun paramètre
+    client n'est utilisé pour choisir le groupe : pas d'IDOR possible.
+    """
+
+    async def connect(self):
+        from project.services.realtime import user_group
+
+        self.group_name = None
+        user = self.scope.get("user")
+        if not user or not user.is_authenticated:
+            # Accept puis close(4401) : le client distingue « non authentifié »
+            # d'une coupure réseau et n'essaie pas de se reconnecter en boucle.
+            await self.accept()
+            await self.close(code=4401)
+            return
+        self.group_name = user_group(user.pk)
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+        await self.send(text_data=json.dumps({"type": "hello", "user_id": user.pk}))
+
+    async def disconnect(self, close_code):
+        if self.group_name:
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def receive(self, text_data=None, bytes_data=None):
+        try:
+            data = json.loads(text_data or "{}")
+        except json.JSONDecodeError:
+            return
+        if data.get("type") == "ping":
+            await self.send(text_data=json.dumps({"type": "pong"}))
+
+    async def user_event(self, event):
+        await self.send(text_data=json.dumps({"type": event.get("event"), **(event.get("data") or {})}))
