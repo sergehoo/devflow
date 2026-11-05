@@ -1,0 +1,8 @@
+# Proposition de .dockerignore (à valider avant de le placer à la racine) :
+# évite d'embarquer node_modules (plusieurs centaines de Mo) dans l'image Django.
+frontend/node_modules
+frontend/dist
+**/__pycache__
+*.pyc
+.git
+venv

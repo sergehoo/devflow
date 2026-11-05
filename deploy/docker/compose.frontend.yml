@@ -1,0 +1,14 @@
+# Surcharge Compose OPTIONNELLE — préparation de la bascule React (rien n'est activé par défaut).
+#
+# La production monte le code de l'hôte (.:/app) : le build doit donc être écrit sur l'hôte.
+#   1. docker compose -f docker-compose.yml -f deploy/docker/compose.frontend.yml run --rm frontend-build
+#   2. docker compose exec devflowweb python manage.py collectstatic --noinput
+# L'ancien frontend reste servi à l'identique ; le nouveau est disponible sous /app/.
+services:
+  frontend-build:
+    image: node:22-alpine
+    working_dir: /src/frontend
+    command: sh -c "npm ci --no-audit --no-fund && npm run build"
+    volumes:
+      - ./frontend:/src/frontend
+    profiles: ["frontend"]
