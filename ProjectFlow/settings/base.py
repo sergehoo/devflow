@@ -176,8 +176,12 @@ STATIC_URL = "/static/"
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# Build du frontend React (frontend/dist → /static/frontend/…), s'il existe.
-STATICFILES_DIRS = [("frontend", BASE_DIR / "frontend" / "dist")] if (BASE_DIR / "frontend" / "dist").is_dir() else []
+# Build du frontend React (→ /app/ et /static/frontend/…), s'il existe :
+# image Docker (DEVFLOW_FRONTEND_DIST, hors du volume « .:/app »), sinon frontend/dist local.
+_FRONTEND_DISTS = [Path(p) for p in (config("DEVFLOW_FRONTEND_DIST", default=""),) if p]
+_FRONTEND_DISTS.append(BASE_DIR / "frontend" / "dist")
+FRONTEND_DIST_DIR = next((d for d in _FRONTEND_DISTS if d.is_dir()), _FRONTEND_DISTS[-1])
+STATICFILES_DIRS = [("frontend", FRONTEND_DIST_DIR)] if FRONTEND_DIST_DIR.is_dir() else []
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"

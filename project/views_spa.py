@@ -7,7 +7,7 @@ from django.conf import settings
 from django.http import HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 
-_INDEX = settings.BASE_DIR / "frontend" / "dist" / "index.html"
+_INDEX = settings.FRONTEND_DIST_DIR / "index.html"
 
 
 @ensure_csrf_cookie

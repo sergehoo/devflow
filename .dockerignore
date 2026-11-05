@@ -1,0 +1,5 @@
+# Contexte de build Docker : jamais les dépendances/builds locaux (reconstruits dans l'image).
+frontend/node_modules
+frontend/dist
+venv
+**/__pycache__
