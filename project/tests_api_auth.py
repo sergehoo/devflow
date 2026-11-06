@@ -72,3 +72,13 @@ class AuthApiTests(TestCase):
         self.assertIn(resp.status_code, (200, 503))  # 503 tant que le build n'existe pas
         self.assertIn("csrftoken", resp.cookies)
         self.assertEqual(self.client.get("/accounts/login/").status_code, 200)  # ancien frontend intact
+
+    def test_root_switch_to_react_is_reversible(self):
+        self.client.force_login(self.user)
+        with override_settings(DEVFLOW_REACT_DEFAULT=True):
+            resp = self.client.get("/")
+            self.assertEqual((resp.status_code, resp["Location"]), (302, "/app/"))
+        self.client.logout()  # ancien tableau de bord : redirection vers la connexion historique (sans rendu)
+        with override_settings(DEVFLOW_REACT_DEFAULT=False):
+            self.assertTrue(self.client.get("/")["Location"].startswith("/accounts/login/"))
+        self.assertTrue(self.client.get("/dashboard/classic/")["Location"].startswith("/accounts/login/"))

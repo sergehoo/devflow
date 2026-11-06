@@ -78,6 +78,7 @@ from project.views_budget import ProjectBudgetCreateView, ProjectBudgetDetailVie
     RecalculateProjectBudgetView, ProjectExpenseRejectView, ProjectExpenseApproveLevel2View, \
     ProjectExpenseApproveLevel1View, ProjectExpenseUpdateView, ProjectExpenseDetailView, ProjectExpenseListView
 from project.views_my_day import MyDayView  # Phase 1 — PR7
+from project.views_spa import root_entry
 from project.views_chat import ChatView  # Chat unifié
 
 app_name = "project"
@@ -92,7 +93,8 @@ urlpatterns = [
     path('devflo/admin/back', admin.site.urls),
     path('accounts/', include('allauth.urls')),
     # path("", HomeView.as_view(), name="home"),
-    path("", DashboardView.as_view(), name="dashboard"),
+    path("", root_entry, name="dashboard"),  # React (/app/) ou tableau de bord historique
+    path("dashboard/classic/", DashboardView.as_view(), name="dashboard_classic"),
 
     # Phase 1 — Mes actions du jour (PR7)
     path("my-day/", MyDayView.as_view(), name="my_day"),

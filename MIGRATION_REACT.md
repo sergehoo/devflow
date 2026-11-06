@@ -75,7 +75,8 @@ Routes HTML comptées via le résolveur Django (CRUD inclus). API existantes = `
 
 - Ancien frontend : inchangé, routes actuelles.
 - Nouveau frontend : `https://<domaine>/app/…` (vue Django `spa` qui sert `frontend/dist/index.html`).
-- Bascule (Phase 7, sur validation) : rediriger `/` vers `/app/`. Rollback = retirer la redirection.
+- Bascule (Phase 7) **active** : `/` et la redirection après connexion (`LOGIN_REDIRECT_URL`) mènent à `/app/` (`DEVFLOW_REACT_DEFAULT`, défaut `True`). Ancien tableau de bord : `/dashboard/classic/`. Les pages historiques restent servies sur leurs routes (liens profonds, e-mails, modules §5.2).
+- Rollback sans code : variable `DEVFLOW_REACT_DEFAULT=False` dans Dokploy puis redéploiement.
 
 ## 4. Commandes
 
@@ -96,7 +97,7 @@ npm run test && npm run lint && npm run typecheck
 | 4 — Collaboration | Sécurisation API brutes, Messenger, notifications, WebSocket | ✅ 04/11/2026 (parité fonctionnelle à valider) |
 | 5 — Modules complémentaires | P0 droits historiques, backlog obligatoire (§5.1), pont générique des modules, Ma journée | ✅ 04/11/2026 (parité fonctionnelle à valider ; restes listés §5.2) |
 | 6 — Stabilisation | Tests E2E Playwright, sécurité, perfs, a11y | — |
-| 7 — Bascule | Mise en production réversible | — |
+| 7 — Bascule | Mise en production réversible | ✅ `/` → `/app/` (rollback : `DEVFLOW_REACT_DEFAULT=False`) |
 
 ### Journal
 - 04/11/2026 — **Phase 1** terminée (matrice §2).

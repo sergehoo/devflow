@@ -596,7 +596,10 @@ ACCOUNT_RATE_LIMITS = {
     "login_failed": "5/5m",
 }
 
-LOGIN_REDIRECT_URL = "/dashboard/"
+# Bascule React : « / » et la redirection après connexion mènent à /app/.
+# Rollback sans code : DEVFLOW_REACT_DEFAULT=False (variables Dokploy) puis redéploiement.
+DEVFLOW_REACT_DEFAULT = config("DEVFLOW_REACT_DEFAULT", default=True, cast=bool)
+LOGIN_REDIRECT_URL = "/app/" if DEVFLOW_REACT_DEFAULT else "/"
 ACCOUNT_LOGOUT_REDIRECT_URL = "/"
 ACCOUNT_EMAIL_SUBJECT_PREFIX = "[DevFlow]"
 # Validité des liens de réinitialisation de mot de passe (allauth + reset admin).
