@@ -63,7 +63,7 @@ function SpeakersBlock({ rec }: { rec: RecordingDetail }) {
                     {sp.display_name || sp.label}
                     {sp.display_name && sp.display_name !== sp.label && <span className="text-xs font-normal text-muted-foreground">({sp.label})</span>}
                     {sp.is_confirmed ? <Badge className="bg-success/15 text-success">Confirmé</Badge>
-                      : suggested ? <Badge className="bg-primary/10 text-primary" title="Voix reconnue grâce aux identifications précédentes — vérifiez avant de confirmer"><Sparkles className="mr-1 size-3" />Suggéré IA</Badge> : null}
+                      : suggested ? <Badge className="bg-primary/10 text-brand" title="Voix reconnue grâce aux identifications précédentes — vérifiez avant de confirmer"><Sparkles className="mr-1 size-3" />Suggéré IA</Badge> : null}
                   </h3>
                   <span className="text-[11px] text-muted-foreground">{Math.round(sp.total_duration_seconds)} s · {sp.total_segments} seg.</span>
                 </div>
@@ -313,7 +313,7 @@ export function RecordingPage() {
       )}
 
       {(rec.transcript || rec.segments.length > 0) && (
-        <details className="rounded-2xl border bg-card p-5">
+        <details className="rounded-[22px] border border-transparent bg-card shadow-card dark:border-border p-5">
           <summary className="cursor-pointer font-semibold">Transcription complète</summary>
           {rec.segments.length > 0 ? (
             <ol className="mt-3 space-y-2">

@@ -39,7 +39,7 @@ function ReassignDialog({ taskId, open, onOpenChange }: { taskId: number; open: 
           <ul className="max-h-72 divide-y overflow-y-auto rounded-xl border">
             {candidates.data?.users.map((u) => (
               <li key={u.id}>
-                <button type="button" disabled={reassign.isPending} onClick={() => pick(u.id)} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted">
+                <button type="button" disabled={reassign.isPending} onClick={() => pick(u.id)} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-hover">
                   <Avatar name={u.name} className="size-8" />
                   <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{u.name}</span><span className="block truncate text-xs text-muted-foreground">{u.job_title || u.email}</span></span>
                   {u.is_project_member && <Badge>Projet</Badge>}
@@ -147,7 +147,7 @@ export function TaskDetailPage() {
               <dl className="space-y-2.5 text-sm">
                 {([
                   ["Assigné à", task.assignee_name || "—"], ["Rapporteur", o?.reporter || "—"],
-                  ["Projet", task.project ? <Link key="p" to={`/projects/${task.project}`} className="hover:text-primary">{task.project_name}</Link> : "—"],
+                  ["Projet", task.project ? <Link key="p" to={`/projects/${task.project}`} className="hover:text-brand">{task.project_name}</Link> : "—"],
                   ["Sprint", task.sprint_name || "—"], ["Début", formatDate(task.start_date)], ["Échéance", formatDate(task.due_date)],
                   ["Estimation", task.estimate_hours ? `${task.estimate_hours} h` : "—"], ["Temps passé", `${task.spent_hours ?? 0} h`],
                 ] as const).map(([k, v]) => (
@@ -164,7 +164,7 @@ export function TaskDetailPage() {
             <CardHeader><CardTitle>Pièces jointes</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {o?.attachments.map((a) => (
-                <a key={a.id} href={a.url ?? "#"} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm hover:text-primary">
+                <a key={a.id} href={a.url ?? "#"} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm hover:text-brand">
                   <Paperclip className="size-4 shrink-0" aria-hidden="true" /><span className="truncate">{a.name}</span>
                   <span className="ml-auto shrink-0 text-xs text-muted-foreground">{a.uploaded_by}</span>
                 </a>
@@ -184,7 +184,7 @@ export function TaskDetailPage() {
             <Card>
               <CardHeader><CardTitle>Sous-tâches</CardTitle></CardHeader>
               <CardContent>
-                <ul className="space-y-1 text-sm">{o.subtasks.map((t) => <li key={t.id}><Link to={`/tasks/${t.id}`} className="hover:text-primary">{t.title}</Link> <span className="text-xs text-muted-foreground">· {t.status_label}</span></li>)}</ul>
+                <ul className="space-y-1 text-sm">{o.subtasks.map((t) => <li key={t.id}><Link to={`/tasks/${t.id}`} className="hover:text-brand">{t.title}</Link> <span className="text-xs text-muted-foreground">· {t.status_label}</span></li>)}</ul>
               </CardContent>
             </Card>
           )}

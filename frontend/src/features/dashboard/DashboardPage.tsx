@@ -1,13 +1,18 @@
-import { AlertTriangle, CheckCircle2, FolderKanban, ListTodo, TrendingUp, Users } from "lucide-react";
-import type { ReactNode } from "react";
+import { AlertTriangle, CheckCircle2, Clock3, FolderKanban, Plus, TrendingUp, Users } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
+import { PageHeader } from "@/components/layout/page";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, Badge } from "@/components/ui/misc";
+import { Avatar } from "@/components/ui/misc";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/feedback/states";
 import { useMe } from "@/features/auth/api";
-import { formatDate, formatDateTime, formatHours, formatMoney, formatNumber } from "@/lib/format";
+import { formatHours, formatMoney, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { useDashboard, type DashboardSummary } from "./api";
+import { useDashboard, useDashboardInsights, type DashboardSummary } from "./api";
+import {
+  ActivityHeatmap, DayCard, ProjectHealth, ProjectsCard, RecentActivity, StatCard, TaskFocusList, UpcomingEvents, WidgetHeader,
+} from "./widgets";
 
 const SEVERITY: Record<string, string> = {
   critical: "border-destructive/40 bg-destructive/5",
@@ -24,21 +29,6 @@ const DISTRIBUTION = [
   { key: "blocked", label: "Bloquées", color: "bg-destructive" },
   { key: "cancelled", label: "Annulées", color: "bg-muted-foreground/40" },
 ];
-
-function Kpi({ icon, label, value, hint }: { icon: ReactNode; label: string; value: ReactNode; hint?: ReactNode }) {
-  return (
-    <Card>
-      <CardContent className="flex items-start gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{icon}</span>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className="mt-1 font-serif text-2xl font-semibold tabular-nums">{value}</p>
-          {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function Progress({ value, className }: { value: number; className?: string }) {
   const v = Math.max(0, Math.min(100, value || 0));
@@ -110,11 +100,16 @@ function Finance({ f }: { f: DashboardSummary["finance"] }) {
 
 export function DashboardPage() {
   const { data: me } = useMe();
-  const { data, isPending, isError, error, refetch } = useDashboard();
+  const summary = useDashboard();
+  const [weeks, setWeeks] = useState(15);
+  const insights = useDashboardInsights(weeks);
 
-  if (isPending) return <PageSkeleton />;
-  if (isError) return <ErrorState message={error.message} onRetry={() => void refetch()} />;
-  if (!data.workspace) {
+  if (summary.isPending || insights.isPending) return <PageSkeleton />;
+  if (summary.isError) return <ErrorState message={summary.error.message} onRetry={() => void summary.refetch()} />;
+  if (insights.isError) return <ErrorState message={insights.error.message} onRetry={() => void insights.refetch()} />;
+  const data = summary.data;
+  const ins = insights.data;
+  if (!data.workspace || !ins.workspace) {
     return <EmptyState title="Aucun workspace" description="Rejoignez ou créez un workspace pour voir votre tableau de bord." />;
   }
   const s = data.stats;
@@ -122,179 +117,129 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-primary">
-          {data.workspace.name}{data.workspace.quarter_label ? ` · ${data.workspace.quarter_label}` : ""}
-        </p>
-        <h1 className="mt-1 font-serif text-3xl font-semibold">Bonjour {me?.first_name || me?.full_name}</h1>
-      </header>
+      <PageHeader
+        title="Tableau de bord"
+        description={<>Bonjour {me?.first_name || me?.full_name}, voici l'activité de <span className="font-medium text-foreground">{data.workspace.name}</span>{data.workspace.quarter_label ? ` · ${data.workspace.quarter_label}` : ""}.</>}
+        actions={<Button asChild><Link to="/tasks/new"><Plus />Nouvelle tâche</Link></Button>}
+      />
 
-      <section aria-label="Indicateurs clés" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi icon={<FolderKanban className="size-5" />} label="Projets actifs" value={formatNumber(s.active_projects_count)}
-          hint={`${formatNumber(s.projects_total)} au total · ${formatNumber(s.delayed_projects_count)} en retard`} />
-        <Kpi icon={<CheckCircle2 className="size-5" />} label="Tâches terminées" value={`${formatNumber(s.done_ratio_percent)} %`}
-          hint={`${formatNumber(s.done_tasks_count)} terminées · ${formatNumber(s.pending_tasks_count)} en attente`} />
-        <Kpi icon={<AlertTriangle className="size-5" />} label="Tâches bloquées" value={formatNumber(s.blocked_tasks_count)}
-          hint={`${formatNumber(s.open_risks_count)} risques ouverts · ${formatNumber(s.critical_risks_count)} critiques`} />
-        <Kpi icon={<Users className="size-5" />} label="Membres actifs" value={formatNumber(s.active_members_count)}
-          hint={`${formatNumber(s.remote_members_count)} en télétravail`} />
+      {/* Grille de référence : 23 % / 52 % / 25 % (≥ xl) ; 2 colonnes (≥ md) ; empilée sur mobile. */}
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-[minmax(0,23fr)_minmax(0,52fr)_minmax(0,25fr)]">
+        <div className="flex min-w-0 flex-col gap-5 md:order-1">
+          <DayCard data={ins} />
+          <section aria-label="Indicateurs clés" className="grid grid-cols-2 gap-4">
+            <StatCard icon={FolderKanban} value={Number(s.active_projects_count ?? 0)} unit="projets" label="Actifs"
+              hint={`${formatNumber(s.projects_total)} au total`} to="/projects" />
+            <StatCard icon={CheckCircle2} value={Number(s.completed_projects_count ?? 0)} unit="projets" label="Terminés"
+              hint={`${formatNumber(s.project_completion_percent)} %`} />
+            <StatCard icon={AlertTriangle} value={ins.health.at_risk} unit="projets" label="À risque"
+              hint={`${ins.health.delayed} en retard`} to="/projects" />
+            <StatCard icon={Clock3} value={ins.overdue_tasks} unit="tâches" label="En retard" hint="Voir" to="/my-day" />
+          </section>
+          <RecentActivity items={data.activities} className="flex-1" />
+        </div>
+        <div className="flex min-w-0 flex-col gap-5 md:order-3 md:col-span-2 xl:order-2 xl:col-span-1">
+          <TaskFocusList data={ins} />
+          <ActivityHeatmap data={ins} weeks={weeks} onWeeks={setWeeks} className="flex-1" />
+        </div>
+        <div className="flex min-w-0 flex-col gap-5 md:order-2 xl:order-3">
+          <ProjectHealth data={ins} />
+          <UpcomingEvents data={ins} />
+          <ProjectsCard data={ins} className="flex-1" />
+        </div>
+      </div>
+
+      <section aria-labelledby="pilotage" className="space-y-5 pt-2">
+        <WidgetHeader title={<span id="pilotage">Pilotage du workspace</span>} />
+        {data.analysis_cards.length > 0 && (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {data.analysis_cards.map((c) => (
+              <div key={c.title} className={cn("rounded-[22px] border p-5", SEVERITY[c.severity] ?? "bg-card")}>
+                <p className="font-semibold">{c.title}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{c.text}</p>
+                <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-foreground"><TrendingUp className="size-3.5" aria-hidden="true" />{c.action}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="grid gap-5 lg:grid-cols-3">
+          <Card>
+            <CardHeader><CardTitle>Finances</CardTitle></CardHeader>
+            <CardContent><Finance f={data.finance} /></CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Répartition des tâches</CardTitle></CardHeader>
+            <CardContent>
+              <TaskDistribution data={data.task_distribution} />
+              <p className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+                <Users className="size-3.5" aria-hidden="true" />{formatNumber(s.active_members_count)} membres actifs · {formatNumber(s.blocked_tasks_count)} tâches bloquées · {formatNumber(s.open_risks_count)} risques ouverts
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Charge de l'équipe</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {data.team_load.length === 0 ? <p className="text-sm text-muted-foreground">Aucun membre.</p> : data.team_load.map((m) => (
+                <div key={m.user} className="flex items-center gap-3">
+                  <Avatar name={m.user} className="size-8 text-[10px]" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{m.user}</p>
+                    <Progress value={Number(m.current_load_percent ?? 0)} className="mt-1" />
+                  </div>
+                  <span className="text-xs font-semibold tabular-nums">{formatNumber(m.current_load_percent)} %</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        {sprint && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{sprint.name}</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {[sprint.project, sprint.team, sprint.status_label].filter(Boolean).join(" · ")}
+                {sprint.remaining_days != null && ` · ${sprint.remaining_days} j restants`}
+                {sprint.total_story_points ? ` · ${sprint.completed_story_points ?? 0}/${sprint.total_story_points} pts` : ""}
+              </p>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {sprint.columns.map((col) => (
+                <div key={col.id} className="rounded-2xl bg-muted p-3">
+                  <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                    <span className="size-2.5 rounded-full" style={{ backgroundColor: col.color }} aria-hidden="true" />
+                    {col.name}<span className="ml-auto text-xs text-muted-foreground">{col.count}</span>
+                  </p>
+                  <ul className="space-y-1.5">
+                    {col.tasks.map((t) => (
+                      <li key={t.id}>
+                        <Link to={`/tasks/${t.id}`} className="block rounded-xl bg-card px-2.5 py-1.5 text-sm hover:text-brand">{t.title}</Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {data.top_cost_members.length > 0 && (
+          <Card>
+            <CardHeader><CardTitle>Coûts journaliers (TJM)</CardTitle></CardHeader>
+            <CardContent className="grid gap-x-8 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {data.top_cost_members.map((p) => (
+                <div key={p.user} className="flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{p.user}</p>
+                    <p className="truncate text-xs text-muted-foreground">{p.job_title || "—"}</p>
+                  </div>
+                  <span className="font-semibold tabular-nums">{formatMoney(p.cost_per_day, p.currency || "XOF")}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </section>
-
-      {data.analysis_cards.length > 0 && (
-        <section aria-label="Analyse" className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {data.analysis_cards.map((c) => (
-            <div key={c.title} className={cn("rounded-2xl border p-4", SEVERITY[c.severity] ?? "bg-card")}>
-              <p className="font-semibold">{c.title}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{c.text}</p>
-              <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-foreground"><TrendingUp className="size-3.5" aria-hidden="true" />{c.action}</p>
-            </div>
-          ))}
-        </section>
-      )}
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader><CardTitle>Projets</CardTitle></CardHeader>
-          <CardContent>
-            {data.projects.length === 0 ? (
-              <EmptyState title="Aucun projet" />
-            ) : (
-              <ul className="divide-y">
-                {data.projects.map((p) => (
-                  <li key={p.id} className="py-3 first:pt-0 last:pb-0">
-                    <Link to={`/projects/${p.id}`} className="group block">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium group-hover:text-primary">{p.name}</span>
-                        <Badge>{p.status_label}</Badge>
-                        {p.risk_score ? <Badge className={p.risk_score >= 70 ? "bg-destructive/10 text-destructive" : ""}>Risque {p.risk_score}</Badge> : null}
-                        <span className="ml-auto text-xs text-muted-foreground">{p.team || "—"} · échéance {formatDate(p.target_date)}</span>
-                      </div>
-                      <div className="mt-2 flex items-center gap-3">
-                        <Progress value={p.progress_percent} className="flex-1" />
-                        <span className="w-10 text-right text-xs font-semibold tabular-nums">{p.progress_percent} %</span>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Finances</CardTitle></CardHeader>
-          <CardContent><Finance f={data.finance} /></CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Card>
-          <CardHeader><CardTitle>Répartition des tâches</CardTitle></CardHeader>
-          <CardContent><TaskDistribution data={data.task_distribution} /></CardContent>
-        </Card>
-
-        <Card className="xl:col-span-2">
-          <CardHeader><CardTitle>Échéances des 7 prochains jours</CardTitle></CardHeader>
-          <CardContent>
-            {data.due_soon_tasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune échéance proche.</p>
-            ) : (
-              <ul className="divide-y">
-                {data.due_soon_tasks.map((t) => (
-                  <li key={t.id} className="flex flex-wrap items-center gap-2 py-2.5 first:pt-0 last:pb-0">
-                    <ListTodo className="size-4 text-subtle-foreground" aria-hidden="true" />
-                    <Link to={`/tasks/${t.id}`} className="font-medium hover:text-primary">{t.title}</Link>
-                    <span className="text-xs text-muted-foreground">{t.project}</span>
-                    <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-                      <Badge>{t.priority_label}</Badge>
-                      {t.assignee || "Non assignée"} · {formatDate(t.due_date)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {sprint && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{sprint.name}</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {[sprint.project, sprint.team, sprint.status_label].filter(Boolean).join(" · ")}
-              {sprint.remaining_days != null && ` · ${sprint.remaining_days} j restants`}
-              {sprint.total_story_points ? ` · ${sprint.completed_story_points ?? 0}/${sprint.total_story_points} pts` : ""}
-            </p>
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {sprint.columns.map((col) => (
-              <div key={col.id} className="rounded-xl bg-muted/60 p-3">
-                <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                  <span className="size-2.5 rounded-full" style={{ backgroundColor: col.color }} aria-hidden="true" />
-                  {col.name}<span className="ml-auto text-xs text-muted-foreground">{col.count}</span>
-                </p>
-                <ul className="space-y-1.5">
-                  {col.tasks.map((t) => (
-                    <li key={t.id}>
-                      <Link to={`/tasks/${t.id}`} className="block rounded-lg bg-card px-2.5 py-1.5 text-sm hover:text-primary">{t.title}</Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Card>
-          <CardHeader><CardTitle>Charge de l'équipe</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {data.team_load.length === 0 ? <p className="text-sm text-muted-foreground">Aucun membre.</p> : data.team_load.map((m) => (
-              <div key={m.user} className="flex items-center gap-3">
-                <Avatar name={m.user} className="size-8" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{m.user}</p>
-                  <Progress value={Number(m.current_load_percent ?? 0)} className="mt-1" />
-                </div>
-                <span className="text-xs font-semibold tabular-nums">{formatNumber(m.current_load_percent)} %</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Coûts journaliers (TJM)</CardTitle></CardHeader>
-          <CardContent className="space-y-2.5">
-            {data.top_cost_members.length === 0 ? <p className="text-sm text-muted-foreground">Aucun TJM renseigné.</p> : data.top_cost_members.map((p) => (
-              <div key={p.user} className="flex items-center justify-between gap-3 text-sm">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{p.user}</p>
-                  <p className="truncate text-xs text-muted-foreground">{p.job_title || "—"}</p>
-                </div>
-                <span className="font-semibold tabular-nums">{formatMoney(p.cost_per_day, p.currency || "XOF")}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Activité récente</CardTitle></CardHeader>
-          <CardContent>
-            {data.activities.length === 0 ? <p className="text-sm text-muted-foreground">Aucune activité.</p> : (
-              <ol className="space-y-3">
-                {data.activities.map((a) => (
-                  <li key={a.id} className="text-sm">
-                    <p className="font-medium">{a.title}</p>
-                    <p className="text-xs text-muted-foreground">{a.actor || "Système"} · {formatDateTime(a.created_at)}</p>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

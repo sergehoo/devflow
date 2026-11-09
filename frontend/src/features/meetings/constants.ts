@@ -3,7 +3,7 @@ const GREEN = "bg-success/15 text-success";
 const RED = "bg-destructive/10 text-destructive";
 const AMBER = "bg-warning/15 text-warning";
 const CYAN = "bg-info/15 text-info";
-const ORANGE = "bg-primary/10 text-primary";
+const ORANGE = "bg-primary/10 text-brand";
 
 export const MEETING_STATUS_BADGE: Record<string, string> = { PLANNED: CYAN, HELD: GREEN, CANCELLED: RED, POSTPONED: AMBER };
 export const AGENDA_STATUS_BADGE: Record<string, string> = { PENDING: AMBER, IN_PROGRESS: CYAN, DONE: GREEN, POSTPONED: RED, SKIPPED: "" };

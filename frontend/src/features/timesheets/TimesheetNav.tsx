@@ -21,7 +21,7 @@ export function TimesheetTabs() {
       {TABS.map((t) => (
         <NavLink key={t.to} to={t.to} end={t.end}
           className={({ isActive }) => cn("whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold",
-            isActive ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}>
+            isActive ? "border-primary text-brand" : "border-transparent text-muted-foreground hover:text-foreground")}>
           {t.label}
         </NavLink>
       ))}
@@ -39,7 +39,7 @@ export function PeriodNav({ label, date, prev, next, onChange }: { label: string
           <Button variant="outline"><CalendarDays />{label}</Button>
         </Popover.Trigger>
         <Popover.Portal>
-          <Popover.Content sideOffset={6} className="z-50 rounded-2xl border bg-card p-3 shadow-xl">
+          <Popover.Content sideOffset={6} className="z-50 rounded-2xl border bg-card p-3 shadow-[0_12px_32px_rgba(32,32,32,0.12)]">
             <DayPicker mode="single" locale={fr} weekStartsOn={1} showWeekNumber selected={parseISODate(date)}
               defaultMonth={parseISODate(date)} onSelect={(d) => d && onChange(toISODate(d))} />
           </Popover.Content>

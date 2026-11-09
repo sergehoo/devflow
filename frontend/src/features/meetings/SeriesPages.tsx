@@ -39,11 +39,11 @@ export function SeriesListPage() {
             action={<Button size="sm" asChild><Link to="/meetings/series/new"><Plus />Créer ma première série</Link></Button>} />
         ) : (
           <>
-            <ul className="divide-y overflow-hidden rounded-2xl border bg-card">
+            <ul className="divide-y overflow-hidden rounded-[22px] border border-transparent bg-card shadow-card dark:border-border">
               {list.data.results.map((s) => (
                 <li key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1 basis-60">
-                    <Link to={`/meetings/series/${s.id}`} className="font-medium hover:text-primary">{s.name}</Link>
+                    <Link to={`/meetings/series/${s.id}`} className="font-medium hover:text-brand">{s.name}</Link>
                     {s.description && <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{s.description}</p>}
                   </div>
                   <span className="text-xs text-muted-foreground">{s.type_label}</span>
@@ -110,9 +110,9 @@ export function SeriesDetailPage() {
         <CardContent className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
           {meta.map(([k, v]) => <div key={k}><p className="text-[11px] uppercase text-muted-foreground">{k}</p><p className="font-medium">{v}</p></div>)}
           {s.meeting_link && <div className="min-w-0"><p className="text-[11px] uppercase text-muted-foreground">Lien visio</p>
-            <a href={s.meeting_link} target="_blank" rel="noreferrer" className="block truncate text-primary hover:underline">{s.meeting_link}</a></div>}
+            <a href={s.meeting_link} target="_blank" rel="noreferrer" className="block truncate text-brand hover:underline">{s.meeting_link}</a></div>}
           {s.default_projects.length > 0 && <div className="sm:col-span-2 lg:col-span-3"><p className="text-[11px] uppercase text-muted-foreground">Projets en revue</p>
-            <p className="flex flex-wrap gap-x-2">{s.default_projects.map((p) => <Link key={p.id} to={`/projects/${p.id}`} className="text-primary hover:underline">{p.name}</Link>)}</p></div>}
+            <p className="flex flex-wrap gap-x-2">{s.default_projects.map((p) => <Link key={p.id} to={`/projects/${p.id}`} className="text-brand hover:underline">{p.name}</Link>)}</p></div>}
           {s.default_participants.length > 0 && <div className="sm:col-span-2 lg:col-span-3"><p className="text-[11px] uppercase text-muted-foreground">Participants par défaut</p>
             <p>{s.default_participants.map((u) => u?.name).join(", ")}</p></div>}
         </CardContent>
@@ -124,7 +124,7 @@ export function SeriesDetailPage() {
             <ul className="divide-y">
               {s.upcoming.map((o) => (
                 <li key={o.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                  <Link to={`/meetings/${o.id}`} className="text-sm hover:text-primary">{fmtLong(o.scheduled_at)} — {fmtTime(o.scheduled_at)}</Link>
+                  <Link to={`/meetings/${o.id}`} className="text-sm hover:text-brand">{fmtLong(o.scheduled_at)} — {fmtTime(o.scheduled_at)}</Link>
                   <Badge className={MEETING_STATUS_BADGE[o.status]}>{o.status_label}</Badge>
                 </li>
               ))}
@@ -139,7 +139,7 @@ export function SeriesDetailPage() {
             <ul className="divide-y">
               {s.past.map((o) => (
                 <li key={o.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                  <Link to={`/meetings/${o.id}`} className="text-sm text-muted-foreground hover:text-primary">{fmtDateTime(o.scheduled_at)}</Link>
+                  <Link to={`/meetings/${o.id}`} className="text-sm text-muted-foreground hover:text-brand">{fmtDateTime(o.scheduled_at)}</Link>
                   <span className="text-[11px] text-muted-foreground">{o.status_label}</span>
                 </li>
               ))}

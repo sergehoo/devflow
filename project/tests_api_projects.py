@@ -93,3 +93,18 @@ class ProjectApiTests(TestCase):
         self.assertEqual(self.client.post(f"/api/v1/projects/{self.project.pk}/archive/").status_code, 204)
         self.project.refresh_from_db()
         self.assertTrue(self.project.is_archived)
+
+
+class SearchFilterTests(TestCase):
+    """?search= filtre réellement (SearchFilter) et reste scopé au workspace."""
+
+    setUpTestData = classmethod(ProjectApiTests.setUpTestData.__func__)
+    setUp = ProjectApiTests.setUp
+
+    def test_search_filters_projects_and_tasks_within_workspace(self):
+        dm.Project.objects.create(workspace=self.ws, name="Intranet RH")
+        names = [p["name"] for p in self.client.get("/api/v1/projects/", {"search": "portail"}).json()["results"]]
+        self.assertEqual(names, ["Portail"])
+        self.assertEqual(self.client.get("/api/v1/projects/", {"search": "Projet B"}).json()["results"], [])  # autre tenant
+        titles = [t["title"] for t in self.client.get("/api/v1/tasks/", {"search": "T1"}).json()["results"]]
+        self.assertEqual(titles, ["T1"])

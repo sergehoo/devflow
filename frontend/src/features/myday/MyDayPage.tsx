@@ -46,7 +46,7 @@ function TaskList({ title, tasks, tone }: { title: string; tasks: DayTask[]; ton
             {tasks.map((t) => (
               <li key={t.id} className="flex items-center gap-2 py-2 text-sm">
                 {t.is_flagged && <Flag className="size-3.5 text-destructive" aria-label="Signalée" />}
-                <span className="min-w-0 flex-1"><Link className="font-medium hover:text-primary" to={`/tasks/${t.id}`}>{t.title}</Link>
+                <span className="min-w-0 flex-1"><Link className="font-medium hover:text-brand" to={`/tasks/${t.id}`}>{t.title}</Link>
                   <span className="block truncate text-xs text-muted-foreground">{t.project_name} · échéance {formatDate(t.due_date)}</span></span>
                 <Button size="icon" variant="ghost" aria-label={`Reporter « ${t.title} » à demain`} disabled={snooze.isPending} onClick={() => snooze.mutate(t.id)}><AlarmClock /></Button>
                 <Button size="icon" variant="ghost" aria-label={`Terminer « ${t.title} »`} disabled={done.isPending} onClick={() => done.mutate(t.id)}><CheckCircle2 /></Button>
@@ -82,7 +82,7 @@ export function MyDayPage() {
           <CardContent>
             {!d.meeting_action_items.length ? <p className="text-sm text-muted-foreground">Aucune action en attente.</p> : (
               <ul className="space-y-2 text-sm">{d.meeting_action_items.map((a) => (
-                <li key={a.id}><p className="font-medium">{a.title}</p><p className="text-xs text-muted-foreground"><Link className="hover:text-primary" to={`/m/meeting/${a.meeting_id}`}>{a.meeting_title}</Link>{a.due_date ? ` · ${formatDate(a.due_date)}` : ""}</p></li>
+                <li key={a.id}><p className="font-medium">{a.title}</p><p className="text-xs text-muted-foreground"><Link className="hover:text-brand" to={`/m/meeting/${a.meeting_id}`}>{a.meeting_title}</Link>{a.due_date ? ` · ${formatDate(a.due_date)}` : ""}</p></li>
               ))}</ul>
             )}
           </CardContent>

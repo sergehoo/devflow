@@ -34,7 +34,7 @@ export function DecisionsPage() {
         : !list.data.results.length ? <EmptyState title="Aucune décision" description={filtered ? "Aucune décision pour ce filtre." : "Aucune décision enregistrée."} />
           : (
             <>
-              <ul className="divide-y overflow-hidden rounded-2xl border bg-card">
+              <ul className="divide-y overflow-hidden rounded-[22px] border border-transparent bg-card shadow-card dark:border-border">
                 {list.data.results.map((d) => (
                   <li key={d.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1 basis-64">
@@ -42,7 +42,7 @@ export function DecisionsPage() {
                       {d.description && <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{d.description}</p>}
                       {d.projects.length > 0 && (
                         <p className="mt-1 flex flex-wrap gap-x-2 text-[11px]">
-                          {d.projects.map((p) => <Link key={p.id} to={`/projects/${p.id}`} className="text-primary hover:underline">{p.name}</Link>)}
+                          {d.projects.map((p) => <Link key={p.id} to={`/projects/${p.id}`} className="text-brand hover:underline">{p.name}</Link>)}
                         </p>
                       )}
                     </div>
@@ -50,7 +50,7 @@ export function DecisionsPage() {
                     <Badge className={DECISION_STATUS_BADGE[d.status]}>{d.status_label}</Badge>
                     <span className="w-32 text-xs text-muted-foreground">{d.decided_by || "—"}</span>
                     <span className="w-40 min-w-0 truncate text-xs">
-                      {d.meeting ? <Link to={`/meetings/${d.meeting.id}`} className="text-primary hover:underline">{d.meeting.title}</Link> : "—"}
+                      {d.meeting ? <Link to={`/meetings/${d.meeting.id}`} className="text-brand hover:underline">{d.meeting.title}</Link> : "—"}
                     </span>
                     <span className="text-xs text-muted-foreground">{fmtDate(d.decided_at)}</span>
                   </li>

@@ -78,8 +78,8 @@ export function TaskStructure({ taskId, o }: { taskId: number; o: TaskOverview }
           {o.dependencies.map((d) => (
             <p key={`${d.direction}-${d.id}`} className="group flex items-center gap-1.5">
               {d.direction === "out"
-                ? <span>Cette tâche <span className="text-muted-foreground">{d.type.toLowerCase()}</span> <Link className="font-medium hover:text-primary" to={`/tasks/${d.task_id}`}>{d.title}</Link></span>
-                : <span><Link className="font-medium hover:text-primary" to={`/tasks/${d.task_id}`}>{d.title}</Link> <span className="text-muted-foreground">{d.type.toLowerCase()}</span> cette tâche</span>}
+                ? <span>Cette tâche <span className="text-muted-foreground">{d.type.toLowerCase()}</span> <Link className="font-medium hover:text-brand" to={`/tasks/${d.task_id}`}>{d.title}</Link></span>
+                : <span><Link className="font-medium hover:text-brand" to={`/tasks/${d.task_id}`}>{d.title}</Link> <span className="text-muted-foreground">{d.type.toLowerCase()}</span> cette tâche</span>}
               {edit && d.direction === "out" && <button type="button" className="ml-auto text-subtle-foreground opacity-0 hover:text-destructive group-hover:opacity-100 focus:opacity-100"
                 aria-label={`Supprimer la dépendance vers ${d.title}`} onClick={() => remove(delDep, d.id)}><X className="size-3.5" /></button>}
             </p>

@@ -6,9 +6,9 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?:
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
-        {eyebrow && <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-primary">{eyebrow}</p>}
-        <h1 className="mt-1 font-serif text-3xl font-semibold">{title}</h1>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        {eyebrow && <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand">{eyebrow}</p>}
+        <h1 className="mt-1 text-[28px] font-semibold leading-tight tracking-tight sm:text-[34px]">{title}</h1>
+        {description && <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </header>

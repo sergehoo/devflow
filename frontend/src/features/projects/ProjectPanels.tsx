@@ -103,7 +103,7 @@ const KIND_LABEL = { scrum: "Scrum", kanban: "Kanban", waterfall: "Cycle en V / 
 const kpiValue = (k: Kpi) => (typeof k.value === "object" ? "—" : `${String(k.value ?? "—")}${k.unit ? ` ${k.unit}` : ""}`);
 
 function TaskLine({ t }: { t: SpaceTask }) {
-  return <li className="flex justify-between gap-2"><Link className="truncate hover:text-primary" to={`/tasks/${t.id}`}>{t.title}</Link><span className="shrink-0 text-xs text-muted-foreground">{t.assignee || t.status_label}</span></li>;
+  return <li className="flex justify-between gap-2"><Link className="truncate hover:text-brand" to={`/tasks/${t.id}`}>{t.title}</Link><span className="shrink-0 text-xs text-muted-foreground">{t.assignee || t.status_label}</span></li>;
 }
 
 /** Espace méthodologie (mêmes données que les espaces Scrum/Kanban/Waterfall Django). */
@@ -136,7 +136,7 @@ export function MethodologySpace({ projectId }: { projectId: number }) {
               {s.active_sprint && <p className="text-xs text-muted-foreground">{formatDate(s.active_sprint.start_date)} → {formatDate(s.active_sprint.end_date)}{s.active_sprint.goal ? ` · ${s.active_sprint.goal}` : ""}</p>}
               <ul className="mt-2 space-y-1">{s.active_sprint?.tasks.map((t) => <TaskLine key={t.id} t={t} />)}</ul></div>
             <div><p className="font-semibold">Backlog ({s.backlog?.length ?? 0})</p>
-              <ul className="mt-2 space-y-1">{s.backlog?.map((b) => <li key={b.id} className="flex justify-between gap-2"><Link className="truncate hover:text-primary" to={`/m/backlog-item/${b.id}`}>{b.title}</Link><span className="text-xs text-muted-foreground">{b.status_label}</span></li>)}</ul>
+              <ul className="mt-2 space-y-1">{s.backlog?.map((b) => <li key={b.id} className="flex justify-between gap-2"><Link className="truncate hover:text-brand" to={`/m/backlog-item/${b.id}`}>{b.title}</Link><span className="text-xs text-muted-foreground">{b.status_label}</span></li>)}</ul>
               <Button size="sm" variant="ghost" className="mt-2" asChild><Link to={`/m/backlog-item/new?project=${projectId}`}><Plus />Élément de backlog</Link></Button></div>
           </div>
         )}
@@ -156,7 +156,7 @@ export function MethodologySpace({ projectId }: { projectId: number }) {
             <div><p className="font-semibold">Phases</p>
               <ol className="mt-2 space-y-1">{s.phases?.map((p) => <li key={p.id} className="flex justify-between gap-2"><span>{p.name}</span><span className="text-xs text-muted-foreground">{p.status_label} · {formatDate(p.start_date)} → {formatDate(p.end_date)}</span></li>)}</ol></div>
             <div><p className="font-semibold">Jalons</p>
-              <ul className="mt-2 space-y-1">{s.milestones?.map((m) => <li key={m.id} className="flex justify-between gap-2"><Link className="hover:text-primary" to={`/m/milestone/${m.id}`}>{m.name}</Link><span className="text-xs text-muted-foreground">{formatDate(m.due_date)}</span></li>)}</ul></div>
+              <ul className="mt-2 space-y-1">{s.milestones?.map((m) => <li key={m.id} className="flex justify-between gap-2"><Link className="hover:text-brand" to={`/m/milestone/${m.id}`}>{m.name}</Link><span className="text-xs text-muted-foreground">{formatDate(m.due_date)}</span></li>)}</ul></div>
           </div>
         )}
       </CardContent>

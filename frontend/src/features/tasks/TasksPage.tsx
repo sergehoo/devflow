@@ -21,7 +21,7 @@ const columns: ColumnDef<Task, unknown>[] = [
   {
     id: "title", header: "Tâche", meta: { sortKey: "title" },
     cell: ({ row: { original: t } }) => (
-      <Link to={`/tasks/${t.id}`} className="font-medium hover:text-primary">
+      <Link to={`/tasks/${t.id}`} className="font-medium hover:text-brand">
         {t.is_flagged && <Flag className="mr-1 inline size-3.5 text-destructive" aria-label="Signalée" />}{t.title}
       </Link>
     ),

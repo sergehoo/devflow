@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 const PROSE = cn(
   "text-sm leading-7 text-foreground/90 break-words",
   "[&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5",
-  "[&_strong]:font-semibold [&_strong]:text-foreground [&_a]:text-primary [&_a]:underline",
+  "[&_strong]:font-semibold [&_strong]:text-foreground [&_a]:text-brand [&_a]:underline",
   "[&_h1]:text-base [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold",
   "[&_table]:my-2 [&_table]:border-collapse [&_td]:border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1",
 );

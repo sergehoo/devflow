@@ -33,8 +33,8 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-3xl border bg-card p-8 shadow-xl">
-        <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-primary">Connexion sécurisée</p>
+      <div className="w-full max-w-md rounded-[22px] border border-transparent bg-card shadow-card dark:border-border p-8 shadow-xl">
+        <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">Connexion sécurisée</p>
         <h1 className="mt-2 font-serif text-3xl font-semibold text-foreground">Bienvenue sur DevFlow</h1>
         <p className="mt-2 text-sm text-muted-foreground">Connectez-vous pour retrouver vos projets, tâches et équipes.</p>
 
@@ -62,7 +62,7 @@ export function LoginPage() {
             {errors.password && <p id="password-error" className="mt-1 text-xs text-destructive">{errors.password.message}</p>}
           </div>
           <div className="flex justify-end">
-            <a href={legacyUrl("/accounts/password/reset/")} className="text-sm font-semibold text-primary hover:underline">
+            <a href={legacyUrl("/accounts/password/reset/")} className="text-sm font-semibold text-brand hover:underline">
               Mot de passe oublié ?
             </a>
           </div>

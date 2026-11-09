@@ -18,8 +18,8 @@ export function PipelineBar({ s }: { s: RecordingStatus }) {
         <span className="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
           {s.status === "failed" ? <AlertTriangle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
             : s.status === "completed" ? <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
-              : s.status === "waiting_speaker_mapping" ? <UserCheck className="size-4 shrink-0 text-primary" aria-hidden="true" />
-                : <Loader2 className="size-4 shrink-0 animate-spin text-primary" aria-hidden="true" />}
+              : s.status === "waiting_speaker_mapping" ? <UserCheck className="size-4 shrink-0 text-brand" aria-hidden="true" />
+                : <Loader2 className="size-4 shrink-0 animate-spin text-brand" aria-hidden="true" />}
           <span className="truncate">{s.progress_label || s.status_label}</span>
         </span>
         <span className="shrink-0 whitespace-nowrap font-mono font-bold tabular-nums">{s.progress_percent} %</span>

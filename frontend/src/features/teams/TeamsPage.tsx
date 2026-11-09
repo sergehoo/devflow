@@ -33,7 +33,7 @@ export function TeamsPage() {
                   <CardContent className="space-y-3">
                     <div className="flex items-center gap-3">
                       <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: t.color || "#7C6FF7" }} aria-hidden="true" />
-                      <p className="truncate font-semibold group-hover:text-primary">{t.name}</p>
+                      <p className="truncate font-semibold group-hover:text-brand">{t.name}</p>
                       <Badge className="ml-auto">{t.team_type_label}</Badge>
                       {!t.is_active && <Badge>Inactive</Badge>}
                     </div>

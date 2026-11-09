@@ -4,19 +4,19 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold transition-[background-color,color,box-shadow,filter] disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground shadow-sm hover:opacity-90",
-        outline: "border bg-card text-foreground hover:bg-muted",
-        ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
+        default: "bg-primary text-primary-foreground shadow-[0_1px_2px_rgba(32,32,32,0.08)] hover:brightness-[0.96]",
+        outline: "border bg-card text-foreground hover:bg-hover",
+        ghost: "text-muted-foreground hover:bg-hover hover:text-foreground",
         destructive: "bg-destructive text-white hover:opacity-90",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-brand underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-10 px-4",
-        sm: "h-8 rounded-lg px-3 text-xs",
+        default: "h-10 px-5",
+        sm: "h-8 px-3.5 text-xs",
         lg: "h-12 px-6",
         icon: "size-9",
       },

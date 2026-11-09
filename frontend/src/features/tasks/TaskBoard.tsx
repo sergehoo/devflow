@@ -24,7 +24,7 @@ function Card({ task, meId }: { task: Task; meId?: number }) {
       {...listeners}
       aria-roledescription={movable ? "tâche déplaçable" : "tâche"}
     >
-      <Link to={`/tasks/${task.id}`} className="block text-sm font-medium hover:text-primary" onPointerDown={(e) => e.stopPropagation()}>
+      <Link to={`/tasks/${task.id}`} className="block text-sm font-medium hover:text-brand" onPointerDown={(e) => e.stopPropagation()}>
         {task.is_flagged && <Flag className="mr-1 inline size-3.5 text-destructive" aria-label="Signalée" />}
         {task.title}
       </Link>

@@ -53,3 +53,40 @@ export const useDashboard = () =>
     queryFn: ({ signal }) => api<DashboardSummary>("dashboard/summary/", { signal }),
     staleTime: 60_000,
   });
+
+// ─── Indicateurs du tableau de bord (GET dashboard/insights/) ──────────────
+
+export interface FocusTask extends DashboardTask {
+  status_label: string;
+  overdue: boolean;
+}
+
+export type ProjectHealthState = "on_track" | "at_risk" | "delayed";
+
+export interface DashboardInsights {
+  workspace: { id: number; name: string } | null;
+  today: string;
+  day: { planned: number; done: number; completed_today: number };
+  health: { active: number; on_track: number; at_risk: number; delayed: number; healthy_percent: number | null };
+  overdue_tasks: number;
+  weeks: number;
+  heatmap: { date: string; count: number }[];
+  completed_in_period: number;
+  focus: FocusTask[];
+  focus_total: number;
+  upcoming: { kind: "task" | "meeting" | "milestone"; id: number; title: string; subtitle: string; date: string; time: string | null; url: string }[];
+  projects: {
+    id: number; name: string; status_label: string; progress_percent: number; health: ProjectHealthState;
+    target_date: string | null; members: string[]; members_count: number;
+  }[];
+}
+
+export const INSIGHTS_KEY = ["dashboard", "insights"] as const;
+
+export function useDashboardInsights(weeks: number) {
+  return useQuery({
+    queryKey: [...INSIGHTS_KEY, weeks],
+    queryFn: ({ signal }) => api<DashboardInsights>("dashboard/insights/", { signal, params: { weeks } }),
+    placeholderData: (prev) => prev,
+  });
+}

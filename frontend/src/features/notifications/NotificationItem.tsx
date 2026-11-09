@@ -14,7 +14,7 @@ export function NotificationItem({ n, onOpen, compact }: { n: AppNotification; o
     <button type="button" onClick={() => onOpen(n)}
       className={cn("flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         !n.is_read && "bg-primary/5")}>
-      <span className={cn("mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg", n.is_read ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary")}>
+      <span className={cn("mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg", n.is_read ? "bg-muted text-muted-foreground" : "bg-primary/10 text-brand")}>
         <Icon className="size-4" aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1">

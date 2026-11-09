@@ -64,7 +64,7 @@ export function WorkspacesPage() {
                           </span>
                         )}
                         <div className="min-w-0">
-                          <p className="truncate font-semibold group-hover:text-primary">{ws.name}</p>
+                          <p className="truncate font-semibold group-hover:text-brand">{ws.name}</p>
                           <p className="truncate text-xs text-muted-foreground">{ws.owner_name}{ws.quarter_label ? ` · ${ws.quarter_label}` : ""}</p>
                         </div>
                         {ws.is_archived ? <Badge className="ml-auto">Archivé</Badge> : !ws.is_active ? <Badge className="ml-auto">Inactif</Badge> : null}

@@ -91,10 +91,10 @@ export function MeetingDetailPage() {
               <span className="inline-flex items-center gap-1 text-xs"><Clock className="size-3" aria-hidden="true" />{m.duration_label}</span>
             </span>
             <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              {m.project ? <Link to={`/projects/${m.project.id}`} className="hover:text-primary">{m.project.name}</Link>
+              {m.project ? <Link to={`/projects/${m.project.id}`} className="hover:text-brand">{m.project.name}</Link>
                 : m.projects.length ? (
                   <span>Revue de {m.projects.length} projet{m.projects.length > 1 ? "s" : ""} :{" "}
-                    {m.projects.slice(0, 3).map((p, i) => <span key={p.id}>{i > 0 && ", "}<Link to={`/projects/${p.id}`} className="hover:text-primary">{p.name}</Link></span>)}
+                    {m.projects.slice(0, 3).map((p, i) => <span key={p.id}>{i > 0 && ", "}<Link to={`/projects/${p.id}`} className="hover:text-brand">{p.name}</Link></span>)}
                     {m.projects.length > 3 && ` +${m.projects.length - 3}`}
                   </span>
                 ) : <span className="italic">Réunion libre (sans projet)</span>}
@@ -166,7 +166,7 @@ export function MeetingDetailPage() {
       <footer className="flex flex-wrap gap-x-4 gap-y-1 px-1 text-xs text-muted-foreground">
         <span>Créée par {m.created_by || "—"} le {fmtDateTime(m.created_at)}</span>
         {m.updated_by && <span>· Mise à jour par {m.updated_by} le {fmtDateTime(m.updated_at)}</span>}
-        {m.series && <span>· Issue de la série <Link to={`/meetings/series/${m.series.id}`} className="text-primary hover:underline">{m.series.name}</Link></span>}
+        {m.series && <span>· Issue de la série <Link to={`/meetings/series/${m.series.id}`} className="text-brand hover:underline">{m.series.name}</Link></span>}
       </footer>
 
       <Dialog open={dialog === "send"} onOpenChange={(o) => !o && setDialog(null)} title="Envoyer le compte-rendu"

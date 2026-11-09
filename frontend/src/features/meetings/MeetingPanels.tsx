@@ -148,7 +148,7 @@ function AgendaPanel({ m }: { m: MeetingDetail }) {
                     <Badge className={AGENDA_STATUS_BADGE[item.status]}>{item.status_label}</Badge>
                   </div>
                   {item.notes_html && (
-                    <div className="mt-2 rounded-lg bg-muted/50 p-2 text-xs"><span className="font-semibold text-primary">Notes : </span><RichHtml html={item.notes_html} className="inline text-xs" /></div>
+                    <div className="mt-2 rounded-lg bg-muted/50 p-2 text-xs"><span className="font-semibold text-brand">Notes : </span><RichHtml html={item.notes_html} className="inline text-xs" /></div>
                   )}
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
@@ -198,7 +198,7 @@ export function DecisionsTab({ m }: { m: MeetingDetail }) {
     <div className="space-y-6">
       <RichHtml html={m.decisions_html} empty="Aucune décision tracée." />
       {m.structured_decisions.length > 0 && (
-        <Section title="Registre des décisions liées" actions={<Link to="/meetings/decisions" className="text-xs text-primary hover:underline">Registre complet</Link>}>
+        <Section title="Registre des décisions liées" actions={<Link to="/meetings/decisions" className="text-xs text-brand hover:underline">Registre complet</Link>}>
           <ul className="divide-y rounded-xl border">
             {m.structured_decisions.map((d) => (
               <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
@@ -301,7 +301,7 @@ export function ParticipantsTab({ m }: { m: MeetingDetail }) {
         <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-primary">Votre statut</p>
+              <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">Votre statut</p>
               <p className="mt-1 text-sm">RSVP : <strong>{mine.rsvp_label}</strong>
                 {mine.attendance_status !== "UNKNOWN" && <> · Présence : <strong>{mine.attendance_label}</strong></>}</p>
             </div>
@@ -355,7 +355,7 @@ export function ParticipantsTab({ m }: { m: MeetingDetail }) {
             <p className="whitespace-pre-line rounded-xl bg-muted/40 p-3 text-sm">{m.external_participants || "—"}</p>
           </div>
           <dl className="space-y-2 rounded-2xl border bg-muted/20 p-4 text-xs">
-            <dt className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-primary">Statistiques RSVP</dt>
+            <dt className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">Statistiques RSVP</dt>
             {([["Accepté", stats.accepted, "text-success"], ["Peut-être", stats.tentative, "text-info"], ["Décliné", stats.declined, "text-destructive"],
               ["Sans réponse", stats.pending, "text-warning"], ["Présents", stats.present, "text-success"], ["Absents", stats.absent, "text-destructive"]] as const)
               .map(([label, value, tone]) => (
@@ -409,7 +409,7 @@ export function ReviewsTab({ m }: { m: MeetingDetail }) {
   if (!reviews || !reviews.forms.length) {
     return (
       <p className="text-sm text-muted-foreground">
-        Aucun projet rattaché à cette réunion. <Link className="text-primary hover:underline" to={`/meetings/${m.id}/edit`}>Modifiez la réunion</Link> pour ajouter des projets à passer en revue.
+        Aucun projet rattaché à cette réunion. <Link className="text-brand hover:underline" to={`/meetings/${m.id}/edit`}>Modifiez la réunion</Link> pour ajouter des projets à passer en revue.
       </p>
     );
   }

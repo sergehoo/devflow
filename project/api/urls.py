@@ -17,7 +17,7 @@ from project.api.resources import (  # noqa: E402
     ResourceActionView, ResourceDeleteView, ResourceDetailView, ResourceListView, ResourceRegistryView,
 )
 from project.api.form_bridge import LegacyActionView, LegacyFormView
-from project.api.views_dashboard import DashboardSummaryView
+from project.api.views_dashboard import DashboardInsightsView, DashboardSummaryView
 from project.api.views_teams import TeamMembersView
 from project.api.views_timesheets import TimesheetEntriesView, TimesheetWeeksView, TimesheetWeekView
 from project.api.views_auth import (
@@ -153,6 +153,7 @@ urlpatterns = [
     # ────── Chat collaborateurs (DM + groupes) — PR Chat ──────
     # Frontend React — authentification par session
     path("dashboard/summary/", DashboardSummaryView.as_view(), name="api-dashboard-summary"),
+    path("dashboard/insights/", DashboardInsightsView.as_view(), name="api-dashboard-insights"),
     path("resources/", ResourceRegistryView.as_view(), name="api-resources"),
     path("resources/<slug:name>/", ResourceListView.as_view(), name="api-resource-list"),
     path("resources/<slug:name>/<int:pk>/", ResourceDetailView.as_view(), name="api-resource-detail"),

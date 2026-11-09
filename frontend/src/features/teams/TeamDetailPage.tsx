@@ -54,7 +54,7 @@ export function TeamDetailPage() {
           <CardContent>
             <ul className="divide-y text-sm">
               {overview.data?.projects.map((p) => (
-                <li key={p.id} className="flex items-center gap-2 py-2"><Link to={`/projects/${p.id}`} className="font-medium hover:text-primary">{p.name}</Link><Badge>{p.status_label}</Badge><span className="ml-auto tabular-nums text-muted-foreground">{p.progress_percent} %</span></li>
+                <li key={p.id} className="flex items-center gap-2 py-2"><Link to={`/projects/${p.id}`} className="font-medium hover:text-brand">{p.name}</Link><Badge>{p.status_label}</Badge><span className="ml-auto tabular-nums text-muted-foreground">{p.progress_percent} %</span></li>
               ))}
               {overview.data && !overview.data.projects.length && <li className="py-2 text-muted-foreground">Aucun projet.</li>}
             </ul>

@@ -124,14 +124,14 @@ export function WeekPage() {
             </section>
           )}
 
-          <div className="overflow-x-auto rounded-2xl border bg-card">
+          <div className="overflow-x-auto rounded-[22px] border border-transparent bg-card shadow-card dark:border-border">
             <table className="w-full min-w-[820px] text-sm">
               <caption className="sr-only">Heures de la semaine {week.iso_week}</caption>
               <thead className="border-b bg-muted/50 text-xs text-muted-foreground">
                 <tr>
                   <th scope="col" className="px-4 py-3 text-left font-semibold">Tâche / activité</th>
                   {week.days.map((d) => (
-                    <th key={d.date} scope="col" className={cn("px-2 py-3 text-center font-semibold", d.date === week.today && "text-primary")}>
+                    <th key={d.date} scope="col" className={cn("px-2 py-3 text-center font-semibold", d.date === week.today && "text-brand")}>
                       {d.label}<span className="block text-[11px] font-normal">{parseISODate(d.date).getDate()}/{parseISODate(d.date).getMonth() + 1}</span>
                     </th>
                   ))}
@@ -142,7 +142,7 @@ export function WeekPage() {
                 {week.rows.map((row) => (
                   <tr key={row.row_id}>
                     <th scope="row" className="max-w-72 px-4 py-2 text-left font-normal">
-                      {row.task ? <Link to={`/tasks/${row.task.id}`} className="font-medium hover:text-primary">{row.task.title}</Link> : <span className="font-medium">{row.label}</span>}
+                      {row.task ? <Link to={`/tasks/${row.task.id}`} className="font-medium hover:text-brand">{row.task.title}</Link> : <span className="font-medium">{row.label}</span>}
                       <span className="block truncate text-xs text-muted-foreground">{row.project?.name ?? "—"}{row.kind === "activity" && " · activité"}</span>
                     </th>
                     {row.cells.map((c, i) => (

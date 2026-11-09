@@ -9,7 +9,7 @@ export const STATUS_COLUMNS = [
 ] as const;
 
 export const STATUS_BADGE: Record<string, string> = {
-  IN_PROGRESS: "bg-primary/10 text-primary", REVIEW: "bg-warning/15 text-warning", DONE: "bg-success/15 text-success",
+  IN_PROGRESS: "bg-primary/10 text-brand", REVIEW: "bg-warning/15 text-warning", DONE: "bg-success/15 text-success",
   BLOCKED: "bg-destructive/10 text-destructive",
 };
 

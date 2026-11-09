@@ -50,7 +50,7 @@ export function ResourceListPage() {
         <EmptyState title="Aucun élément" description={q ? "Rien ne correspond à cette recherche." : "Ce module est vide pour le moment."} />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-2xl border bg-card">
+          <div className="overflow-x-auto rounded-[22px] border border-transparent bg-card shadow-card dark:border-border">
             <table className="w-full min-w-[40rem] text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr><th className="px-4 py-3 font-semibold">Élément</th>{list.data.columns.map((c) => <th key={c.name} className="px-4 py-3 font-semibold">{c.label}</th>)}</tr>
@@ -58,7 +58,7 @@ export function ResourceListPage() {
               <tbody className="divide-y">
                 {list.data.results.map((r) => (
                   <tr key={r.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3 font-medium">{meta.has_detail ? <Link className="text-primary hover:underline" to={`/m/${name}/${r.id}`}>{r.label}</Link> : r.label}</td>
+                    <td className="px-4 py-3 font-medium">{meta.has_detail ? <Link className="text-brand hover:underline" to={`/m/${name}/${r.id}`}>{r.label}</Link> : r.label}</td>
                     {list.data.columns.map((c) => <td key={c.name} className="px-4 py-3 align-top"><Cell value={r.cells[c.name] ?? null} /></td>)}
                   </tr>
                 ))}

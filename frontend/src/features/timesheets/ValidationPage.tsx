@@ -49,7 +49,7 @@ export function ValidationPage() {
         <EmptyState title="Rien à traiter" description="Aucune semaine ne correspond à ces critères." />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-2xl border bg-card">
+          <div className="overflow-x-auto rounded-[22px] border border-transparent bg-card shadow-card dark:border-border">
             <table className="w-full min-w-[760px] text-sm">
               <caption className="sr-only">Semaines à valider</caption>
               <thead className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">

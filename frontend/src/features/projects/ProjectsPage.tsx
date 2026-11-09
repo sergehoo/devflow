@@ -19,7 +19,7 @@ const columns: ColumnDef<Project, unknown>[] = [
   {
     id: "name", header: "Projet", meta: { sortKey: "name" },
     cell: ({ row: { original: p } }) => (
-      <Link to={`/projects/${p.id}`} className="font-medium hover:text-primary">
+      <Link to={`/projects/${p.id}`} className="font-medium hover:text-brand">
         {p.name}{p.code && <span className="ml-1.5 text-xs text-muted-foreground">{p.code}</span>}
       </Link>
     ),

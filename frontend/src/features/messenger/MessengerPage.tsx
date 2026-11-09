@@ -31,7 +31,7 @@ export function MessengerPage() {
   const select = (c: Conv) => setParams({ channel: String(c.id) });
 
   return (
-    <div className="-m-4 flex h-[calc(100dvh-4rem)] overflow-hidden border-t bg-card lg:-m-6">
+    <div className="flex h-[calc(100dvh-9.5rem)] min-h-[460px] overflow-hidden rounded-[22px] bg-card shadow-card dark:border dark:border-border">
       <div className={selectedId ? "hidden w-full md:block md:w-80 md:shrink-0 md:border-r" : "w-full md:w-80 md:shrink-0 md:border-r"}>
         <ConversationList selectedId={selectedId} onSelect={select} />
       </div>

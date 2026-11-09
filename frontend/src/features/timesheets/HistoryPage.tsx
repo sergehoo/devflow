@@ -93,7 +93,7 @@ export function HistoryPage() {
           </div>
 
           {data.results.length === 0 ? <EmptyState title="Aucune saisie" description="Aucune saisie ne correspond à ces critères." /> : (
-            <div className="overflow-x-auto rounded-2xl border bg-card">
+            <div className="overflow-x-auto rounded-[22px] border border-transparent bg-card shadow-card dark:border-border">
               <table className="w-full min-w-[860px] text-sm">
                 <caption className="sr-only">Saisies de temps</caption>
                 <thead className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -105,7 +105,7 @@ export function HistoryPage() {
                       <td className="px-4 py-2.5 whitespace-nowrap">{formatDate(e.entry_date)}</td>
                       <td className="px-4 py-2.5">{e.user.name}</td>
                       <td className="px-4 py-2.5">{e.project?.name ?? "—"}</td>
-                      <td className="max-w-72 px-4 py-2.5">{e.task ? <Link to={`/tasks/${e.task.id}`} className="hover:text-primary">{e.task.title}</Link> : <span className="line-clamp-2">{e.description || "—"}</span>}</td>
+                      <td className="max-w-72 px-4 py-2.5">{e.task ? <Link to={`/tasks/${e.task.id}`} className="hover:text-brand">{e.task.title}</Link> : <span className="line-clamp-2">{e.description || "—"}</span>}</td>
                       <td className="px-4 py-2.5 font-semibold tabular-nums">{e.hours}</td>
                       <td className="px-4 py-2.5">{e.is_billable ? "Oui" : "Non"}</td>
                       <td className="px-4 py-2.5"><Badge className={STATUS_TONE[e.approval_status]}>{statusLabel(e.approval_status, e.approval_status_label)}</Badge></td>

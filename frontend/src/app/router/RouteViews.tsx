@@ -16,7 +16,7 @@ export function RouteError() {
 export function NotFound() {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
-      <p className="font-serif text-6xl font-semibold text-primary">404</p>
+      <p className="font-serif text-6xl font-semibold text-brand">404</p>
       <p className="text-sm text-muted-foreground">Cette page n'existe pas (encore) dans la nouvelle interface.</p>
       <Button asChild variant="outline"><Link to="/">Retour à l'accueil</Link></Button>
     </div>

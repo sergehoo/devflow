@@ -25,7 +25,7 @@ function MeetingItem({ m, highlight }: { m: MeetingRow; highlight?: boolean }) {
   return (
     <li className={cn("flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/30", highlight && "bg-primary/5")}>
       <div className="min-w-0 flex-1 basis-60">
-        <Link to={`/meetings/${m.id}`} className="font-medium hover:text-primary">{m.title}</Link>
+        <Link to={`/meetings/${m.id}`} className="font-medium hover:text-brand">{m.title}</Link>
         <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
           {m.project && <span>{m.project.name}</span>}
           {m.organizer && <span>par {m.organizer}</span>}
@@ -84,8 +84,8 @@ export function MeetingsPage() {
       </div>
       {project && (
         <p className="flex flex-wrap items-center gap-2 text-sm">
-          <Badge className="bg-primary/10 text-primary">Projet : {data?.current_project?.name ?? `#${project}`}</Badge>
-          {data?.current_project && <Link to={`/projects/${project}`} className="text-xs text-primary hover:underline">Voir le projet</Link>}
+          <Badge className="bg-primary/10 text-brand">Projet : {data?.current_project?.name ?? `#${project}`}</Badge>
+          {data?.current_project && <Link to={`/projects/${project}`} className="text-xs text-brand hover:underline">Voir le projet</Link>}
           <Button size="sm" variant="ghost" onClick={() => set("project", "")}><X />Tous les projets</Button>
         </p>
       )}
@@ -97,7 +97,7 @@ export function MeetingsPage() {
         ) : (
           <div className="space-y-4">
             {([["À venir", upcoming, CalendarPlus], ["Passées", past, CalendarCheck]] as const).map(([label, rows, Icon]) => rows.length > 0 && (
-              <section key={label} aria-label={label} className="overflow-hidden rounded-2xl border bg-card">
+              <section key={label} aria-label={label} className="overflow-hidden rounded-[22px] border border-transparent bg-card shadow-card dark:border-border">
                 <h2 className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                   <Icon className="size-3.5" aria-hidden="true" />{label} · {rows.length} réunion{rows.length > 1 ? "s" : ""}
                 </h2>

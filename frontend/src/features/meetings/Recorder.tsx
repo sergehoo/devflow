@@ -313,7 +313,7 @@ export function MeetingRecorder({ meetingId, maxUploadMb, onUploaded }: {
   return (
     <Card>
       <CardHeader>
-        <p className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-primary"><Mic className="size-3.5" aria-hidden="true" />Enregistrement & CR IA</p>
+        <p className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand"><Mic className="size-3.5" aria-hidden="true" />Enregistrement & CR IA</p>
         <CardTitle>Capter cette réunion</CardTitle>
         <CardDescription>L'audio est transcrit, les voix identifiées puis un compte-rendu est généré par l'IA.</CardDescription>
       </CardHeader>

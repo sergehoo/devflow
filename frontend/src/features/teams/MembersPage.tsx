@@ -52,7 +52,7 @@ export function MembersPage() {
         <EmptyState title="Aucun membre" />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-2xl border bg-card">
+          <div className="overflow-x-auto rounded-[22px] border border-transparent bg-card shadow-card dark:border-border">
             <table className="w-full min-w-[900px] text-sm">
               <caption className="sr-only">Membres du workspace</caption>
               <thead className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -67,7 +67,7 @@ export function MembersPage() {
                         <div className="min-w-0"><p className="truncate font-medium">{m.user.name}{m.is_owner && <Badge className="ml-2">Propriétaire</Badge>}</p><p className="truncate text-xs text-muted-foreground">{m.job_title || m.user.email}</p></div>
                       </div>
                     </td>
-                    <td className="px-4 py-2.5">{m.team ? <Link to={`/teams/${m.team.id}`} className="hover:text-primary">{m.team.name}</Link> : "—"}</td>
+                    <td className="px-4 py-2.5">{m.team ? <Link to={`/teams/${m.team.id}`} className="hover:text-brand">{m.team.name}</Link> : "—"}</td>
                     <td className="px-4 py-2.5">{m.role_label}</td>
                     <td className="px-4 py-2.5">{m.manager || "—"}</td>
                     <td className="px-4 py-2.5 tabular-nums">{m.capacity_hours_per_week != null ? `${m.capacity_hours_per_week} h/sem.` : "—"}</td>

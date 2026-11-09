@@ -18,10 +18,10 @@ export function DataTable<T>({ columns, data, ordering, onOrderingChange, captio
   // eslint-disable-next-line react-hooks/incompatible-library -- API TanStack Table, mémoïsation gérée par la lib
   const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel(), manualSorting: true, getRowId: (r) => String(rowKey(r)) });
   return (
-    <div className="overflow-x-auto rounded-2xl border bg-card">
+    <div className="overflow-x-auto rounded-[22px] border border-transparent bg-card shadow-card dark:border-border">
       <table className="w-full min-w-[720px] text-sm">
         <caption className="sr-only">{caption}</caption>
-        <thead className="border-b bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+        <thead className="border-b bg-muted text-left text-[11px] uppercase tracking-wider text-muted-foreground">
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id}>
               {hg.headers.map((h) => {
@@ -45,7 +45,7 @@ export function DataTable<T>({ columns, data, ordering, onOrderingChange, captio
         </thead>
         <tbody className="divide-y">
           {table.getRowModel().rows.map((row) => (
-            <tr key={row.id} className="hover:bg-muted/40">
+            <tr key={row.id} className="hover:bg-hover">
               {row.getVisibleCells().map((cell) => (
                 <td key={cell.id} className={cn("px-4 py-3 align-middle")}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
               ))}

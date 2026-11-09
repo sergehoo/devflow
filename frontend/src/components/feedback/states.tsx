@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/misc";
 
 export function EmptyState({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed p-10 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-[22px] border border-dashed bg-card/60 p-10 text-center">
       <Inbox className="size-8 text-subtle-foreground" aria-hidden="true" />
       <p className="font-semibold text-foreground">{title}</p>
       {description && <p className="max-w-md text-sm text-muted-foreground">{description}</p>}

@@ -14,7 +14,7 @@ export function DropdownMenuContent({ className, sideOffset = 6, ...props }: Com
     <Dropdown.Portal>
       <Dropdown.Content
         sideOffset={sideOffset}
-        className={cn("z-50 min-w-52 rounded-xl border bg-card p-1 shadow-xl", className)}
+        className={cn("z-50 min-w-52 rounded-2xl border bg-card p-1.5 shadow-[0_12px_32px_rgba(32,32,32,0.12)]", className)}
         {...props}
       />
     </Dropdown.Portal>
@@ -24,8 +24,8 @@ export function DropdownMenuContent({ className, sideOffset = 6, ...props }: Com
 export const DropdownMenuItem = ({ className, ...props }: ComponentProps<typeof Dropdown.Item>) => (
   <Dropdown.Item
     className={cn(
-      "flex cursor-pointer select-none items-center gap-2 rounded-lg px-2 py-2 text-sm text-foreground outline-none",
-      "data-[highlighted]:bg-muted data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:text-muted-foreground",
+      "flex cursor-pointer select-none items-center gap-2 rounded-xl px-2.5 py-2 text-sm text-foreground outline-none",
+      "data-[highlighted]:bg-hover data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:text-muted-foreground",
       className,
     )}
     {...props}

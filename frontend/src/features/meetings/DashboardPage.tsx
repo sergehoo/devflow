@@ -58,7 +58,7 @@ export function MeetingDashboardPage() {
   if (isError) return <ErrorState message={error.message} onRetry={() => void refetch()} />;
   const kpis: [string, number, string][] = [
     ["Réunions ce mois", d.month_stats.total ?? 0, ""], ["Tenues", d.month_stats.held ?? 0, "border-success/30 bg-success/10 text-success"],
-    ["Planifiées", d.month_stats.planned ?? 0, "border-primary/30 bg-primary/10 text-primary"], ["Annulées", d.month_stats.cancelled ?? 0, "border-destructive/30 bg-destructive/10 text-destructive"],
+    ["Planifiées", d.month_stats.planned ?? 0, "border-primary/30 bg-primary/10 text-brand"], ["Annulées", d.month_stats.cancelled ?? 0, "border-destructive/30 bg-destructive/10 text-destructive"],
   ];
   return (
     <div className="space-y-6">
@@ -72,7 +72,7 @@ export function MeetingDashboardPage() {
 
       <section aria-label="Indicateurs du mois" className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {kpis.map(([label, value, tone]) => (
-          <div key={label} className={cn("rounded-2xl border bg-card p-4", tone)}>
+          <div key={label} className={cn("rounded-[22px] border border-transparent bg-card shadow-card dark:border-border p-4", tone)}>
             <p className="text-[10px] uppercase opacity-80">{label}</p>
             <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
           </div>
@@ -91,7 +91,7 @@ export function MeetingDashboardPage() {
                     <div className="text-[10px] uppercase text-muted-foreground">{monFmt.format(new Date(m.scheduled_at))}</div>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <Link to={`/meetings/${m.id}`} className="block truncate text-sm font-medium hover:text-primary">{m.title}</Link>
+                    <Link to={`/meetings/${m.id}`} className="block truncate text-sm font-medium hover:text-brand">{m.title}</Link>
                     <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                       <span className="inline-flex items-center gap-1"><Clock className="size-3" aria-hidden="true" />{fmtTime(m.scheduled_at)} · {m.duration_minutes} min</span>
                       <span className="inline-flex items-center gap-1"><Tag className="size-3" aria-hidden="true" />{m.type_label}</span>
@@ -121,7 +121,7 @@ export function MeetingDashboardPage() {
             <ul className="space-y-2">
               {d.recent.map((m) => (
                 <li key={m.id} className="rounded-xl border bg-muted/30 p-3">
-                  <Link to={`/meetings/${m.id}`} className="block text-sm font-medium hover:text-primary">{m.title}</Link>
+                  <Link to={`/meetings/${m.id}`} className="block text-sm font-medium hover:text-brand">{m.title}</Link>
                   <p className="mt-0.5 text-[11px] text-muted-foreground">{fmtDateTime(m.scheduled_at)}{m.project ? ` · ${m.project.name}` : ""} · {m.status_label}</p>
                 </li>
               ))}
@@ -133,9 +133,9 @@ export function MeetingDashboardPage() {
             <ul className="space-y-2">
               {d.top_projects.map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-2 rounded-xl border bg-muted/30 p-3">
-                  <Link to={`/projects/${p.id}`} className="truncate text-sm hover:text-primary">{p.name}</Link>
+                  <Link to={`/projects/${p.id}`} className="truncate text-sm hover:text-brand">{p.name}</Link>
                   <Link to={`/meetings?project=${p.id}`} className="shrink-0" aria-label={`${p.count} réunion(s) du projet ${p.name}`}>
-                    <Badge className="bg-primary/10 text-primary">{p.count} réunion{p.count > 1 ? "s" : ""}</Badge>
+                    <Badge className="bg-primary/10 text-brand">{p.count} réunion{p.count > 1 ? "s" : ""}</Badge>
                   </Link>
                 </li>
               ))}
@@ -150,7 +150,7 @@ export function MeetingDashboardPage() {
             <ul className="space-y-2">
               {d.speaking.map((s) => (
                 <li key={s.name} className="flex items-center justify-between gap-2 text-sm">
-                  <span className="truncate">{s.name}</span><Badge className="shrink-0 bg-primary/10 text-primary">{s.minutes} min</Badge>
+                  <span className="truncate">{s.name}</span><Badge className="shrink-0 bg-primary/10 text-brand">{s.minutes} min</Badge>
                 </li>
               ))}
             </ul>
@@ -158,10 +158,10 @@ export function MeetingDashboardPage() {
         </Panel>
         <Panel title="Décisions (année)" icon={<Gavel className="size-4" aria-hidden="true" />}>
           <div className="flex flex-col items-center text-center">
-            <p className="text-5xl font-bold text-primary tabular-nums">{d.execution_rate}<span className="text-2xl">%</span></p>
+            <p className="text-5xl font-bold text-brand tabular-nums">{d.execution_rate}<span className="text-2xl">%</span></p>
             <p className="mt-1 text-xs text-muted-foreground">d'exécution</p>
             <p className="mt-3 text-[11px] text-muted-foreground">{d.executed_decisions_year} exécutées sur {d.total_decisions_year}</p>
-            <Link to="/meetings/decisions" className="mt-2 text-xs text-primary hover:underline">Registre complet</Link>
+            <Link to="/meetings/decisions" className="mt-2 text-xs text-brand hover:underline">Registre complet</Link>
           </div>
         </Panel>
         <Panel title="Top projets discutés (IA)" icon={<MessagesSquare className="size-4" aria-hidden="true" />}>
@@ -169,7 +169,7 @@ export function MeetingDashboardPage() {
             <ul className="space-y-2">
               {d.top_discussed_projects.map((p) => (
                 <li key={p.title} className="flex items-center justify-between gap-2 text-sm">
-                  <span className="truncate">{p.title}</span><Badge className="shrink-0 bg-primary/10 text-primary">{p.count} ×</Badge>
+                  <span className="truncate">{p.title}</span><Badge className="shrink-0 bg-primary/10 text-brand">{p.count} ×</Badge>
                 </li>
               ))}
             </ul>
@@ -179,10 +179,10 @@ export function MeetingDashboardPage() {
 
       {d.active_series.length > 0 && (
         <Panel title={`Séries récurrentes actives (${d.active_series.length})`} icon={<Repeat className="size-4" aria-hidden="true" />}
-          action={<Link to="/meetings/series" className="text-xs text-primary hover:underline">Toutes les séries</Link>}>
+          action={<Link to="/meetings/series" className="text-xs text-brand hover:underline">Toutes les séries</Link>}>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {d.active_series.map((s) => (
-              <Link key={s.id} to={`/meetings/series/${s.id}`} className="rounded-xl border bg-muted/30 p-3 hover:bg-muted">
+              <Link key={s.id} to={`/meetings/series/${s.id}`} className="rounded-xl border bg-muted/30 p-3 hover:bg-hover">
                 <p className="truncate text-sm font-medium">{s.name}</p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">{s.recurrence_label}</p>
               </Link>

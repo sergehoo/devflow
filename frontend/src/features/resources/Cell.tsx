@@ -8,7 +8,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 
 function RefLink({ label, link }: { label: string; link: string | null }) {
-  return link ? <Link className="font-medium text-primary hover:underline" to={link}>{label}</Link> : <span>{label}</span>;
+  return link ? <Link className="font-medium text-brand hover:underline" to={link}>{label}</Link> : <span>{label}</span>;
 }
 
 /** Rendu d'une valeur sérialisée par le pont ressources (relation, choix, fichier, date…). */
@@ -24,7 +24,7 @@ export function Cell({ value }: { value: CellValue }) {
   switch (value.kind) {
     case "ref": return <RefLink label={value.label} link={value.link} />;
     case "choice": return <Badge>{value.label}</Badge>;
-    case "file": return <a className="inline-flex items-center gap-1 text-primary hover:underline" href={value.url} target="_blank" rel="noreferrer"><Download className="size-3.5" />{value.label}</a>;
+    case "file": return <a className="inline-flex items-center gap-1 text-brand hover:underline" href={value.url} target="_blank" rel="noreferrer"><Download className="size-3.5" />{value.label}</a>;
     case "list": return value.items.length ? <span className="flex flex-wrap gap-1">{value.items.map((i) => <Badge key={i.label}><RefLink {...i} /></Badge>)}</span> : <span className="text-subtle-foreground">—</span>;
   }
 }

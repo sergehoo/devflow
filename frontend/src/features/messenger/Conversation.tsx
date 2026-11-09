@@ -101,7 +101,7 @@ function MessageBubble({ m, mine, onReact }: { m: ChatMessage; mine: boolean; on
           {picker && (
             <div role="menu" className={cn("absolute bottom-full z-10 mb-1 flex gap-0.5 rounded-full border bg-card p-1 shadow-lg", mine ? "right-0" : "left-0")}>
               {REACTIONS.map((e) => (
-                <button key={e} type="button" role="menuitem" className="rounded-full px-1.5 py-0.5 text-base hover:bg-muted" aria-label={`Réagir ${e}`}
+                <button key={e} type="button" role="menuitem" className="rounded-full px-1.5 py-0.5 text-base hover:bg-hover" aria-label={`Réagir ${e}`}
                   onClick={() => { setPicker(false); onReact(e); }}>{e}</button>
               ))}
             </div>
@@ -246,7 +246,7 @@ export function Conversation({ channelId, title, subtitle, compact, onBack, onCl
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{title}</p>
             <p className="truncate text-[11px] text-muted-foreground">
-              {socket.typing ? <span className="text-primary">{socket.typing} écrit…</span> : subtitle}
+              {socket.typing ? <span className="text-brand">{socket.typing} écrit…</span> : subtitle}
               {!socket.live && <span className="ml-1">· reconnexion…</span>}
             </p>
           </div>
@@ -287,7 +287,7 @@ export function Conversation({ channelId, title, subtitle, compact, onBack, onCl
               {files.map((f, i) => (
                 <li key={`${f.name}-${i}`} className="flex items-center gap-1 rounded-full border bg-muted/50 py-0.5 pl-2.5 pr-1 text-xs">
                   <span className="max-w-40 truncate">{f.name}</span>
-                  <button type="button" className="rounded-full p-0.5 hover:bg-muted" aria-label={`Retirer ${f.name}`}
+                  <button type="button" className="rounded-full p-0.5 hover:bg-hover" aria-label={`Retirer ${f.name}`}
                     onClick={() => setFiles(files.filter((_, j) => j !== i))}><X className="size-3" /></button>
                 </li>
               ))}
