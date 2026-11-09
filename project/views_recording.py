@@ -392,9 +392,14 @@ def api_upload_recording(request, meeting_pk):
             "duration_seconds", "file_size_bytes", "status", "updated_at",
         ])
     except Exception as exc:
+        # Détail technique (bucket, endpoint…) uniquement dans les logs serveur.
         logger.exception("upload save failed: %s", exc)
         return JsonResponse(
-            {"detail": f"Erreur stockage : {exc}",
+            {"detail": (
+                "Le stockage des enregistrements est indisponible. Réessayez dans quelques instants ; "
+                "si le problème persiste, l'administrateur doit vérifier le stockage des enregistrements "
+                "(commande « python manage.py ensure_recordings_bucket »)."
+            ),
              "recording_id": str(recording.pk)},
             status=502,
         )
