@@ -9,7 +9,7 @@ describe("resolveLegacyLink", () => {
     // Modules du pont générique (phase 5)
     expect(resolveLegacyLink("/risks/3/?tab=x")).toEqual({ kind: "app", to: "/m/risk/3" });
     expect(resolveLegacyLink("/billing/invoices/")).toEqual({ kind: "app", to: "/m/invoice" });
-    expect(resolveLegacyLink("/meetings/series/4/")).toEqual({ kind: "app", to: "/m/meeting-series/4" });
+    expect(resolveLegacyLink("/meetings/series/4/")).toEqual({ kind: "app", to: "/meetings/series/4" });
     expect(resolveLegacyLink("/my-day/")).toEqual({ kind: "app", to: "/my-day" });
   });
   it("keeps non-migrated pages on the legacy UI", () => {

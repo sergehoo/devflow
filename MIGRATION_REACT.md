@@ -32,12 +32,61 @@ Routes HTML comptées via le résolveur Django (CRUD inclus). API existantes = `
 | Équipes & membres | Équipes, onboarding employé, hiérarchie N+1, invitations, réinitialisation mot de passe, membres projet | 34 | `teams` | invitations publiques | M | **Phase 3 ✅** (équipes, membres, intégration, N+1, réinitialisation mot de passe) |
 | Timesheets | Calendrier hebdo (tâches + activités libres), saisie rapide, historique, soumission/validation N+1, rejet commenté, réouverture tracée, quota/capacité, facturable | 8 | `timesheets` (CRUD brut), `tasks/<id>/quick-update` (temps passé) | voir §2.1 | M | **Phase 3 ✅ code + recette** — parité à valider par l'équipe |
 | Finance & facturation | Budgets, estimations, dépenses, revenus, TJM, cockpit, prévisions IA, factures (PDF/DOCX), clients, paiements | 54 | `project-budgets`, `project-estimate-lines`, `project-expenses`, `project-revenues`, `billing-rates`, budget snapshots/forecast-runs, `workspaces/<id>/portfolio` | invoices, invoice-lines, payments, clients, exports | L | **Phase 5 ✅ partiel** : dépenses (validation N1/N2, rejet), factures (émettre, envoyée, annuler, PDF/Word/impression), clients, budget projet. **Restent legacy** : cockpit financier IA, allocation IA, édition AJAX des lignes de facture, paiements, génération de facture depuis un projet |
-| Réunions & enregistrements | Réunions, séries, décisions, comptes-rendus, enregistrements audio, transcription | 44 | `meetings/<id>/recordings/upload`, `recordings/*` | meetings CRUD, series, decisions, minutes | L | **Phase 5 ✅ partiel** : réunions, séries (régénération), registre des décisions, comptes rendus PDF/Word, envoi du compte rendu. **Restent legacy** : tableau de bord réunions, ordre du jour, présences/RSVP, actions → tâches, enregistrements audio / transcription IA |
+| Réunions & enregistrements | Réunions, séries, décisions, comptes-rendus, enregistrements audio, transcription | 44 | `meetings/*` (lectures = vues Django sérialisées, écritures = pont), `meetings/<id>/recordings/upload` (throttle IA), `meetings/recordings/*` | — | L | **Migré (09/11/2026) — détail et réserves §2.2** : pages dédiées `/meetings`, `/meetings/dashboard`, `/meetings/decisions`, `/meetings/series`, `/meetings/:id`, `/meetings/:id/recordings/:rid`. Restent à valider hors recette locale : capture micro réelle, transcription AssemblyAI et synthèse IA réelles, génération Word/PDF (bibliothèques Docker) |
 | Messagerie | DM uniques, conversations équipe/projet, temps réel, pièces jointes, réactions, non-lus, présence | 40 (anciennes routes → `/chat/`) | `me/chat/*` complet, `me/presence`, WS `/ws/channels/<id>/` | flux personnel WS `/ws/me/` (activité chat) | M | ✅ Phase 4 — parité à valider |
 | Notifications & activité | Centre de notifications, marquage lu, journal d'activité, préférences | 14 | — | `me/notifications/` (liste, summary, read, read-all, delete), `me/notification-preferences/`, WS `/ws/me/` ; journal d'activité → phase 5 | S | ✅ Phase 4 (notifications) — parité à valider |
 | IA | Insights, suggestions de structure, Genesis, chat IA (SSE), rapports, prévisions | 23 | `ai-insights`, `project-ai-reports`, `ai/chat/stream`, `projects/<id>/ai/*` | ai-proposals (list/apply) | M | **Phase 5 ✅ partiel** : analyses IA (ignorer), propositions IA (liste/fiche). **Restent legacy** : appliquer/valider une proposition, Genesis, chat IA (SSE), copilote projet |
 | Méthodologies | Administration des méthodologies, espaces Scrum/Kanban | 1 (+ espaces projet) | — | methodologies | S | **Phase 5 ✅ — parité à valider** : administration (superuser) en CRUD générique + espaces projet. Ajout de statuts/rôles/KPI (sous-actions) non migré |
 | Modes métier | Rapports terrain, lots immobiliers, dossiers administratifs, pull requests | 16 | `field-reports`, `real-estate-lots`, `admin-cases` | pull-requests | S | Pull requests ✅ (CRUD générique). Rapports terrain, lots, dossiers : API DRF seulement (aucune page Django), écrans à concevoir |
+
+### 2.2 Matrice de parité — Réunions (09/11/2026)
+
+**Règle de statut (toutes matrices)** : **Migré** = toutes les actions de la page historique sont opérationnelles dans React **et** couvertes par des tests automatisés (Django + Vitest) **et** vérifiées en recette navigateur. **À valider** = code et tests présents, une condition réelle reste à vérifier (périphérique, fournisseur externe, environnement Docker). **Partiel** = des actions manquent. **Non migré** = page seulement dans l'ancienne interface (un lien vers l'ancienne interface n'est jamais une migration). Un bouton présent n'est pas une preuve : chaque ligne indique la preuve.
+
+| Page Django | Page React | Actions | Statut | Preuve |
+|---|---|---|---|---|
+| `/meetings/` (liste) | `/meetings` | recherche `?q=` (URL), filtres type / statut / `?project=` (non numérique → liste vide, plus de 500), à venir / passées, pagination, création (`?project=` prérempli) | Migré | `tests_api_meetings` (lecture, filtres, scoping), Vitest liste, recette |
+| `/meetings/dashboard/` | `/meetings/dashboard` | indicateurs du mois, 14 prochains jours, mini-calendrier, 7 derniers jours, top projets, temps de parole, taux d'exécution | Migré | `MeetingDashboardView.build_context` partagé (page historique rendue, testé), Vitest, recette API |
+| `/meetings/<id>/` (fiche) | `/meetings/:id` | en-tête, indicateurs (participants, actions, pièces jointes, sprint), modifier, supprimer | Migré | tests lecture / écriture / 404 inter-tenant, recette mobile + sombre |
+| ″ — ordre du jour | onglet Notes & ordre du jour | ajouter, modifier (notes), statut rapide, supprimer, réordonner (glisser-déposer + boutons clavier) | Migré | tests pont `MeetingAgendaItem*`, Vitest (ajout / réordonnancement) |
+| ″ — notes, points bloquants, décisions texte | onglet Notes | affichage HTML nettoyé (`safe_html`) | Migré (édition riche : voir réserve) | tests lecture ; édition via formulaire (textarea, pas d'éditeur riche) |
+| ″ — participants | onglet Participants | RSVP (accepte / peut-être / décline), « je confirme ma présence », pointage par l'organisateur (droit calculé par Django), externes, statistiques | Migré | tests droits de pointage, Vitest RSVP / présences |
+| ″ — actions de suivi | onglet Actions | ajout (titre, priorité, échéance, responsable du workspace), conversion en tâche (RBAC `task.create` ou responsable du projet), lien tâche | Migré | tests (bug historique « Action invalide » corrigé, RBAC conversion), Vitest |
+| ″ — revue des projets | onglet Tour de table | formset `MeetingProjectReview` (ajout, édition, suppression) | Migré | test formset, Vitest |
+| ″ — décisions | onglet Décisions + `/meetings/decisions` | registre filtrable (statut, catégorie) | Migré | tests, Vitest |
+| ″ — pièces jointes | indicateur | l'ancienne interface n'affiche que le compteur (aucune vue d'ajout ou de consultation de `MeetingAttachment`) | Migré (parité : compteur) | — |
+| ″ — IA réunion | boutons Analyser par IA / Résumé IA | `MeetingAIProcessView`, `MeetingMinutesAISummaryView`, quota IA partagé avec l'ancienne interface | Migré | tests throttle + heuristiques (`AI_BACKEND=none`), recette (heuristique) |
+| ″ — compte rendu | boutons Word / PDF / Envoyer | téléchargement sans quitter React (échec → message, plus de bascule vers l'ancienne page), envoi via Celery uniquement (option externes) | À valider | tests Vitest `download.test.tsx`, tests Celery ; génération Word/PDF non exécutable en local (python-docx / WeasyPrint absents) → à vérifier en préproduction Docker |
+| ″ — historique | pied de fiche | créée / mise à jour par, lien série | Migré | tests lecture |
+| `recorder_widget.html` | panneau « Enregistrement & CR IA » (toujours monté sous les onglets) | consentement obligatoire (capture **et** import), permission micro + erreurs, démarrer / pause / reprendre / arrêter, chronomètre, niveau audio, tranches de 5 s, sauvegarde locale IndexedDB (reprise après coupure), avertissement avant de quitter, libération du micro | À valider | Vitest (refus micro, capture, pause / reprise, envoi, onglets sans arrêt de la capture) ; recette : consentement et refus micro vérifiés — **capture réelle à valider sur un poste avec micro** (le navigateur de recette bloque le micro) |
+| ″ — import audio | bouton Importer un audio | type, taille (≤ `MAX_RECORDING_UPLOAD_MB` = 600 Mo), progression, nouvel essai, même endpoint et même format | Migré | Vitest (fichier trop gros / non audio), tests upload + throttle + 404 inter-tenant, recette (import WAV réel) |
+| `recording_status_fragment.html` | suivi « Traitement en cours » | étapes Upload → Transcription → Voix → Mapping → Synthèse, polling, erreurs, relancer, supprimer | Migré | tests statut, Vitest `recording-progress.test.tsx`, recette (échec affiché, suppression, panneau retiré) |
+| `recordings_list.html` | onglet Enregistrements | liste, liens, suppression | Migré | tests, recette |
+| `/meetings/<m>/recordings/<r>/speakers/` | `/meetings/:id/recordings/:rid` (Identifier les voix) | extraits audio, suggestions IA, association aux participants du workspace, confirmation (bloquée si associations non enregistrées) | Migré | tests mapping (participant d'un autre tenant refusé), Vitest |
+| `/meetings/<m>/recordings/<r>/summary/` | même page | transcription horodatée, résumé, décisions / actions / suggestions à valider (droits RBAC), conversion en tâches / projet, régénérer (suivi automatique), envoyer par e-mail (Celery), Word / PDF, lecteur audio complet | À valider | tests extractions + RBAC + envoi asynchrone ; lecteur : requêtes `Range` (206) pour Safari / iOS et le déplacement (test + recette) ; transcription AssemblyAI et synthèse DeepSeek / Claude / Ollama réelles non déclenchées (aucun appel payant en test) → à valider en préproduction |
+| `/meetings/series/…` | `/meetings/series`, `/meetings/series/:id` | liste, création, modification, suppression, occurrences, régénération 60 jours | Migré | tests (création via pont corrigée), Vitest |
+
+**Sécurité vérifiée (module Réunions)** : formulaires réunion / série / revue limités au workspace courant (fuite inter-tenant corrigée, refus si aucun workspace), réunions et enregistrements d'un autre workspace → 404, fichiers audio servis après contrôle d'accès (session + workspace, ou jeton HMAC), quota IA (`DEVFLOW_AI_RATE_LIMIT`) appliqué à l'upload et partagé avec les routes historiques, plus aucun envoi d'e-mail synchrone, aucune clé IA dans le frontend (appels uniquement côté Django), micro libéré à l'arrêt et au démontage, envois dupliqués empêchés pendant un upload.
+
+**Réserves (décisions produit)** : pas de renommage libre d'une voix externe (règle métier `confirm_all_mappings`, identique à l'ancienne interface) ; champ `notes` sans éditeur riche (TinyMCE absent du frontend, concerne aussi tâches et projets) ; les e-mails de rappel pointent toujours vers les URL historiques (convention plateforme).
+
+### 2.3 Matrice de parité globale (pages Django → React, 09/11/2026)
+
+| Zone | Page(s) React | Statut |
+|---|---|---|
+| Connexion / session | `/login` | Migré (inscription, mot de passe oublié : pages allauth historiques) |
+| Tableau de bord, Ma journée | `/`, `/my-day` | À valider (parité non revue action par action) |
+| Workspaces, paramètres, identité | `/workspaces/*`, `/branding`, `/m/workspace-*` | À valider |
+| Projets — liste, formulaire | `/projects`, `/projects/new`, `/projects/:id/edit` | À valider |
+| Projets — fiche détaillée complète (onglets, KPI, documents, facturation, IA financière) | `/projects/:id` (fiche simplifiée) | **Partiel** — chantier préparé, non intégré |
+| Projets — Genesis, propositions IA, import documentaire IA, copilote | — (`/m/ai-proposal` en lecture, `/m/project-import` générique) | **Non migré** — chantier préparé, non intégré |
+| Tâches, checklists, dépendances, labels | `/tasks/*` | À valider |
+| Équipes, membres | `/teams/*` | À valider |
+| Timesheets | `/timesheets/*` | À valider |
+| Messagerie, notifications | `/messenger`, `/notifications/*` | À valider |
+| Réunions & enregistrements | `/meetings/*` | Migré, avec réserves §2.2 |
+| Sprints, backlog, roadmaps, jalons, OKR, risques, finance, factures, méthodologies | `/m/<module>` (pages génériques) | **Partiel** — CRUD générique ; board de sprint, `shift_dates`, cockpit financier IA, allocation IA, lignes / paiements / génération de factures, sous-actions de méthodologie non migrés |
+| Chat IA (SSE) | — | **Non migré** |
 
 ### 2.1 Audit Timesheets (complément du 04/11/2026)
 
@@ -154,6 +203,12 @@ npm run test && npm run lint && npm run typecheck
   - Tests : Django `tests_legacy_rights` (12 — 9 échouent sans les garde-fous), `tests_api_resources` (11) ; 142 tests ciblés OK ; suite complète **34 échecs** (référence 37 : les 3 `tests_rbac_e2e` corrigés ; les 34 restants analysés un par un — fixtures `setUpClass` (`UserProfile` unique, `Workspace.owner` NOT NULL), routage IA `FallbackChainProvider`, sérialisation `ProjectBudget` dans `budget_snapshots` — sans lien avec ces modifications). Vitest 42 ; tsc, ESLint, build OK.
   - Recette navigateur (daphne + SQLite jetable) : modules génériques (liste, fiche, modification, création), checklist créée / élément coché depuis la fiche tâche, espace Scrum, budget + recalcul, dialogue de transfert (candidats membres), Ma journée en mobile sombre.
 
+- **09/11/2026 — Correction de la régression Réunions** : la fiche React `/app/m/meeting/<id>` (page générique) n'offrait ni enregistrement, ni transcription, ni compte rendu IA. Module migré en pages dédiées (voir §2.2), sans moteur ni pipeline recréés (vues, services `recording/*`, tâches Celery et endpoint d'upload existants réutilisés ; `/m/meeting*` redirige vers les nouvelles pages).
+  - Corrections serveur : fuite inter-tenant des formulaires réunion / série / revue (projets, sprints et personnes de tous les workspaces proposés et acceptés), RBAC sur les conversions en tâche / projet, quota IA sur l'upload audio et partagé avec les routes historiques, envois de compte rendu uniquement via Celery, lecture audio par plages (206, Safari / iOS), filtre `?project` non numérique (500 → liste vide), bugs historiques (ajout rapide d'action toujours refusé, suggestion IA → tâche jamais créée, création de série en 400).
+  - Pont : un message Django laissé par une requête précédente (ex. export historique en échec) faisait échouer l'action suivante en 400 (constaté en recette sur une suppression) → le pont ignore désormais les messages antérieurs (`stale_message_count` / `new_messages`, test de non-régression vérifié par mutation).
+  - Tests : `tests_api_meetings` 32 ; 154 tests des suites du pont OK ; suite complète 361 tests, **34 échecs = référence historique** (aucun dans les réunions ; 37 à l'origine, 3 corrigés en phase 5). Vitest 61 (dont `meetings`, `download`, `recording-progress`), tsc, ESLint, build OK.
+  - Recette navigateur (daphne + SQLite jetable, clés IA et AssemblyAI vides) : consentement obligatoire, refus du micro expliqué, import d'un WAV réel (upload, pipeline, échec affiché, relance / suppression), lecteur audio (206), exports en échec sans quitter React, IA heuristique, envoi via Celery, isolation (réunion d'un autre tenant → 404), mobile 375 px sombre sans débordement (onglet actif ramené dans la barre).
+
 ### 5.1 Backlog obligatoire avant la bascule (phase 7)
 Ces fonctionnalités existent dans l'ancienne interface et **doivent être migrées avant la bascule définitive** — toutes migrées en phase 5, **parité à valider par l'équipe** :
 1. Paramètres du workspace et transfert de propriété.
@@ -167,7 +222,6 @@ Ces fonctionnalités existent dans l'ancienne interface et **doivent être migr�
 ### 5.2 Restent servis par l'ancienne interface (à migrer avant bascule)
 - Cockpit financier IA (`/workspaces/<id>/financial-ai/portfolio/`) et allocation IA des ressources.
 - Factures : édition AJAX des lignes, paiements, génération depuis un projet (formulaire dédié).
-- Réunions : tableau de bord, ordre du jour, présences / RSVP, conversion d'actions en tâches, enregistrements audio et transcription IA.
 - IA : application / validation des propositions, Genesis, chat IA (SSE), copilote projet.
 - Méthodologies : ajout de statuts, rôles et KPI ; board de sprint ; décalage de dates de roadmap (`shift_dates`, FBV).
 - Les fiches génériques affichent les champs du modèle : les pages Django riches (onglets, graphiques) restent accessibles par « Ouvrir dans l'interface historique ».

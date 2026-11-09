@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 
 from django.contrib import messages
@@ -50,6 +51,10 @@ class SpeakerMappingView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
     template_name = "project/meeting/recording_speakers.html"
 
     def get(self, request, meeting_pk, recording_pk):
+        return render(request, self.template_name, self.build_context(request, recording_pk))
+
+    def build_context(self, request, recording_pk):
+        """Contexte du mapping voix (partagé avec l'API React ``meetings/recordings/<pk>/``)."""
         recording = self._get_recording(request, recording_pk)
         speakers = recording.speakers.select_related("mapped_participant").order_by("speaker_label")
         # Liste des participants du meeting
@@ -92,7 +97,7 @@ class SpeakerMappingView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             else:
                 sp.sample_token = ""
         all_mapped = all(sp.mapped_participant_id for sp in speakers) and len(speakers) > 0
-        return render(request, self.template_name, {
+        return {
             "meeting": recording.meeting,
             "recording": recording,
             "speakers": speakers,
@@ -101,7 +106,7 @@ class SpeakerMappingView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             "section": "meetings",
             "page_title": "Identifier les voix",
             "breadcrumb": "Collaboration · Réunions · Mapping voix",
-        })
+        }
 
     def _get_recording(self, request, recording_pk):
         ws_ids = get_user_workspace_ids(request.user)
@@ -161,6 +166,14 @@ class ConfirmSpeakersView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
         recording = get_object_or_404(
             dm.MeetingRecording, pk=recording_pk, workspace_id__in=ws_ids,
         )
+        # Quota IA partagé avec l'API (synthèse payante lancée ci-dessous).
+        from project.api.throttles import AI_RATE_LIMIT_MESSAGE, ai_rate_limited
+        if ai_rate_limited(request):
+            messages.error(request, AI_RATE_LIMIT_MESSAGE)
+            return redirect(
+                "recording_speakers",
+                meeting_pk=recording.meeting_id, recording_pk=recording.pk,
+            )
         try:
             confirm_all_mappings(recording=recording, confirmed_by=request.user)
         except ValueError as exc:
@@ -194,6 +207,10 @@ class RecordingSummaryView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
     template_name = "project/meeting/recording_summary.html"
 
     def get(self, request, meeting_pk, recording_pk):
+        return render(request, self.template_name, self.build_context(request, recording_pk))
+
+    def build_context(self, request, recording_pk):
+        """Contexte du compte-rendu (partagé avec l'API React ``meetings/recordings/<pk>/``)."""
         ws_ids = get_user_workspace_ids(request.user)
         recording = get_object_or_404(
             dm.MeetingRecording.objects.select_related("meeting", "workspace"),
@@ -212,7 +229,7 @@ class RecordingSummaryView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
         mentions = [e for e in extractions if e.kind in (
             "project_mention", "sprint_mention", "milestone_mention", "task_mention",
         )]
-        return render(request, self.template_name, {
+        return {
             "meeting": recording.meeting,
             "recording": recording,
             "decisions": decisions,
@@ -226,7 +243,7 @@ class RecordingSummaryView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             "section": "meetings",
             "page_title": "Compte-rendu IA",
             "breadcrumb": "Collaboration · Réunions · Compte-rendu",
-        })
+        }
 
 
 class RecordingStatusFragmentView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
@@ -452,6 +469,12 @@ class RecordingRegenerateSummaryView(WorkspaceSecurityMixin, DevflowBaseMixin, V
             messages.warning(request, "Le pipeline est encore en cours — patientez.")
             return redirect("recording_summary",
                             meeting_pk=recording.meeting_id, recording_pk=recording.pk)
+        # Quota IA partagé avec l'API (AIActionRateThrottle).
+        from project.api.throttles import AI_RATE_LIMIT_MESSAGE, ai_rate_limited
+        if ai_rate_limited(request):
+            messages.error(request, AI_RATE_LIMIT_MESSAGE)
+            return redirect("recording_summary",
+                            meeting_pk=recording.meeting_id, recording_pk=recording.pk)
         # Supprime les anciennes extractions non acceptées
         recording.ai_extractions.filter(is_accepted=False).delete()
         try:
@@ -537,7 +560,7 @@ def stream_speaker_sample(request, meeting_pk, recording_pk, speaker_label):
         raise Http404("Extrait audio non disponible.")
     return _stream_file_response(
         speaker.sample_audio, content_type="audio/mpeg",
-        filename=f"{speaker_label}.mp3",
+        filename=f"{speaker_label}.mp3", request=request,
     )
 
 
@@ -554,7 +577,7 @@ def stream_recording_audio(request, recording_pk):
     content_type = rec.mime_type or "audio/webm"
     return _stream_file_response(
         rec.audio_file, content_type=content_type,
-        filename=os.path.basename(rec.audio_file.name or "recording"),
+        filename=os.path.basename(rec.audio_file.name or "recording"), request=request,
     )
 
 
@@ -573,19 +596,47 @@ def _verify_audio_access(request, recording):
     return recording.workspace_id in ws_ids
 
 
-def _stream_file_response(file_field, *, content_type, filename):
+_RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)$")
+
+
+def _stream_file_response(file_field, *, content_type, filename, request=None):
+    """Flux du fichier ; honore ``Range: bytes=`` (206) — requis par Safari/iOS et le déplacement dans l'audio."""
     try:
         file_field.open("rb")
     except Exception as exc:
         logger.exception("Cannot open audio: %s", exc)
         raise Http404("Fichier inaccessible.")
 
-    def _iter():
+    status, start, length, size = 200, 0, None, None
+    match = _RANGE_RE.match((request.headers.get("Range", "") if request is not None else "").strip())
+    if match and any(match.groups()):
         try:
-            while True:
-                chunk = file_field.read(64 * 1024)
+            size = file_field.size
+        except Exception:
+            size = None
+        if size:
+            first, last = match.groups()
+            if first:
+                start, end = int(first), min(int(last), size - 1) if last else size - 1
+            else:  # suffixe : les N derniers octets
+                start, end = max(size - int(last), 0), size - 1
+            if start > end:
+                file_field.close()
+                response = HttpResponse(status=416)
+                response["Content-Range"] = f"bytes */{size}"
+                return response
+            file_field.seek(start)
+            status, length = 206, end - start + 1
+
+    def _iter():
+        remaining = length
+        try:
+            while remaining is None or remaining > 0:
+                chunk = file_field.read(64 * 1024 if remaining is None else min(64 * 1024, remaining))
                 if not chunk:
                     break
+                if remaining is not None:
+                    remaining -= len(chunk)
                 yield chunk
         finally:
             try:
@@ -593,7 +644,10 @@ def _stream_file_response(file_field, *, content_type, filename):
             except Exception:
                 pass
 
-    response = StreamingHttpResponse(_iter(), content_type=content_type)
+    response = StreamingHttpResponse(_iter(), content_type=content_type, status=status)
+    if status == 206:
+        response["Content-Range"] = f"bytes {start}-{start + length - 1}/{size}"
+        response["Content-Length"] = str(length)
     response["Content-Disposition"] = f'inline; filename="{filename}"'
     response["Cache-Control"] = "private, max-age=3600"
     response["Accept-Ranges"] = "bytes"
@@ -710,37 +764,37 @@ class RecordingSendEmailView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
         recording = _get_recording_for_user(request, recording_pk)
 
         # Optionnel : champ extra_emails (séparés par virgule ou newline)
-        extra_raw = (request.POST.get("extra_emails") or "").strip()
-        extra_emails = []
-        if extra_raw:
-            import re
-            extra_emails = [
-                m for m in re.findall(r"[\w\.\-+]+@[\w\.\-]+\.\w+", extra_raw)
-            ]
+        from project.services.recording.export import _EMAIL_RE, _collect_recipients
 
-        try:
-            from project.services.recording.export import send_recording_email
-            sent = send_recording_email(
-                recording,
-                include_external=True,
-                extra_emails=extra_emails or None,
-            )
-        except Exception as exc:
-            logger.exception("Failed to send recording email: %s", exc)
-            messages.error(request, f"Échec de l'envoi : {exc}")
-            return redirect("recording_summary",
-                            meeting_pk=meeting_pk, recording_pk=recording_pk)
-
-        if sent > 0:
-            messages.success(
-                request,
-                f"Compte-rendu envoyé à {sent} destinataire(s).",
-            )
-        else:
+        extra_emails = _EMAIL_RE.findall((request.POST.get("extra_emails") or "").strip())
+        recipients = _collect_recipients(
+            recording, include_external=True, extra_emails=extra_emails,
+        )
+        if not recipients:
             messages.warning(
                 request,
                 "Aucun destinataire — vérifiez les emails des participants "
                 "ou ajoutez des adresses externes.",
             )
+            return redirect("recording_summary",
+                            meeting_pk=meeting_pk, recording_pk=recording_pk)
+
+        # AGENTS.md n°6 : envoi par Celery (plus d'envoi SMTP synchrone ici).
+        try:
+            from project.tasks import send_recording_minutes_email_async
+            send_recording_minutes_email_async.delay(recording.pk, extra_emails, True)
+        except Exception as exc:
+            logger.exception("send_recording_minutes_email_async dispatch failed: %s", exc)
+            messages.error(
+                request,
+                "Le service d'envoi est indisponible, réessayez dans quelques instants.",
+            )
+            return redirect("recording_summary",
+                            meeting_pk=meeting_pk, recording_pk=recording_pk)
+
+        messages.success(
+            request,
+            f"Envoi du compte-rendu lancé à {len(recipients)} destinataire(s).",
+        )
         return redirect("recording_summary",
                         meeting_pk=meeting_pk, recording_pk=recording_pk)

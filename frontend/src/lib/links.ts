@@ -21,7 +21,29 @@ const RULES: [RegExp, (m: RegExpMatchArray, query: URLSearchParams) => string][]
   [/^\/my-day\/?$/, () => "/my-day"],
   [/^\/billing\/branding\/?$/, () => "/branding"],
   [/^\/team-memberships\/?$/, () => "/members"],
+  // --- meetings --- (avant le pont générique : pages réunions dédiées)
+  [/^\/meetings\/?$/, (_m, q) => withQuery("/meetings", q, ["project", "type", "status", "q", "page"])],
+  [/^\/meetings\/create\/?$/, (_m, q) => withQuery("/meetings/new", q, ["project"])],
+  [/^\/meetings\/dashboard\/?$/, () => "/meetings/dashboard"],
+  [/^\/meetings\/decisions\/?$/, (_m, q) => withQuery("/meetings/decisions", q, ["status", "category"])],
+  [/^\/meetings\/series\/?$/, () => "/meetings/series"],
+  [/^\/meetings\/series\/create\/?$/, () => "/meetings/series/new"],
+  [/^\/meetings\/series\/(\d+)\/?$/, (m) => `/meetings/series/${m[1]}`],
+  [/^\/meetings\/series\/(\d+)\/update\/?$/, (m) => `/meetings/series/${m[1]}/edit`],
+  [/^\/meetings\/(\d+)\/?$/, (m) => `/meetings/${m[1]}`],
+  [/^\/meetings\/(\d+)\/update\/?$/, (m) => `/meetings/${m[1]}/edit`],
+  [/^\/meetings\/(\d+)\/recordings\/?$/, (m) => `/meetings/${m[1]}?tab=recordings`],
+  [/^\/meetings\/(\d+)\/recordings\/(\d+)\/(?:summary|speakers)\/?$/, (m) => `/meetings/${m[1]}/recordings/${m[2]}`],
+  // --- fin meetings ---
 ];
+
+/** Recopie les paramètres GET utiles (`?project=12`) dans la route React. */
+function withQuery(path: string, query: URLSearchParams, keys: string[]): string {
+  const kept = new URLSearchParams();
+  keys.forEach((k) => { const v = query.get(k); if (v) kept.set(k, v); });
+  const qs = kept.toString();
+  return qs ? `${path}?${qs}` : path;
+}
 
 export function resolveLegacyLink(url: string | null | undefined): ResolvedLink | null {
   if (!url || !url.startsWith("/") || url.startsWith("//") || url.startsWith("/\\")) return null;

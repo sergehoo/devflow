@@ -1022,3 +1022,27 @@ def send_task_pm_update_email_task(self, task_id, pm_id, changes, actor_name="")
         logger.warning("PM update email failed for task %s: %s", task_id, exc)
         raise self.retry(exc=exc)
     return {"ok": True}
+
+
+# --- meetings (frontend React) ---
+@shared_task(bind=True, max_retries=2, default_retry_delay=120)
+def send_recording_minutes_email_async(self, recording_id: int, extra_emails=None,
+                                       include_external: bool = True):
+    """Envoi du compte-rendu d'un enregistrement (Word + résumé) hors requête HTTP."""
+    from project.services.recording.export import send_recording_email
+
+    try:
+        recording = dm.MeetingRecording.objects.select_related("meeting", "workspace").get(pk=recording_id)
+        sent = send_recording_email(
+            recording, include_external=include_external, extra_emails=extra_emails or None,
+        )
+        return {"ok": True, "recording_id": recording_id, "recipients": sent}
+    except dm.MeetingRecording.DoesNotExist:
+        return {"ok": False, "reason": "recording not found"}
+    except Exception as exc:
+        logger.exception("send_recording_minutes_email failed: %s", exc)
+        try:
+            self.retry(exc=exc)
+        except Exception:
+            pass
+        return {"ok": False, "reason": str(exc)}

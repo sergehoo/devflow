@@ -287,6 +287,9 @@ def _run(view_class, request, kwargs):
     django_request.user = request.user
     view = view_class()
     view.setup(django_request, **kwargs)
+    from project.api.form_bridge import new_messages, stale_message_count
+
+    stale = stale_message_count(django_request)
     try:
         response = view.dispatch(django_request, **kwargs)
     except (Http404, ObjectDoesNotExist):
@@ -297,8 +300,7 @@ def _run(view_class, request, kwargs):
         raise PermissionDenied()
     if response.status_code in (301, 302):
         # Les vues refusent souvent par message + redirection.
-        from django.contrib.messages import get_messages
-        detail = " ".join(str(m) for m in get_messages(django_request)) or "Accès non autorisé."
+        detail = " ".join(str(m) for m in new_messages(django_request, stale)) or "Accès non autorisé."
         raise PermissionDenied(detail)
     return view, getattr(response, "context_data", None) or {}
 

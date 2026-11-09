@@ -33,6 +33,49 @@ from project.views import (
 logger = logging.getLogger(__name__)
 
 
+class _RequireCurrentWorkspaceMixin:
+    """
+    SECURITY : création impossible sans workspace courant (compte fraîchement
+    inscrit, sans profil ni membership) → 404 au lieu d'un formulaire.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated and self.get_current_workspace() is None:
+            from django.http import Http404
+
+            raise Http404("Aucun workspace actif.")
+        return super().dispatch(request, *args, **kwargs)
+
+
+def can_convert_to_task(user, workspace, project) -> bool:
+    """
+    SECURITY — conversion d'une action / suggestion IA en tâche : ``task.create``
+    (RBAC) ou responsable du projet cible (owner / product manager, déjà reconnus
+    par ``task_permissions`` et ``task_assignment.can_reassign``).
+    """
+    from project.services.rbac import RBACService
+
+    if user is None or not user.is_authenticated:
+        return False
+    if RBACService.can(user, "task.create", workspace=workspace):
+        return True
+    return bool(project and user.pk in (project.owner_id, project.product_manager_id))
+
+
+def can_convert_to_project(user, workspace) -> bool:
+    """SECURITY — création d'un projet depuis une suggestion IA : ``project.create`` (RBAC)."""
+    from project.services.rbac import RBACService
+
+    return RBACService.can(user, "project.create", workspace=workspace)
+
+
+TASK_CONVERT_DENIED = (
+    "Droits insuffisants : la création de tâches est réservée aux chefs de projet "
+    "et aux responsables du projet."
+)
+PROJECT_CONVERT_DENIED = "Droits insuffisants : vous ne pouvez pas créer de projet dans ce workspace."
+
+
 class ProjectMeetingListView(DevflowListView):
     model = dm.ProjectMeeting
     template_name = "project/meeting/list.html"
@@ -87,7 +130,7 @@ class ProjectMeetingListView(DevflowListView):
         meeting_type = self.request.GET.get("type")
         status_q = self.request.GET.get("status")
         if project_id:
-            qs = qs.filter(project_id=project_id)
+            qs = qs.filter(project_id=project_id) if project_id.isdigit() else qs.none()
         if meeting_type:
             qs = qs.filter(meeting_type=meeting_type)
         if status_q:
@@ -201,7 +244,7 @@ class ProjectMeetingDetailView(DevflowDetailView):
         return ctx
 
 
-class ProjectMeetingCreateView(DevflowCreateView):
+class ProjectMeetingCreateView(_RequireCurrentWorkspaceMixin, DevflowCreateView):
     model = dm.ProjectMeeting
     form_class = ProjectMeetingForm
     template_name = "project/meeting/form.html"
@@ -289,7 +332,15 @@ class MeetingActionItemCreateView(LoginRequiredMixin, View):
             pk=meeting_pk,
             workspace_id__in=user_workspace_ids,
         )
-        form = MeetingActionItemForm(request.POST)
+        # Le formulaire rapide de la fiche n'envoie pas ``status`` (champ
+        # requis) : statut par défaut « Ouverte » comme le modèle.
+        data = request.POST.copy()
+        if not data.get("status"):
+            data["status"] = dm.MeetingActionItem.Status.OPEN
+        form = MeetingActionItemForm(data)
+        # SECURITY : responsable limité aux membres du workspace de la réunion.
+        from project.utils.workspaces import users_in_workspaces
+        form.fields["owner"].queryset = users_in_workspaces([meeting.workspace_id])
         if not form.is_valid():
             messages.error(request, "Action invalide.")
             return redirect("meeting_detail", pk=meeting.pk)
@@ -320,6 +371,9 @@ class MeetingActionItemConvertToTaskView(LoginRequiredMixin, View):
             return redirect("meeting_detail", pk=item.meeting_id)
 
         meeting = item.meeting
+        if not can_convert_to_task(request.user, meeting.workspace, meeting.project):
+            messages.error(request, TASK_CONVERT_DENIED)
+            return redirect("meeting_detail", pk=meeting.pk)
         try:
             task = dm.Task.objects.create(
                 workspace=meeting.workspace,
@@ -366,6 +420,13 @@ class MeetingAIProcessView(LoginRequiredMixin, View):
             pk=meeting_pk,
             workspace_id__in=user_workspace_ids,
         )
+        # Quota IA partagé avec l'API (AIActionRateThrottle).
+        from project.api.throttles import AI_RATE_LIMIT_MESSAGE, ai_rate_limited
+        if ai_rate_limited(request):
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return JsonResponse({"ok": False, "detail": AI_RATE_LIMIT_MESSAGE}, status=429)
+            messages.error(request, AI_RATE_LIMIT_MESSAGE)
+            return redirect("meeting_detail", pk=meeting.pk)
         try:
             result = MeetingIntelligenceService.full_process(meeting, actor=request.user)
         except Exception as exc:
@@ -417,7 +478,7 @@ class MeetingSeriesListView(DevflowListView):
     search_placeholder = "Rechercher une série…"
 
 
-class MeetingSeriesCreateView(DevflowCreateView):
+class MeetingSeriesCreateView(_RequireCurrentWorkspaceMixin, DevflowCreateView):
     model = dm.MeetingSeries
     form_class = MeetingSeriesForm
     template_name = "project/meeting/series_form.html"
@@ -431,6 +492,8 @@ class MeetingSeriesCreateView(DevflowCreateView):
         series.created_by = self.request.user
         series.save()
         form.save_m2m()
+        self.object = series  # pont React (forms/meeting-series) : identifiant créé
+
         try:
             created = MeetingService.generate_occurrences(series, horizon_days=60)
             messages.success(
@@ -533,6 +596,11 @@ class MeetingMinutesAISummaryView(WorkspaceSecurityMixin, DevflowBaseMixin, View
         ).filter(pk=pk).first()
         if meeting is None:
             raise Http404("Réunion introuvable.")
+        # Quota IA partagé avec l'API (AIActionRateThrottle).
+        from project.api.throttles import AI_RATE_LIMIT_MESSAGE, ai_rate_limited
+        if ai_rate_limited(request):
+            messages.error(request, AI_RATE_LIMIT_MESSAGE)
+            return redirect("meeting_detail", pk=meeting.pk)
         text = MeetingService.generate_ai_summary(meeting)
         if text:
             messages.success(request, "Résumé IA généré.")
@@ -585,6 +653,10 @@ class MeetingDashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
     template_name = "project/meeting/dashboard.html"
 
     def get(self, request):
+        return render(request, self.template_name, self.build_context(request))
+
+    def build_context(self, request):
+        """Contexte du tableau de bord (partagé avec l'API React ``meetings/dashboard/``)."""
         from django.db.models import Count, Q
         from datetime import datetime, timedelta
         from calendar import monthrange
@@ -750,7 +822,7 @@ class MeetingDashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
                 "minutes": round((row["total_seconds"] or 0) / 60, 1),
             })
 
-        return render(request, self.template_name, {
+        return {
             "upcoming_meetings": upcoming,
             "recent_meetings": recent,
             "month_stats": stats,
@@ -767,7 +839,7 @@ class MeetingDashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             "section": "meetings",
             "page_title": "Tableau de bord réunions",
             "breadcrumb": "Collaboration · Réunions · Vue d'ensemble",
-        })
+        }
 
 
 # =========================================================================
@@ -800,7 +872,10 @@ class MeetingDecisionListView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
     template_name = "project/meeting/decisions_list.html"
 
     def get(self, request):
-        from django.shortcuts import render
+        return render(request, self.template_name, self.build_context(request))
+
+    def build_context(self, request):
+        """Contexte du registre (partagé avec l'API React ``meetings/decisions/``)."""
         ws = self.get_current_workspace()
         qs = dm.MeetingDecision.objects.filter(workspace=ws, is_archived=False) \
             .select_related("meeting", "decided_by", "executed_by") \
@@ -811,7 +886,7 @@ class MeetingDecisionListView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             qs = qs.filter(status=status_filter)
         if category_filter:
             qs = qs.filter(category=category_filter)
-        return render(request, self.template_name, {
+        return {
             "decisions": qs[:200],
             "status_choices": dm.MeetingDecision.Status.choices,
             "category_choices": dm.MeetingDecision.Category.choices,
@@ -820,7 +895,7 @@ class MeetingDecisionListView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
             "section": "meetings",
             "page_title": "Registre des décisions",
             "breadcrumb": "Collaboration · Réunions · Décisions",
-        })
+        }
 
 
 class RecordingConvertSuggestionView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
@@ -838,6 +913,21 @@ class RecordingConvertSuggestionView(WorkspaceSecurityMixin, DevflowBaseMixin, V
             dm.MeetingRecording, pk=recording_pk, workspace_id__in=ws_ids,
         )
         ext_ids = request.POST.getlist("accept_suggestion")
+        # SECURITY : droits vérifiés AVANT toute création (tout ou rien).
+        Kind = dm.RecordingAIExtraction.Kind
+        kinds = set(
+            recording.ai_extractions.filter(pk__in=[i for i in ext_ids if str(i).isdigit()], is_accepted=False)
+            .values_list("kind", flat=True)
+        )
+        if Kind.PROJECT_SUGGESTION in kinds and not can_convert_to_project(request.user, recording.workspace):
+            messages.error(request, PROJECT_CONVERT_DENIED)
+            return redirect("recording_summary", meeting_pk=recording.meeting_id, recording_pk=recording.pk)
+        if Kind.TASK_SUGGESTION in kinds:
+            target = recording.meeting.project or recording.meeting.projects.first()
+            # Sans projet cible, rien n'est créé (suggestion seulement acceptée).
+            if target is not None and not can_convert_to_task(request.user, recording.workspace, target):
+                messages.error(request, TASK_CONVERT_DENIED)
+                return redirect("recording_summary", meeting_pk=recording.meeting_id, recording_pk=recording.pk)
         created_projects = 0
         created_tasks = 0
         skipped = 0
@@ -911,7 +1001,8 @@ class RecordingConvertSuggestionView(WorkspaceSecurityMixin, DevflowBaseMixin, V
                         "description": ext.description or "",
                         "priority": priority,
                         "assignee": assignee,
-                        "created_by": request.user,
+                        # Task n'a pas de ``created_by`` (TypeError → aucune tâche créée) : rapporteur.
+                        "reporter": request.user,
                     }
                     # Sprint éventuel (du meeting)
                     if recording.meeting.sprint_id:
@@ -968,17 +1059,13 @@ class MeetingSendMinutesView(WorkspaceSecurityMixin, DevflowBaseMixin, View):
                 request, "Envoi du compte-rendu lancé en arrière-plan.",
             )
         except Exception:
-            # Fallback synchrone si Celery indispo
-            try:
-                sent = MeetingService.send_minutes_email(
-                    meeting, include_external=include_external,
-                )
-                messages.success(
-                    request, f"Compte-rendu envoyé à {sent} destinataire(s).",
-                )
-            except Exception as exc:
-                logger.exception("send_minutes_email sync failed: %s", exc)
-                messages.error(request, f"Envoi échoué : {exc}")
+            # AGENTS.md n°6 : jamais d'envoi SMTP synchrone dans la requête HTTP
+            # (l'ancien repli bloquait la vue sur le serveur SMTP).
+            logger.exception("send_meeting_minutes_email_async dispatch failed")
+            messages.error(
+                request,
+                "Le service d'envoi est indisponible, réessayez dans quelques instants.",
+            )
         return redirect("meeting_detail", pk=meeting.pk)
 
 

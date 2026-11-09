@@ -71,13 +71,16 @@ export const NAVIGATION: NavGroup[] = [
       { label: "Clients", to: "/m/invoice-client", visible: anyOf("billing.view") },
     ],
   },
+  // --- meetings ---
   {
     label: "Réunions", icon: CalendarDays, items: [
-      { label: "Réunions", to: "/m/meeting" },
-      { label: "Séries récurrentes", to: "/m/meeting-series" },
-      { label: "Registre des décisions", to: "/m/meeting-decision" },
+      { label: "Vue d'ensemble", to: "/meetings/dashboard" },
+      { label: "Réunions", to: "/meetings" },
+      { label: "Séries récurrentes", to: "/meetings/series" },
+      { label: "Registre des décisions", to: "/meetings/decisions" },
     ],
   },
+  // --- fin meetings ---
   {
     label: "Paramètres", icon: Settings, items: [
       { label: "Workspaces", to: "/workspaces", visible: superuser },

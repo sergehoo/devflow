@@ -23,7 +23,7 @@ function ItemLink({ item, me, nested, collapsed }: { item: NavItem | NavGroup; m
   );
   if (item.to) {
     return (
-      <NavLink to={item.to} end={item.to === "/"} className={({ isActive }) => cn(itemClass(isActive), nested && "py-1.5 pl-10")}>
+      <NavLink to={item.to} end={item.to === "/" || item.to === "/meetings"} className={({ isActive }) => cn(itemClass(isActive), nested && "py-1.5 pl-10")}>
         {content}
       </NavLink>
     );

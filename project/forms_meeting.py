@@ -8,6 +8,13 @@ from project import models as dm
 from project.forms_budget import StyledModelForm
 
 
+def _empty_choices(form, names):
+    """SECURITY : vide les listes de choix multi-tenant quand aucun workspace n'est connu."""
+    for name in names:
+        if name in form.fields:
+            form.fields[name].queryset = form.fields[name].queryset.none()
+
+
 class ProjectMeetingForm(StyledModelForm):
     class Meta:
         model = dm.ProjectMeeting
@@ -51,10 +58,9 @@ class ProjectMeetingForm(StyledModelForm):
         }
 
     def __init__(self, *args, **kwargs):
-        # Compat avec DevflowCreateView qui passe ces kwargs
-        self.current_workspace = kwargs.pop("current_workspace", None)
-        self.allowed_workspaces = kwargs.pop("allowed_workspaces", None)
-        kwargs.pop("request", None)
+        # SECURITY : ``current_workspace`` / ``allowed_workspaces`` / ``request``
+        # sont consommés par ``StyledModelForm``. Les retirer ici remettait le
+        # workspace à None → projets, sprints et personnes de tous les tenants.
         super().__init__(*args, **kwargs)
 
         self.fields["scheduled_at"].input_formats = ["%Y-%m-%dT%H:%M"]
@@ -105,6 +111,11 @@ class ProjectMeetingForm(StyledModelForm):
                 self.fields["organizer"].queryset = users_in_workspaces(
                     [ws.pk]
                 ).order_by("first_name", "last_name", "username")
+        else:
+            # SECURITY : sans workspace courant, aucun choix (fail-closed) —
+            # sinon projets, sprints et personnes de tous les tenants.
+            _empty_choices(self, ("project", "projects", "sprint",
+                                  "internal_participants", "organizer"))
 
         # PR-MEET-3 : project devient optionnel (réunion comité multi-projets)
         if "project" in self.fields:
@@ -220,9 +231,7 @@ class MeetingSeriesForm(StyledModelForm):
         }
 
     def __init__(self, *args, **kwargs):
-        self.current_workspace = kwargs.pop("current_workspace", None)
-        self.allowed_workspaces = kwargs.pop("allowed_workspaces", None)
-        kwargs.pop("request", None)
+        # SECURITY : kwargs DevFlow consommés par StyledModelForm (cf. ProjectMeetingForm).
         super().__init__(*args, **kwargs)
 
         for f in ("start_date", "end_date"):
@@ -247,6 +256,9 @@ class MeetingSeriesForm(StyledModelForm):
                 self.fields["default_projects"].queryset = dm.Project.objects.filter(
                     workspace=ws, is_archived=False,
                 ).order_by("name")
+        else:
+            # SECURITY : fail-closed (cf. ProjectMeetingForm).
+            _empty_choices(self, ("default_projects", "default_participants", "organizer"))
 
         for f in ("description", "end_date", "weekday", "month_day",
                   "location", "meeting_link", "default_agenda",
@@ -307,9 +319,7 @@ class MeetingProjectReviewForm(StyledModelForm):
         }
 
     def __init__(self, *args, **kwargs):
-        self.current_workspace = kwargs.pop("current_workspace", None)
-        kwargs.pop("allowed_workspaces", None)
-        kwargs.pop("request", None)
+        # SECURITY : kwargs DevFlow consommés par StyledModelForm (cf. ProjectMeetingForm).
         super().__init__(*args, **kwargs)
 
         ws = self.current_workspace
@@ -327,6 +337,9 @@ class MeetingProjectReviewForm(StyledModelForm):
                     ).distinct().order_by("last_name", "first_name", "username")
                 )
                 self.fields["presented_by"].required = False
+        else:
+            # SECURITY : fail-closed (cf. ProjectMeetingForm).
+            _empty_choices(self, ("project", "presented_by"))
 
         for f in ("achievements", "blockers", "decisions", "actions_to_take",
                   "next_milestone", "next_milestone_date", "presented_by",

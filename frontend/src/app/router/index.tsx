@@ -99,6 +99,38 @@ export const router = createBrowserRouter(
             { path: "preferences", handle: { crumb: "Préférences" }, lazy: async () => ({ Component: (await import("@/features/notifications/PreferencesPage")).PreferencesPage }) },
           ],
         },
+        // --- meetings --- (réunions, séries, décisions, enregistrements ; anciennes pages génériques /m/meeting… redirigées)
+        {
+          path: "meetings",
+          handle: { crumb: "Réunions" },
+          children: [
+            { index: true, lazy: async () => ({ Component: (await import("@/features/meetings/MeetingsPage")).MeetingsPage }) },
+            { path: "new", handle: { crumb: "Nouvelle" }, lazy: async () => ({ Component: (await import("@/features/meetings/FormPages")).MeetingFormPage }) },
+            { path: "dashboard", handle: { crumb: "Vue d'ensemble" }, lazy: async () => ({ Component: (await import("@/features/meetings/DashboardPage")).MeetingDashboardPage }) },
+            { path: "decisions", handle: { crumb: "Décisions" }, lazy: async () => ({ Component: (await import("@/features/meetings/DecisionsPage")).DecisionsPage }) },
+            {
+              path: "series",
+              handle: { crumb: "Séries" },
+              children: [
+                { index: true, lazy: async () => ({ Component: (await import("@/features/meetings/SeriesPages")).SeriesListPage }) },
+                { path: "new", handle: { crumb: "Nouvelle" }, lazy: async () => ({ Component: (await import("@/features/meetings/FormPages")).SeriesFormPage }) },
+                { path: ":id", handle: { crumb: "Fiche" }, lazy: async () => ({ Component: (await import("@/features/meetings/SeriesPages")).SeriesDetailPage }) },
+                { path: ":id/edit", handle: { crumb: "Modifier" }, lazy: async () => ({ Component: (await import("@/features/meetings/FormPages")).SeriesFormPage }) },
+              ],
+            },
+            { path: ":id", handle: { crumb: "Fiche" }, lazy: async () => ({ Component: (await import("@/features/meetings/MeetingDetailPage")).MeetingDetailPage }) },
+            { path: ":id/edit", handle: { crumb: "Modifier" }, lazy: async () => ({ Component: (await import("@/features/meetings/FormPages")).MeetingFormPage }) },
+            { path: ":id/recordings/:recordingId", handle: { crumb: "Enregistrement" }, lazy: async () => ({ Component: (await import("@/features/meetings/RecordingPage")).RecordingPage }) },
+          ],
+        },
+        ...["m/meeting", "m/meeting-series", "m/meeting-decision"].map((path) => ({
+          path,
+          children: ["", "new", ":id", ":id/edit"].map((child) => ({
+            ...(child ? { path: child } : { index: true as const }),
+            lazy: async () => ({ Component: (await import("@/features/meetings/LegacyModuleRedirect")).LegacyModuleRedirect }),
+          })),
+        })),
+        // --- fin meetings ---
         { path: "*", element: <NotFound /> },
       ],
     },

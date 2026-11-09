@@ -166,6 +166,20 @@ def form_errors(form) -> dict:
     return data
 
 
+def stale_message_count(django_request) -> int:
+    """
+    Messages Django déjà en attente AVANT l'exécution de la vue (laissés par une
+    requête précédente, ex. export historique en échec redirigé) : le pont ne doit
+    pas les attribuer à l'action courante. Ils sont consommés et ignorés.
+    """
+    return len(list(get_messages(django_request)))
+
+
+def new_messages(django_request, stale: int) -> list:
+    """Messages émis par la vue exécutée (après les ``stale`` messages antérieurs)."""
+    return list(get_messages(django_request))[stale:]
+
+
 class LegacyFormView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -180,6 +194,7 @@ class LegacyFormView(APIView):
         kwargs = {"pk": pk} if pk else {}
         view = view_class()
         view.setup(django_request, **kwargs)
+        self._stale = stale_message_count(django_request)
         try:
             response = view.dispatch(django_request, **kwargs)
         except Http404:
@@ -202,7 +217,7 @@ class LegacyFormView(APIView):
 
     def post(self, request, name, pk=None):
         view, response = self._run(request, name, pk)
-        notices = [str(m) for m in get_messages(request._request)]
+        notices = [str(m) for m in new_messages(request._request, self._stale)]
         context = getattr(response, "context_data", None) or {}
         form = context.get("form")
         if response.status_code in (301, 302) and getattr(view, "object", None) is not None:
@@ -254,6 +269,7 @@ def run_action_view(request, view_class, kwargs):
         django_request.POST = post
     view = view_class()
     view.setup(django_request, **kwargs)
+    stale = stale_message_count(django_request)
     try:
         response = view.dispatch(django_request, **kwargs)
     except (Http404, ObjectDoesNotExist):  # certaines vues font .get() sur un queryset scopé
@@ -265,7 +281,7 @@ def run_action_view(request, view_class, kwargs):
         if response.status_code >= 400 and isinstance(data, dict) and "error" in data and "detail" not in data:
             data["detail"] = data["error"]
         return Response(data, status=response.status_code)
-    notices = list(get_messages(django_request))
+    notices = new_messages(django_request, stale)
     errors = [str(m) for m in notices if m.level >= dj_messages.WARNING]
     if response.status_code == 403:
         raise PermissionDenied()
