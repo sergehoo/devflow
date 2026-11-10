@@ -82,6 +82,7 @@ export const NAVIGATION: NavGroup[] = [
       { label: "Tickets", to: "/tickets/list" },
       { label: "Applications connectées", to: "/tickets/applications", visible: anyOf("ticket.view") },
       { label: "Routage & SLA", to: "/tickets/settings", visible: anyOf("ticket.view") },
+      { label: "Canaux e-mail", to: "/tickets/email", visible: anyOf("ticket.admin") },
     ],
   },
   // --- meetings ---

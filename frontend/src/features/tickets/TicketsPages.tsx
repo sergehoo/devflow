@@ -13,14 +13,16 @@ import { formatDateTime, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { api } from "@/services/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { TICKETS_KEY, useConfigList, useTicketDashboard, useTickets, type ExternalApp, type TicketRow } from "./api";
-import { PriorityPill, SlaBadge, StatusPill, TicketCard } from "./components";
+import { TICKETS_KEY, useCanCreateTicket, useConfigList, useTicketDashboard, useTickets, type ExternalApp, type TicketRow } from "./api";
+import { PriorityPill, SlaBadge, SourceBadge, StatusPill, TicketCard } from "./components";
+import { NewTicketButton } from "./NewTicketDialog";
 import { BOARD_STATUSES, CATEGORIES, PRIORITIES, STATUSES, statusMeta } from "./constants";
 
 function SupportNav() {
   return (
     <nav aria-label="Support" className="flex flex-wrap gap-2">
-      {([["/tickets", "Ticket Center"], ["/tickets/list", "Tickets"], ["/tickets/applications", "Applications"], ["/tickets/settings", "Routage & SLA"]] as const).map(([to, label]) => (
+      {([["/tickets", "Ticket Center"], ["/tickets/list", "Tickets"], ["/tickets/applications", "Applications"], ["/tickets/settings", "Routage & SLA"],
+        ["/tickets/email", "Canaux e-mail"]] as const).map(([to, label]) => (
         <Button key={to} asChild variant="outline" size="sm"><Link to={to}>{label}</Link></Button>
       ))}
     </nav>
@@ -38,8 +40,8 @@ export function TicketCenterPage() {
   const total = Object.values(data.by_status).reduce((a, b) => a + b, 0);
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Support" title="Ticket Center" description="Tickets remontés par les applications connectées : file, SLA et charge des équipes."
-        actions={<SupportNav />} />
+      <PageHeader eyebrow="Support" title="Ticket Center" description="Tickets reçus par API, e-mail ou saisis dans DevFlow : file, SLA et charge des équipes."
+        actions={<div className="flex flex-wrap items-center gap-2"><NewTicketButton /><SupportNav /></div>} />
       <section aria-label="Indicateurs" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={Inbox} value={data.open} unit="ouverts" label="Tickets ouverts" hint={`${data.created_7d} sur 7 j`} to="/tickets/list?open=1" />
         <StatCard icon={UserX} value={data.unassigned} unit="tickets" label="Non assignés" hint="File" to="/tickets/list?open=1&assignee=none" />
@@ -155,7 +157,8 @@ export function TicketsPage() {
     <div className="space-y-5">
       <PageHeader eyebrow="Support" title="Tickets" description={data ? `${formatNumber(data.count)} ticket(s)` : undefined}
         actions={(
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <NewTicketButton projectId={params.get("project") ? Number(params.get("project")) : undefined} />
             <div className="flex rounded-full bg-card p-1 shadow-card dark:border dark:border-border" role="group" aria-label="Affichage">
               <Button size="sm" variant={board ? "ghost" : "default"} onClick={() => set("view", "")} aria-pressed={!board}><List />Liste</Button>
               <Button size="sm" variant={board ? "default" : "ghost"} onClick={() => set("view", "board")} aria-pressed={board}><LayoutGrid />Kanban</Button>
@@ -225,7 +228,9 @@ export function TicketsPage() {
                   <tr key={t.id} className="hover:bg-hover">
                     <td className="max-w-[320px] px-4 py-3">
                       <Link to={`/tickets/${t.id}`} className="block truncate font-medium hover:text-brand">{t.title}</Link>
-                      <span className="text-xs text-muted-foreground">{t.reference} · {t.category_label}{t.reporter_name ? ` · ${t.reporter_name}` : ""}</span>
+                      <span className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                        {t.reference} · {t.category_label}{t.reporter_name ? ` · ${t.reporter_name}` : ""}<SourceBadge source={t.source} />
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{t.application?.name}</td>
                     <td className="px-4 py-3"><StatusPill status={t.status} label={t.status_label} /></td>
@@ -245,13 +250,20 @@ export function TicketsPage() {
   );
 }
 
-/** Tickets d'un projet (fiche projet). */
+/** Tickets d'un projet (fiche projet) avec création directe rattachée au projet. */
 export function ProjectTickets({ projectId }: { projectId: number }) {
   const { data, isPending } = useTickets({ project: projectId, page_size: 5, ordering: "updated" });
-  if (isPending || !data?.count) return null;
+  const canCreate = useCanCreateTicket();
+  if (isPending || (!data?.count && !canCreate)) return null;
   return (
     <Card className="p-5 sm:p-6">
-      <WidgetHeader title="Tickets" meta={`${data.count} au total`} action={<Link to={`/tickets/list?project=${projectId}`} className="text-xs text-muted-foreground hover:text-foreground">Tout voir</Link>} />
+      <WidgetHeader title="Tickets" meta={data?.count ? `${data.count} au total` : undefined} action={(
+        <div className="flex items-center gap-3">
+          {Boolean(data?.count) && <Link to={`/tickets/list?project=${projectId}`} className="text-xs text-muted-foreground hover:text-foreground">Tout voir</Link>}
+          <NewTicketButton projectId={projectId} variant="outline" />
+        </div>
+      )} />
+      {!data?.count ? <p className="mt-3 text-sm text-muted-foreground">Aucun ticket de support pour ce projet.</p> : (
       <ul className="mt-3 divide-y">
         {data.results.map((t) => (
           <li key={t.id} className="flex flex-wrap items-center gap-3 py-2.5">
@@ -261,6 +273,7 @@ export function ProjectTickets({ projectId }: { projectId: number }) {
           </li>
         ))}
       </ul>
+      )}
     </Card>
   );
 }

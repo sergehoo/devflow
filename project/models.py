@@ -6590,5 +6590,5 @@ class SecurityAuditLog(models.Model):
 # Ticketing multi-applications (modèles déclarés dans un module dédié, même app « project »).
 from project.models_ticketing import (  # noqa: E402,F401
     ExternalApplication, Ticket, TicketAttachment, TicketComment, TicketEvent, TicketRoutingRule,
-    TicketSLAPolicy, TicketWebhookDelivery,
+    TicketEmailMessage, TicketMailbox, TicketSLAPolicy, TicketWebhookDelivery,
 )

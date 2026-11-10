@@ -501,7 +501,7 @@ def ticket_row(t: dm.Ticket) -> dict:
         "created_at": t.created_at, "updated_at": t.updated_at, "first_response_due": t.first_response_due,
         "resolution_due": t.resolution_due, "first_response_breached": t.first_response_breached,
         "resolution_breached": t.resolution_breached, "escalation_level": t.escalation_level,
-        "sla_paused": t.sla_paused_at is not None,
+        "sla_paused": t.sla_paused_at is not None, "source": t.source, "source_label": t.get_source_display(),
     }
 
 
@@ -530,8 +530,68 @@ def ticket_detail(t: dm.Ticket, user) -> dict:
             "old": e.old_value, "new": e.new_value, "public": e.is_public, "created_at": e.created_at,
         } for e in t.events.select_related("actor")],
         "allowed_transitions": [{"value": s, "label": T.Status(s).label} for s in svc.allowed_transitions(t, user)],
-        "rights": {"manage": manage, "assign": svc.can_assign(user, t), "work": svc.can_work(user, t)},
+        "rights": {"manage": manage, "assign": svc.can_assign(user, t), "work": svc.can_work(user, t),
+                   "reply": svc.can_work(user, t) or manage or t.created_by_id == user.pk},
+        "created_by": {"id": t.created_by_id, "name": _name(t.created_by)} if t.created_by_id else None,
+        "mailbox": {"id": t.mailbox_id, "name": t.mailbox.name, "address": t.mailbox.address} if t.mailbox_id else None,
+        "email_reply": bool(t.mailbox_id and t.reporter_email and t.mailbox.is_active),
+        "emails": [{
+            "id": m.pk, "direction": m.direction, "kind": m.kind, "kind_label": m.get_kind_display(), "status": m.status,
+            "status_label": m.get_status_display(), "from": m.from_address, "to": m.to_addresses, "subject": m.subject,
+            "reason": m.reason, "comment_id": m.comment_id, "attempt": m.attempt, "created_at": m.created_at,
+        } for m in t.email_messages.order_by("created_at")[:200]],
     }
+
+
+def _workspace_id(request) -> int:
+    """Workspace demandé (``?workspace=``) ou courant, toujours parmi ceux de l'utilisateur (404 sinon)."""
+    from project.utils.workspaces import get_user_workspace_ids
+
+    ids = set(get_user_workspace_ids(request.user))
+    raw = request.query_params.get("workspace", "")
+    if raw:
+        if not raw.isdigit() or int(raw) not in ids:
+            raise Http404
+        return int(raw)
+    profile = getattr(request.user, "profile", None)
+    ws_id = getattr(profile, "workspace_id", None)
+    if ws_id not in ids:
+        raise Http404
+    return ws_id
+
+
+class ManualTicketSerializer(serializers.Serializer):
+    application = serializers.PrimaryKeyRelatedField(queryset=dm.ExternalApplication.objects.none())
+    title = serializers.CharField(min_length=3, max_length=200)
+    description = serializers.CharField(max_length=20_000, required=False, allow_blank=True)
+    category = serializers.ChoiceField(choices=T.Category.choices, required=False)
+    severity = serializers.ChoiceField(choices=T.Severity.choices, required=False)
+    priority = serializers.ChoiceField(choices=T.Priority.choices, required=False, allow_blank=True)
+    project = serializers.PrimaryKeyRelatedField(queryset=dm.Project.objects.none(), required=False, allow_null=True)
+    team = serializers.PrimaryKeyRelatedField(queryset=dm.Team.objects.none(), required=False, allow_null=True)
+    assignee = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    reporter_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    reporter_email = serializers.EmailField(required=False, allow_blank=True)
+
+    def __init__(self, *args, **kwargs):
+        """Choix limités aux workspaces de l'utilisateur (aucune énumération inter-tenant)."""
+        from project.utils.workspaces import get_user_workspace_ids
+
+        super().__init__(*args, **kwargs)
+        ws_ids = list(get_user_workspace_ids(self.context["request"].user))
+        self.fields["application"].queryset = dm.ExternalApplication.objects.filter(workspace_id__in=ws_ids).select_related("workspace")
+        self.fields["project"].queryset = dm.Project.objects.filter(workspace_id__in=ws_ids)
+        self.fields["team"].queryset = dm.Team.objects.filter(workspace_id__in=ws_ids)
+
+    def validate_title(self, value):
+        value = svc_one_line(value)
+        if len(value) < 3:
+            raise ValidationError("Titre trop court (3 caractères minimum).")
+        return value
+
+
+def svc_one_line(value: str) -> str:
+    return re.sub(r"[\r\n\t]+", " ", value or "").strip()
 
 
 ORDERINGS = {"created": "-created_at", "updated": "-updated_at", "due": F("resolution_due").asc(nulls_last=True),
@@ -541,7 +601,8 @@ ORDERINGS = {"created": "-created_at", "updated": "-updated_at", "due": F("resol
 class TicketViewSet(WorkspaceScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """Tickets visibles par l'utilisateur (RBAC + équipes + affectations)."""
 
-    queryset = dm.Ticket.objects.select_related("application", "team", "assignee", "project", "task", "workspace", "sla_policy")
+    queryset = dm.Ticket.objects.select_related("application", "team", "assignee", "project", "task", "workspace", "sla_policy",
+                                                "created_by", "mailbox")
     permission_classes = [permissions.IsAuthenticated, IsWorkspaceMember]
     pagination_class = FlexiblePagination
     parser_classes = [JSONParser, MultiPartParser, FormParser]
@@ -577,6 +638,57 @@ class TicketViewSet(WorkspaceScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         page = self.paginate_queryset(self.filter_queryset(self.get_queryset()))
         return self.get_paginated_response([ticket_row(t) for t in page])
+
+    def create(self, request, *args, **kwargs):
+        """Création manuelle (session) : même service métier que l'API d'intégration et l'e-mail."""
+        serializer = ManualTicketSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        app = serializer.validated_data["application"]
+        if not user_can_access_workspace(request.user, app.workspace):
+            raise Http404
+        files = request.FILES.getlist("attachments")
+        if len(files) > MAX_FILES:
+            return Response({"detail": f"{MAX_FILES} fichiers maximum."}, status=400)
+        try:
+            ticket = svc.create_manual(request.user, serializer.validated_data, files)
+        except svc.TicketError as exc:
+            return _err(exc)
+        logger.info("manual ticket %s created by user %s", ticket.reference, request.user.pk)
+        ticket = self.queryset.get(pk=ticket.pk)
+        return Response(ticket_detail(ticket, request.user), status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["get"], url_path="create-options")
+    def create_options(self, request):
+        """Listes du formulaire de création (applications actives, projets, équipes) et droits."""
+        from django.conf import settings
+
+        ws_id = _workspace_id(request)
+        if not (request.user.is_superuser or svc._rbac(request.user, "ticket.create", ws_id)):
+            raise PermissionDenied("Vous n'avez pas le droit de créer un ticket dans ce workspace.")
+        apps = dm.ExternalApplication.objects.filter(workspace_id=ws_id, status=dm.ExternalApplication.Status.ACTIVE).order_by("name")
+        return Response({
+            "workspace": ws_id,
+            "applications": [{"id": a.pk, "name": a.name, "project": a.project_id, "default_team": a.default_team_id} for a in apps],
+            "projects": list(dm.Project.objects.filter(workspace_id=ws_id, is_archived=False).order_by("name").values("id", "name")[:500]),
+            "teams": list(dm.Team.objects.filter(workspace_id=ws_id, is_archived=False).order_by("name").values("id", "name")),
+            "can_assign": request.user.is_superuser or svc._rbac(request.user, "ticket.assign", ws_id),
+            "can_set_priority": request.user.is_superuser or svc._rbac(request.user, "ticket.manage", ws_id),
+            "max_files": MAX_FILES, "max_attachment_mb": int(getattr(settings, "TICKET_MAX_ATTACHMENT_MB", 20)),
+        })
+
+    @action(detail=False, methods=["get"])
+    def agents(self, request):
+        """Agents affectables d'une équipe (membres actifs avec droit ticket), pour la création."""
+        from project.utils.workspaces import get_user_workspace_ids
+
+        team_id = request.query_params.get("team", "")
+        team = dm.Team.objects.filter(pk=team_id, workspace_id__in=get_user_workspace_ids(request.user)).first() if team_id.isdigit() else None
+        if team is None:
+            raise Http404
+        if not (request.user.is_superuser or svc._rbac(request.user, "ticket.assign", team.workspace_id)):
+            raise PermissionDenied("Vous n'avez pas le droit d'affecter un ticket.")
+        members = dm.TeamMembership.objects.filter(team=team).select_related("user")
+        return Response([{"id": m.user_id, "name": _name(m.user)} for m in members if svc.is_eligible_agent(m.user, team)])
 
     def retrieve(self, request, *args, **kwargs):
         return Response(ticket_detail(self.get_object(), request.user))
@@ -669,3 +781,313 @@ class TicketViewSet(WorkspaceScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             "at_risk": [ticket_row(t) for t in open_qs.filter(resolution_due__isnull=False).select_related(
                 "application", "team", "assignee", "project").order_by("resolution_due")[:6]],
         })
+
+
+# ═══ Canal e-mail : boîtes de support (administration) ═════════════════════
+
+HOST_RE = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
+DOMAIN_RE = re.compile(r"^@?[a-z0-9.-]+\.[a-z]{2,}$|^[^@\s]+@[a-z0-9.-]+\.[a-z]{2,}$")
+
+
+class TicketMailboxSerializer(_SameWorkspaceMixin, serializers.ModelSerializer):
+    """Configuration d'une boîte. Les mots de passe sont en écriture seule (jamais renvoyés)."""
+
+    same_workspace_fields = ("application", "project")
+    imap_password = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=500, trim_whitespace=False)
+    smtp_password = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=500, trim_whitespace=False)
+    has_imap_password = serializers.SerializerMethodField()
+    has_smtp_password = serializers.SerializerMethodField()
+    webhook_url = serializers.SerializerMethodField()
+    stats = serializers.SerializerMethodField()
+
+    class Meta:
+        model = dm.TicketMailbox
+        fields = ["id", "workspace", "application", "project", "name", "address", "from_name", "is_active", "inbound",
+                  "imap_host", "imap_port", "imap_security", "imap_username", "imap_folder", "imap_password", "has_imap_password",
+                  "smtp_host", "smtp_port", "smtp_security", "smtp_username", "smtp_password", "has_smtp_password",
+                  "auto_acknowledge", "default_category", "allowed_domains", "blocked_senders", "max_attachment_mb",
+                  "inbound_key", "webhook_url", "last_sync_at", "last_success_at", "last_error", "last_error_at",
+                  "consecutive_failures", "stats", "created_at"]
+        read_only_fields = ["inbound_key", "last_sync_at", "last_success_at", "last_error", "last_error_at",
+                            "consecutive_failures", "created_at"]
+
+    def get_has_imap_password(self, obj):
+        return bool(obj.imap_password_encrypted)
+
+    def get_has_smtp_password(self, obj):
+        return bool(obj.smtp_password_encrypted)
+
+    def get_webhook_url(self, obj):
+        request = self.context.get("request")
+        path = f"/api/v1/integrations/mail/{obj.inbound_key}/"
+        return request.build_absolute_uri(path) if request else path
+
+    def get_stats(self, obj):
+        since = timezone.now() - timedelta(days=7)
+        rows = obj.messages.filter(direction="IN", created_at__gte=since).values("status").annotate(n=Count("id"))
+        return {r["status"]: r["n"] for r in rows}
+
+    def _host(self, value, label):
+        value = (value or "").strip()
+        if value and not HOST_RE.match(value):
+            raise ValidationError(f"{label} : nom d'hôte invalide (sans protocole ni chemin).")
+        return value
+
+    def validate_imap_host(self, value):
+        return self._host(value, "Serveur IMAP")
+
+    def validate_smtp_host(self, value):
+        return self._host(value, "Serveur SMTP")
+
+    def validate_imap_port(self, value):
+        if not 1 <= value <= 65535:
+            raise ValidationError("Port invalide.")
+        return value
+
+    validate_smtp_port = validate_imap_port
+
+    def validate_imap_folder(self, value):
+        value = (value or "INBOX").strip()
+        if not re.fullmatch(r"[\w .\-/\[\]]{1,120}", value):
+            raise ValidationError("Nom de dossier invalide.")
+        return value
+
+    def validate_from_name(self, value):
+        return svc_one_line(value)[:120]
+
+    def validate_default_category(self, value):
+        if value not in T.Category.values:
+            raise ValidationError("Catégorie invalide.")
+        return value
+
+    def validate_max_attachment_mb(self, value):
+        if not 1 <= value <= 50:
+            raise ValidationError("Entre 1 et 50 Mo.")
+        return value
+
+    def _patterns(self, value):
+        if not isinstance(value, list) or len(value) > 200:
+            raise ValidationError("Liste de domaines ou d'adresses (200 maximum).")
+        out = []
+        for raw in value:
+            item = str(raw).strip().lower()
+            if item and not DOMAIN_RE.match(item):
+                raise ValidationError(f"Entrée invalide : {item[:60]}")
+            if item:
+                out.append(item)
+        return sorted(set(out))
+
+    def validate_allowed_domains(self, value):
+        return self._patterns(value)
+
+    def validate_blocked_senders(self, value):
+        return self._patterns(value)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        ws = attrs.get("workspace") or self.instance.workspace
+        address = (attrs.get("address") or getattr(self.instance, "address", "")).lower()
+        attrs["address"] = address
+        if dm.TicketMailbox.objects.filter(workspace=ws, address__iexact=address).exclude(pk=getattr(self.instance, "pk", None)).exists():
+            raise ValidationError({"address": "Cette adresse est déjà configurée dans le workspace."})
+        get = lambda k: attrs.get(k, getattr(self.instance, k, ""))  # noqa: E731
+        if get("inbound") == dm.TicketMailbox.Inbound.IMAP:
+            missing = [label for key, label in (("imap_host", "serveur IMAP"), ("imap_username", "identifiant IMAP")) if not get(key)]
+            if not (attrs.get("imap_password") or getattr(self.instance, "imap_password_encrypted", "")):
+                missing.append("mot de passe IMAP")
+            if missing:
+                raise ValidationError({"imap_host": f"Requis pour la relève IMAP : {', '.join(missing)}."})
+        if get("smtp_host") and not (attrs.get("smtp_password") or getattr(self.instance, "smtp_password_encrypted", "")) and get("smtp_username"):
+            raise ValidationError({"smtp_password": "Mot de passe SMTP requis."})
+        return attrs
+
+
+class TicketMailboxViewSet(WorkspaceScopedViewSetMixin, viewsets.ModelViewSet):
+    """Boîtes de support : réservé à ``ticket.admin`` (configuration sensible)."""
+
+    queryset = dm.TicketMailbox.objects.select_related("workspace", "application", "project")
+    serializer_class = TicketMailboxSerializer
+    permission_classes = [permissions.IsAuthenticated, IsWorkspaceMember]
+
+    def get_queryset(self):
+        from project.services.rbac import rbac_workspace_ids
+
+        qs = super().get_queryset()
+        if not self.request.user.is_superuser:
+            qs = qs.filter(workspace_id__in=rbac_workspace_ids(self.request.user, "ticket.admin"))
+        if self.request.query_params.get("workspace"):
+            qs = qs.filter(workspace_id=self.request.query_params["workspace"])
+        return qs
+
+    def _apply_secrets(self, mailbox, data):
+        from project.services import ticketing_email as mail
+
+        for name in ("imap_password", "smtp_password"):
+            if data.get(name):
+                mail.set_secret(mailbox, name, data[name])
+
+    def create(self, request, *args, **kwargs):
+        from project.services import ticketing_email as mail
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ws = serializer.validated_data["workspace"]
+        if not user_can_access_workspace(request.user, ws):
+            raise PermissionDenied("Workspace inaccessible.")
+        _require_admin(request.user, ws.pk)
+        data = dict(serializer.validated_data)
+        mailbox = dm.TicketMailbox(inbound_key=mail.new_inbound_key(), created_by=request.user)
+        self._apply_secrets(mailbox, data)
+        for key in ("imap_password", "smtp_password"):
+            data.pop(key, None)
+        for k, v in data.items():
+            setattr(mailbox, k, v)
+        mailbox.save()
+        secret = mail.rotate_webhook_secret(mailbox)
+        body = self.get_serializer(mailbox).data
+        if mailbox.inbound == dm.TicketMailbox.Inbound.WEBHOOK:
+            body["webhook_secret"] = secret  # affiché une seule fois
+        logger.info("ticket mailbox %s created by user %s", mailbox.pk, request.user.pk)
+        return Response(body, status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        _require_admin(self.request.user, serializer.instance.workspace_id)
+        if "workspace" in serializer.validated_data and serializer.validated_data["workspace"] != serializer.instance.workspace:
+            raise ValidationError({"workspace": "Le workspace d'une boîte ne peut pas changer."})
+        data = serializer.validated_data
+        self._apply_secrets(serializer.instance, data)
+        for key in ("imap_password", "smtp_password"):
+            data.pop(key, None)
+        changed_server = any(k in data and data[k] != getattr(serializer.instance, k)
+                             for k in ("imap_host", "imap_port", "imap_username", "imap_folder"))
+        mailbox = serializer.save()
+        if changed_server:  # nouveau serveur ou dossier : la relève repart de zéro (déduplication par Message-ID)
+            dm.TicketMailbox.objects.filter(pk=mailbox.pk).update(last_uid=0, uid_validity=0, next_poll_at=None,
+                                                                   consecutive_failures=0, alert_sent_at=None)
+
+    def perform_destroy(self, instance):
+        _require_admin(self.request.user, instance.workspace_id)
+        if instance.tickets.exists():
+            raise ValidationError({"detail": "Des tickets utilisent cette boîte : désactivez-la plutôt que de la supprimer."})
+        instance.delete()
+
+    def _admin_object(self):
+        mailbox = self.get_object()
+        _require_admin(self.request.user, mailbox.workspace_id)
+        return mailbox
+
+    @action(detail=True, methods=["post"])
+    def test(self, request, pk=None):
+        """Test de connexion IMAP / SMTP (sans envoi). Débit limité."""
+        from project.services import ticketing_email as mail
+
+        mailbox = self._admin_object()
+        if not cache.add(f"ticketing:mailbox:{mailbox.pk}:test", 1, 10):
+            return Response({"detail": "Patientez quelques secondes avant un nouveau test."}, status=429)
+        return Response(mail.test_connection(mailbox))
+
+    @action(detail=True, methods=["post"])
+    def sync(self, request, pk=None):
+        """Relève immédiate (planifiée en arrière-plan)."""
+        from project.services import ticketing_email as mail
+
+        mailbox = self._admin_object()
+        if mailbox.inbound != dm.TicketMailbox.Inbound.IMAP:
+            return Response({"detail": "Relève disponible uniquement pour les boîtes IMAP."}, status=400)
+        dm.TicketMailbox.objects.filter(pk=mailbox.pk).update(next_poll_at=None)
+        mail._schedule("poll_ticket_mailbox_task", mailbox.pk)
+        return Response({"status": "scheduled"})
+
+    @action(detail=True, methods=["post"], url_path="rotate-webhook-secret")
+    def rotate_webhook_secret(self, request, pk=None):
+        from project.services import ticketing_email as mail
+
+        mailbox = self._admin_object()
+        return Response({"webhook_secret": mail.rotate_webhook_secret(mailbox), "webhook_url": self.get_serializer(mailbox).data["webhook_url"]})
+
+    @action(detail=True, methods=["get"])
+    def messages(self, request, pk=None):
+        """Historique des messages traités (filtre ``status``, ``direction``)."""
+        mailbox = self._admin_object()
+        qs = mailbox.messages.select_related("ticket").order_by("-created_at")
+        if request.query_params.get("status"):
+            qs = qs.filter(status__in=request.query_params["status"].split(","))
+        if request.query_params.get("direction") in ("IN", "OUT"):
+            qs = qs.filter(direction=request.query_params["direction"])
+        paginator = FlexiblePagination()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        return paginator.get_paginated_response([{
+            "id": m.pk, "direction": m.direction, "kind": m.kind, "kind_label": m.get_kind_display(), "status": m.status,
+            "status_label": m.get_status_display(), "from": m.from_address, "from_name": m.from_name, "to": m.to_addresses,
+            "subject": m.subject, "reason": m.reason, "size": m.size, "attempt": m.attempt, "created_at": m.created_at,
+            "processed_at": m.processed_at, "ticket": {"id": m.ticket_id, "reference": m.ticket.reference} if m.ticket_id else None,
+            "can_reprocess": m.status in ("REJECTED", "IGNORED", "FAILED", "DEAD") and (m.direction == "OUT" or bool(m.raw)),
+        } for m in page])
+
+    @action(detail=True, methods=["post"], url_path=r"messages/(?P<message_id>\d+)/reprocess")
+    def reprocess(self, request, pk=None, message_id=None):
+        from project.services import ticketing_email as mail
+
+        mailbox = self._admin_object()
+        row = mailbox.messages.filter(pk=message_id).first()
+        if row is None:
+            raise Http404
+        if row.status in ("PROCESSED", "SENT", "RECEIVED", "PENDING"):
+            return Response({"detail": "Ce message n'est pas en erreur."}, status=409)
+        try:
+            mail.reprocess(row)
+        except svc.TicketError as exc:
+            return _err(exc)
+        return Response({"status": row.status})
+
+
+# ═══ Canal e-mail : webhook entrant du fournisseur ═════════════════════════
+
+def inbound_mail_webhook(request, inbound_key):
+    """
+    Réception d'un e-mail brut (RFC 822) poussé par le fournisseur. Signature
+    obligatoire : ``X-DevFlow-Timestamp`` + ``X-DevFlow-Signature: sha256=<hex>``
+    = HMAC-SHA256(secret de la boîte, « timestamp. » + corps brut), fenêtre 5 min,
+    rejeu refusé. Corps : message brut, ou champ ``email`` / ``body-mime`` (formulaire).
+    """
+    from django.http import JsonResponse
+
+    from project.services import ticketing_email as mail
+
+    if request.method != "POST":
+        return JsonResponse({"detail": "Méthode non autorisée."}, status=405)
+    mailbox = dm.TicketMailbox.objects.select_related("workspace", "application").filter(
+        inbound_key=inbound_key, inbound=dm.TicketMailbox.Inbound.WEBHOOK, is_active=True).first()
+    if mailbox is None:
+        return JsonResponse({"detail": "Introuvable."}, status=404)
+    window = f"ticketing:mailhook:{mailbox.pk}:{int(time.time() // 60)}"
+    cache.add(window, 0, 120)
+    try:
+        hits = cache.incr(window)
+    except ValueError:
+        hits = 1
+    if hits > 120:
+        return JsonResponse({"detail": "Trop de requêtes."}, status=429)
+    body = request.body  # lu avant tout accès à POST : la signature porte sur le corps brut
+    if len(body) > mail.max_raw_bytes() + 1024 * 1024:
+        return JsonResponse({"detail": "Message trop volumineux."}, status=413)
+    ts = request.headers.get("X-DevFlow-Timestamp", "")
+    sig = request.headers.get("X-DevFlow-Signature", "").removeprefix("sha256=")
+    secret = mail.get_secret(mailbox, "webhook_secret")
+    if not secret or not ts.isdigit() or abs(time.time() - int(ts)) > MAX_SKEW_SECONDS:
+        return JsonResponse({"detail": "Horodatage absent ou hors fenêtre."}, status=401)
+    if not hmac.compare_digest(sig, hooks.sign(secret, ts, body)):
+        logger.warning("inbound mail webhook: bad signature for mailbox %s", mailbox.pk)
+        return JsonResponse({"detail": "Signature invalide."}, status=401)
+    if not cache.add(f"ticketing:mailhook:sig:{sig}", 1, MAX_SKEW_SECONDS * 2):
+        return JsonResponse({"detail": "Requête rejouée."}, status=401)
+    raw = body
+    content_type = request.content_type or ""
+    if content_type.startswith(("multipart/form-data", "application/x-www-form-urlencoded")):
+        upload = request.FILES.get("email") or request.FILES.get("body-mime")
+        text = request.POST.get("email") or request.POST.get("body-mime")
+        raw = upload.read() if upload else (text or "").encode("utf-8", errors="replace")
+    if not raw.strip():
+        return JsonResponse({"detail": "Message vide."}, status=400)
+    row, created = mail.ingest(mailbox, raw)
+    return JsonResponse({"status": "accepted", "duplicate": not created, "id": row.pk}, status=202)

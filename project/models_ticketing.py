@@ -146,6 +146,11 @@ class Ticket(TimeStampedModel):
         CLOSED = "CLOSED", "Clôturé"
         CANCELLED = "CANCELLED", "Annulé"
 
+    class Source(models.TextChoices):
+        API = "API", "API"
+        MANUAL = "MANUAL", "Manuel"
+        EMAIL = "EMAIL", "E-mail"
+
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="tickets")
     application = models.ForeignKey(ExternalApplication, on_delete=models.PROTECT, related_name="tickets")
     number = models.PositiveIntegerField()
@@ -188,6 +193,12 @@ class Ticket(TimeStampedModel):
     resolution_breached = models.BooleanField(default=False)
     escalation_level = models.PositiveSmallIntegerField(default=0)
     escalated_at = models.DateTimeField(null=True, blank=True)
+    # Canal d'origine (API d'intégration, saisie DevFlow, e-mail entrant)
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.API)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name="created_tickets", help_text="Auteur d'une création manuelle.")
+    mailbox = models.ForeignKey("TicketMailbox", on_delete=models.SET_NULL, null=True, blank=True, related_name="tickets",
+                                help_text="Boîte de support utilisée pour les échanges par e-mail.")
 
     OPEN_STATUSES = (Status.NEW, Status.QUALIFIED, Status.ASSIGNED, Status.IN_PROGRESS, Status.WAITING)
 
@@ -261,6 +272,7 @@ class TicketEvent(models.Model):
     class Origin(models.TextChoices):
         API = "API", "Application externe"
         UI = "UI", "DevFlow"
+        EMAIL = "EMAIL", "E-mail"
         SYSTEM = "SYSTEM", "Système"
 
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="events")
@@ -302,3 +314,132 @@ class TicketWebhookDelivery(TimeStampedModel):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["status", "next_attempt_at"])]
+
+
+# ─── Canal e-mail ────────────────────────────────────────────────────────────
+
+class TicketMailbox(TimeStampedModel):
+    """
+    Boîte de support (réception IMAP ou webhook fournisseur, envoi SMTP).
+    Identifiants chiffrés (Fernet, même clé que les secrets d'intégration),
+    jamais renvoyés au frontend.
+    """
+
+    class Inbound(models.TextChoices):
+        IMAP = "IMAP", "IMAP (relève périodique)"
+        WEBHOOK = "WEBHOOK", "Webhook du fournisseur"
+
+    class Security(models.TextChoices):
+        SSL = "SSL", "SSL/TLS implicite"
+        STARTTLS = "STARTTLS", "STARTTLS"
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="ticket_mailboxes")
+    application = models.ForeignKey(ExternalApplication, on_delete=models.PROTECT, related_name="mailboxes")
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    name = models.CharField(max_length=120)
+    address = models.EmailField(help_text="Adresse de support (destinataire des e-mails clients).")
+    from_name = models.CharField(max_length=120, blank=True, help_text="Nom d'expéditeur des réponses.")
+    is_active = models.BooleanField(default=True)
+    inbound = models.CharField(max_length=10, choices=Inbound.choices, default=Inbound.IMAP)
+    # IMAP
+    imap_host = models.CharField(max_length=255, blank=True)
+    imap_port = models.PositiveIntegerField(default=993)
+    imap_security = models.CharField(max_length=10, choices=Security.choices, default=Security.SSL)
+    imap_username = models.CharField(max_length=255, blank=True)
+    imap_password_encrypted = models.TextField(blank=True, editable=False)
+    imap_folder = models.CharField(max_length=120, default="INBOX")
+    # SMTP (vide = connexion e-mail par défaut de DevFlow, Reply-To = adresse de la boîte)
+    smtp_host = models.CharField(max_length=255, blank=True)
+    smtp_port = models.PositiveIntegerField(default=465)
+    smtp_security = models.CharField(max_length=10, choices=Security.choices, default=Security.SSL)
+    smtp_username = models.CharField(max_length=255, blank=True)
+    smtp_password_encrypted = models.TextField(blank=True, editable=False)
+    # Webhook entrant (fournisseur) : clé publique d'URL + secret de signature chiffré
+    inbound_key = models.CharField(max_length=40, unique=True, editable=False)
+    webhook_secret_encrypted = models.TextField(blank=True, editable=False)
+    # Règles de réception
+    auto_acknowledge = models.BooleanField(default=True, help_text="Accusé de réception avec la référence du ticket.")
+    default_category = models.CharField(max_length=10, default="QUESTION")
+    allowed_domains = models.JSONField(default=list, blank=True, help_text="Domaines autorisés à créer des tickets (vide = tous).")
+    blocked_senders = models.JSONField(default=list, blank=True, help_text="Adresses ou domaines refusés.")
+    max_attachment_mb = models.PositiveSmallIntegerField(default=10)
+    # Supervision
+    last_uid = models.PositiveBigIntegerField(default=0)
+    uid_validity = models.PositiveBigIntegerField(default=0)
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=300, blank=True)
+    last_error_at = models.DateTimeField(null=True, blank=True)
+    consecutive_failures = models.PositiveSmallIntegerField(default=0)
+    next_poll_at = models.DateTimeField(null=True, blank=True)
+    alert_sent_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [models.UniqueConstraint(fields=["workspace", "address"], name="uniq_ticket_mailbox_address_per_workspace")]
+
+    def __str__(self):
+        return f"{self.name} <{self.address}>"
+
+
+def _ticket_mail_path(instance, filename):
+    return f"ticket-mail/{instance.mailbox.workspace_id}/{instance.mailbox_id}/{uuid.uuid4().hex}.eml"
+
+
+class TicketEmailMessage(TimeStampedModel):
+    """Journal des e-mails entrants et sortants d'une boîte (déduplication, file de rejet, livraison)."""
+
+    class Direction(models.TextChoices):
+        INBOUND = "IN", "Entrant"
+        OUTBOUND = "OUT", "Sortant"
+
+    class Status(models.TextChoices):
+        RECEIVED = "RECEIVED", "Reçu (à traiter)"
+        PROCESSED = "PROCESSED", "Traité"
+        IGNORED = "IGNORED", "Ignoré (réponse automatique)"
+        REJECTED = "REJECTED", "Rejeté"
+        FAILED = "FAILED", "Échec (nouvel essai prévu)"
+        PENDING = "PENDING", "En attente d'envoi"
+        SENT = "SENT", "Envoyé"
+        DEAD = "DEAD", "Abandonné"
+
+    class Kind(models.TextChoices):
+        NEW_TICKET = "NEW_TICKET", "Nouveau ticket"
+        REPLY = "REPLY", "Réponse"
+        ACK = "ACK", "Accusé de réception"
+        AGENT_REPLY = "AGENT_REPLY", "Réponse de l'équipe"
+        UNKNOWN = "UNKNOWN", "Non reconnu"
+
+    mailbox = models.ForeignKey(TicketMailbox, on_delete=models.CASCADE, related_name="messages")
+    ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL, null=True, blank=True, related_name="email_messages")
+    comment = models.ForeignKey(TicketComment, on_delete=models.SET_NULL, null=True, blank=True, related_name="email_messages")
+    direction = models.CharField(max_length=3, choices=Direction.choices)
+    kind = models.CharField(max_length=12, choices=Kind.choices, default=Kind.UNKNOWN)
+    status = models.CharField(max_length=10, choices=Status.choices)
+    message_id = models.CharField(max_length=255)
+    in_reply_to = models.CharField(max_length=255, blank=True)
+    references = models.TextField(blank=True)
+    from_address = models.EmailField(blank=True)
+    from_name = models.CharField(max_length=150, blank=True)
+    to_addresses = models.TextField(blank=True)
+    subject = models.CharField(max_length=255, blank=True)
+    body_text = models.TextField(blank=True, help_text="Corps texte nettoyé (sortant : contenu envoyé).")
+    raw = models.FileField(upload_to=_ticket_mail_path, max_length=300, blank=True)
+    size = models.PositiveIntegerField(default=0)
+    reason = models.CharField(max_length=300, blank=True, help_text="Motif de rejet / erreur (sans secret).")
+    attempt = models.PositiveSmallIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [models.UniqueConstraint(fields=["mailbox", "direction", "message_id"], name="uniq_ticket_email_per_mailbox")]
+        indexes = [
+            models.Index(fields=["mailbox", "status"]),
+            models.Index(fields=["status", "next_attempt_at"]),
+            models.Index(fields=["message_id"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_direction_display()} {self.subject[:60]}"

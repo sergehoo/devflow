@@ -1,6 +1,6 @@
 # DevFlow — Intégration du ticketing multi-applications
 
-Les applications externes déclarent des tickets dans DevFlow, qui les classe, les route vers une équipe, suit le SLA et renvoie chaque changement par webhook signé.
+Les tickets arrivent par **trois canaux** : l'API des applications externes (§ 1–6), la **saisie manuelle** dans DevFlow (§ 8) et l'**e-mail** (§ 9). Les trois passent par le même service de création (`ticketing._create`) : référence unique `TCK-xxxxx`, SLA, routage, journal d'audit, notifications et webhooks sont identiques. DevFlow classe, route vers une équipe, suit le SLA et renvoie chaque changement par webhook signé.
 
 ```
 Application (navigateur / mobile)
@@ -238,9 +238,64 @@ Le widget ne lit jamais les cookies, le stockage local ni les champs de saisie.
   | Rôle | Droits |
   |---|---|
   | Propriétaire | `ticket.*` : administration des applications, du routage et du SLA |
-  | Chef de projet, Team lead | `ticket.view`, `ticket.manage`, `ticket.assign` |
-  | Membre | tickets de ses équipes ou qui lui sont affectés (`ticket.view_assigned`, `ticket.work_assigned`) |
+  | Chef de projet, Team lead | `ticket.view`, `ticket.manage`, `ticket.assign`, `ticket.create` |
+  | Membre | tickets de ses équipes, qui lui sont affectés ou qu'il a créés (`ticket.view_assigned`, `ticket.work_assigned`, `ticket.create`) |
   | Client | aucun accès |
 
 - **Conservation** : la purge quotidienne (`purge_ticket_personal_data_task`) anonymise le déclarant et le contexte technique des tickets clôturés au-delà de `retention_days`.
 - **Traçabilité** : chaque action produit un `TicketEvent` (acteur, origine API / interface / système, valeurs avant et après).
+
+
+## 8. Création manuelle (DevFlow)
+
+- **Où** : bouton « Nouveau ticket » dans Ticket Center, la liste des tickets et la carte « Tickets » de la fiche projet (projet prérempli). La fiche du ticket s'ouvre après création.
+- **API interne** (session + CSRF) : `POST /api/v1/tickets/` (JSON ou multipart, `attachments` ≤ 5 fichiers) ; `GET /api/v1/tickets/create-options/?workspace=` (applications actives, projets, équipes, droits) ; `GET /api/v1/tickets/agents/?team=` (agents affectables, `ticket.assign`).
+- **Champs** : application source (obligatoire, active, du même workspace), titre, description, catégorie, gravité, priorité (imposable avec `ticket.manage`, sinon dérivée de la gravité), projet, équipe et responsable (avec `ticket.assign` ; responsable = membre actif de l'équipe ayant un droit ticket), déclarant facultatif (saisie pour un tiers).
+- **Affectation** : sans équipe ni responsable, les règles de routage s'appliquent (y compris l'affectation automatique). Sinon l'affectation manuelle est journalisée (« Affectation à la création »).
+- **Garde-fous** : `ticket.create` vérifié par Django, objets limités aux workspaces de l'utilisateur (aucune énumération inter-tenant), 30 créations / 10 min par utilisateur, mêmes contrôles de pièces jointes que l'API.
+- **Source** : `MANUAL`, auteur conservé (`created_by`) ; le créateur peut suivre et compléter son ticket.
+
+## 9. Canal e-mail
+
+### Configuration (Support › Canaux e-mail, droit `ticket.admin`)
+
+Une boîte = une adresse de support rattachée à une application (et éventuellement un projet), plusieurs boîtes par workspace.
+
+- **Réception IMAP** : SSL/TLS (993) ou STARTTLS (143), certificat vérifié, relève toutes les 2 min (`poll_ticket_mailboxes_task`), 50 messages par passage.
+- **Réception par webhook du fournisseur** : `POST /api/v1/integrations/mail/<inbound_key>/` avec le message brut (RFC 822) en corps, ou un champ de formulaire `email` / `body-mime`. Signature obligatoire :
+
+  ```
+  X-DevFlow-Timestamp: <epoch secondes>          (fenêtre ± 5 min, rejeu refusé)
+  X-DevFlow-Signature: sha256=<hex HMAC-SHA256(secret, "<timestamp>." + corps brut)>
+  ```
+
+  Le secret est affiché une seule fois (création ou renouvellement).
+- **Envoi SMTP** : SSL/TLS (465) ou STARTTLS (587). Sans SMTP propre, la messagerie DevFlow envoie avec « Répondre à » = adresse de la boîte.
+- **Test de connexion** (IMAP + SMTP, sans envoi), relève immédiate, historique des messages, file des messages rejetés avec « Retraiter ».
+- Identifiants chiffrés (Fernet, clé `TICKETING_ENCRYPTION_KEY`), jamais renvoyés au navigateur ni journalisés ; hôtes privés refusés (SSRF) sauf `TICKET_MAIL_ALLOW_PRIVATE_HOSTS=True` (serveur interne).
+
+### Traitement
+
+1. **Stockage durable d'abord** : le message brut est enregistré (dédupliqué par boîte + `Message-ID`) ; l'UID IMAP n'avance et le message n'est marqué lu qu'ensuite.
+2. **Traitement asynchrone** (`process_ticket_email_task`, idempotent, transaction atomique, nouvel essai 1 min / 5 min / 30 min / 2 h puis abandon visible dans la file).
+3. **Réponses automatiques ignorées** : `Auto-Submitted`, `Precedence: bulk/list`, listes de diffusion, rebonds, absences, expéditeurs `noreply` / `mailer-daemon`, messages émis par DevFlow (`X-DevFlow-Loop`, `Message-ID` connu).
+4. **Anti-spam** : `X-Spam-Flag`, expéditeurs ou domaines bloqués, domaines autorisés (facultatif), 10 nouveaux tickets / h par expéditeur, 5 accusés / h par destinataire.
+5. **Rattachement à un ticket** : jeton signé contenu dans les `Message-ID` envoyés par DevFlow, puis `In-Reply-To` / `References` connus de la boîte. La référence `[TCK-xxxxx]` dans l'objet **ne suffit jamais** : elle n'est acceptée que si l'expéditeur est le déclarant du ticket, sinon le message va en file de rejet.
+6. **Autorisation** : le déclarant → commentaire **public** ; un agent DevFlow habilité → note **interne** ; tout autre expéditeur → rejeté. Une réponse à un ticket clôturé ouvre un nouveau ticket « Suite du ticket … ».
+7. **Nouveau ticket** : objet → titre (préfixes Re/TR/Fwd retirés), corps texte (HTML converti en texte, signature retirée), pièces jointes filtrées (types autorisés, contenu vérifié, exécutables et HTML refusés, taille max de la boîte), routage et SLA, puis **accusé de réception** `[TCK-xxxxx] Objet`.
+
+### Réponses depuis DevFlow
+
+Sur un ticket e-mail, « Répondre par e-mail » envoie la réponse publique (et ses pièces jointes publiques) au déclarant depuis la boîte, dans le même fil (`In-Reply-To`, `References`). Les notes internes ne partent jamais par e-mail. Chaque envoi a un statut visible dans la fiche (En attente, Envoyé, Nouvel essai prévu, Non délivré) ; un échec définitif est journalisé et notifié à l'agent.
+
+### Supervision
+
+`last_sync_at`, `last_success_at`, dernière erreur (sans secret), échecs consécutifs avec relève espacée (2ⁿ min, 60 min max). Après 3 échecs, le propriétaire du workspace et le responsable de l'équipe par défaut sont notifiés ; une seconde notification signale le rétablissement. Balayage de reprise toutes les 10 min (`retry_ticket_emails_task`).
+
+### Paramètres
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `TICKETING_ENCRYPTION_KEY` | `SECRET_KEY` | Chiffrement des secrets et jetons de conversation |
+| `TICKET_MAIL_MAX_MB` | 25 | Taille maximale d'un e-mail entrant |
+| `TICKET_MAIL_ALLOW_PRIVATE_HOSTS` | False | Autoriser un serveur IMAP / SMTP sur le réseau privé |

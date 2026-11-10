@@ -37,6 +37,7 @@ export const EVENT_LABELS: Record<string, string> = {
   created: "Ticket créé", assigned: "Affectation", status_changed: "Changement de statut", commented: "Commentaire",
   updated: "Qualification", escalated: "Escalade", sla_breached: "SLA dépassé", sla_warning: "Alerte SLA",
   task_created: "Tâche DevFlow créée", attachment_added: "Pièce jointe", unassigned_queue: "File non assignée",
+  email_failed: "E-mail non délivré",
 };
 
 export const statusMeta = (v: string) => STATUSES.find((s) => s.value === v) ?? STATUSES[0];
@@ -54,3 +55,6 @@ export function remaining(seconds: number | null): string {
 export function dueIn(iso: string | null): number | null {
   return iso ? Math.round((new Date(iso).getTime() - Date.now()) / 1000) : null;
 }
+
+export const ATTACHMENT_ACCEPT =
+  "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,text/csv,application/json,application/zip,video/mp4,video/webm";

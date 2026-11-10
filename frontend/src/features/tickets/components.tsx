@@ -1,4 +1,4 @@
-import { AlarmClock, PauseCircle } from "lucide-react";
+import { AlarmClock, Mail, PauseCircle, PenLine, PlugZap } from "lucide-react";
 import { Link } from "react-router";
 import { cn } from "@/lib/utils";
 import type { TicketRow } from "./api";
@@ -49,5 +49,21 @@ export function TicketCard({ t, draggable, onDragStart }: { t: TicketRow; dragga
         <SlaBadge t={t} />
       </div>
     </article>
+  );
+}
+
+const SOURCES = {
+  API: { label: "API", icon: PlugZap },
+  MANUAL: { label: "Manuel", icon: PenLine },
+  EMAIL: { label: "E-mail", icon: Mail },
+} as const;
+
+/** Canal d'origine du ticket : API / Manuel / E-mail. */
+export function SourceBadge({ source, className }: { source?: string; className?: string }) {
+  const m = SOURCES[(source ?? "API") as keyof typeof SOURCES] ?? SOURCES.API;
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full bg-hover px-2 py-0.5 text-[11px] font-medium text-muted-foreground", className)}>
+      <m.icon className="size-3" aria-hidden="true" />{m.label}
+    </span>
   );
 }

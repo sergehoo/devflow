@@ -115,6 +115,7 @@ export const router = createBrowserRouter(
             { path: "list", handle: { crumb: "Tickets" }, lazy: async () => ({ Component: (await import("@/features/tickets/TicketsPages")).TicketsPage }) },
             { path: "applications", handle: { crumb: "Applications" }, lazy: async () => ({ Component: (await import("@/features/tickets/SupportAdminPages")).ApplicationsPage }) },
             { path: "settings", handle: { crumb: "Routage & SLA" }, lazy: async () => ({ Component: (await import("@/features/tickets/SupportAdminPages")).SupportSettingsPage }) },
+            { path: "email", handle: { crumb: "Canaux e-mail" }, lazy: async () => ({ Component: (await import("@/features/tickets/EmailChannelsPage")).EmailChannelsPage }) },
             { path: ":id", handle: { crumb: "Ticket" }, lazy: async () => ({ Component: (await import("@/features/tickets/TicketDetailPage")).TicketDetailPage }) },
           ],
         },

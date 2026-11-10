@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { Copy, KeyRound, Pencil, Plus, RefreshCw, Trash2, Webhook } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router";
@@ -14,27 +13,16 @@ import { WidgetHeader } from "@/features/dashboard/widgets";
 import { formatDateTime } from "@/lib/format";
 import { can } from "@/lib/permissions";
 import { api } from "@/services/api";
-import type { Paginated } from "@/types/api";
 import {
-  useConfigDelete, useConfigList, useConfigSave, useDeliveries, type ExternalApp, type RoutingRule, type SlaPolicy,
+  useConfigDelete, useConfigList, useConfigSave, useDeliveries, useWorkspaceOptions, type ExternalApp, type RoutingRule, type SlaPolicy,
 } from "./api";
 import { CATEGORIES, PRIORITIES, SEVERITIES, WEBHOOK_EVENTS } from "./constants";
 
 type Option = { id: number; name: string };
 
-function useWorkspaceOptions(workspace?: number) {
-  const opts = (path: string) => ({
-    queryKey: ["tickets", "options", path, workspace], enabled: Boolean(workspace), staleTime: 60_000,
-    queryFn: ({ signal }: { signal: AbortSignal }) => api<Paginated<Option>>(path, { signal, params: { workspace, page_size: 200 } }),
-  });
-  const projects = useQuery(opts("projects/"));
-  const teams = useQuery(opts("teams/"));
-  return { projects: projects.data?.results ?? [], teams: teams.data?.results ?? [] };
-}
-
 const numberField = (v: string) => (v === "" ? null : Number(v));
 
-function Header({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
+export function Header({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
   return (
     <PageHeader eyebrow="Support" title={title} description={description} actions={(
       <div className="flex flex-wrap gap-2">
@@ -48,7 +36,7 @@ function Header({ title, description, action }: { title: string; description: st
 
 // ─── Applications connectées ─────────────────────────────────────────────────
 
-function SecretDialog({ value, onClose }: { value: { key_id: string; secret: string } | null; onClose: () => void }) {
+export function SecretDialog({ value, onClose }: { value: { key_id: string; secret: string } | null; onClose: () => void }) {
   const copy = (text: string) => void navigator.clipboard?.writeText(text).then(() => toast.success("Copié."));
   return (
     <Dialog open={value != null} onOpenChange={(o) => !o && onClose()} title="Identifiants d'intégration"
@@ -389,7 +377,8 @@ export function SupportSettingsPage() {
   const del = (m: typeof removeRule, id: number) => m.mutate(id, { onSuccess: () => toast.success("Supprimé."), onError: (e) => toast.error(e.message) });
   return (
     <div className="space-y-5">
-      <Header title="Routage & SLA" description="Application + catégorie + gravité → équipe ; délais de service, heures ouvrées et escalade." />
+      <Header title="Routage & SLA" description="Application + catégorie + gravité → équipe ; délais de service, heures ouvrées et escalade."
+        action={admin && <Button asChild variant="outline" size="sm"><Link to="/tickets/email">Canaux e-mail</Link></Button>} />
       <Card className="p-5 sm:p-6">
         <WidgetHeader title="Règles de routage" meta="évaluées par ordre croissant, première règle applicable"
           action={admin && <Button size="sm" onClick={() => setRule({})}><Plus />Règle</Button>} />

@@ -210,6 +210,8 @@ CELERY_BEAT_SCHEDULE = {
     "ticket-sla-check": {"task": "project.tasks.check_ticket_slas_task", "schedule": crontab(minute="*/5")},
     "ticket-webhook-retry": {"task": "project.tasks.retry_ticket_webhooks_task", "schedule": crontab(minute="*/10")},
     "ticket-personal-data-purge": {"task": "project.tasks.purge_ticket_personal_data_task", "schedule": crontab(hour=3, minute=30)},
+    "ticket-mail-poll": {"task": "project.tasks.poll_ticket_mailboxes_task", "schedule": crontab(minute="*/2")},
+    "ticket-mail-retry": {"task": "project.tasks.retry_ticket_emails_task", "schedule": crontab(minute="*/10")},
     # Balayage de toutes les tâches DevFlow 2x/jour pour envoyer
     # automatiquement des relances aux assignees et notifier les PM.
     # Heures locales : 9h00 (matin) et 16h00 (après-midi) Africa/Abidjan.

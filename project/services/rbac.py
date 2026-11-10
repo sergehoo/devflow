@@ -82,7 +82,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "field.*", "real_estate.view", "admin_case.*", "phase.*",
         # PAS de gestion finance directe (lecture seule)
         "budget.view", "billing.view", "invoice.view",
-        "ticket.view", "ticket.manage", "ticket.assign",
+        "ticket.view", "ticket.manage", "ticket.assign", "ticket.create",
     },
     TEAM_LEAD: {
         "workspace.view",
@@ -94,7 +94,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "report.view",
         "notification.view",
         "ai.summarize",
-        "ticket.view", "ticket.manage", "ticket.assign",
+        "ticket.view", "ticket.manage", "ticket.assign", "ticket.create",
     },
     MEMBER: {
         "workspace.view",
@@ -105,7 +105,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "comment.create",
         "ai.summarize",
         # Tickets : uniquement ceux de ses équipes / qui lui sont affectés (contrôle objet).
-        "ticket.view_assigned", "ticket.work_assigned",
+        "ticket.view_assigned", "ticket.work_assigned", "ticket.create",
         # explicitement PAS : budget.*, team.manage, report.generate,
         # task.delete, project.create, etc.
     },

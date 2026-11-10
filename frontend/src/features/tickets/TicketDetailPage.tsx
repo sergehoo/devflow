@@ -1,4 +1,4 @@
-import { ArrowUpCircle, ExternalLink, Lock, Paperclip, Send, SquarePlus, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowDownLeft, ArrowUpCircle, ArrowUpRight, CheckCircle2, Clock, ExternalLink, Lock, Mail, Paperclip, Send, SquarePlus, UserPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
 import { toast } from "sonner";
@@ -11,9 +11,9 @@ import { WidgetHeader } from "@/features/dashboard/widgets";
 import { ApiError } from "@/services/api";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { useAssignable, useTicket, useTicketAction, type TicketDetail } from "./api";
-import { PriorityPill, StatusPill } from "./components";
-import { CATEGORIES, EVENT_LABELS, PRIORITIES, SEVERITIES, remaining } from "./constants";
+import { useAssignable, useTicket, useTicketAction, type TicketDetail, type TicketEmail } from "./api";
+import { PriorityPill, SourceBadge, StatusPill } from "./components";
+import { ATTACHMENT_ACCEPT, CATEGORIES, EVENT_LABELS, PRIORITIES, SEVERITIES, remaining } from "./constants";
 
 const NOTE_REQUIRED = new Set(["CANCELLED"]);
 const NOTE_SUGGESTED = new Set(["RESOLVED", "WAITING", "CANCELLED"]);
@@ -114,26 +114,53 @@ function Qualification({ t }: { t: TicketDetail }) {
   );
 }
 
+const DELIVERY: Record<string, { label: string; icon: typeof Mail; tone: string }> = {
+  PENDING: { label: "Envoi en cours", icon: Clock, tone: "text-muted-foreground" },
+  FAILED: { label: "Nouvel essai prévu", icon: Clock, tone: "text-warning" },
+  SENT: { label: "Envoyé par e-mail", icon: CheckCircle2, tone: "text-success" },
+  DEAD: { label: "Non délivré", icon: AlertTriangle, tone: "text-destructive" },
+};
+
+/** Statut de livraison d'un message sortant, ou mention « reçu par e-mail ». */
+function MailBadge({ email }: { email?: TicketEmail }) {
+  if (!email) return null;
+  if (email.direction === "IN") {
+    return <span className="inline-flex items-center gap-1 font-medium text-muted-foreground"><Mail className="size-3" aria-hidden="true" />Reçu par e-mail</span>;
+  }
+  const m = DELIVERY[email.status] ?? DELIVERY.PENDING!;
+  return (
+    <span className={cn("inline-flex items-center gap-1 font-medium", m.tone)} title={email.reason || undefined}>
+      <m.icon className="size-3" aria-hidden="true" />{m.label}
+    </span>
+  );
+}
+
 function Conversation({ t }: { t: TicketDetail }) {
   const [run, pending] = useRun(t.id);
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState<"PUBLIC" | "INTERNAL">("PUBLIC");
   const [files, setFiles] = useState<File[]>([]);
-  const canWrite = t.rights.work || t.rights.manage;
+  const canWrite = t.rights.reply;
+  const canNote = t.rights.work || t.rights.manage;
+  const byComment = new Map(t.emails.filter((m) => m.comment_id != null).map((m) => [m.comment_id!, m]));
+  const firstEmail = t.emails.find((m) => m.direction === "IN" && m.kind === "NEW_TICKET");
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const fd = new FormData();
     fd.append("body", body);
-    fd.append("visibility", visibility);
+    fd.append("visibility", canNote ? visibility : "PUBLIC");
     files.forEach((f) => fd.append("attachments", f));
-    run("comment", fd, visibility === "PUBLIC" ? "Réponse envoyée au déclarant." : "Note interne ajoutée.", () => { setBody(""); setFiles([]); });
+    run("comment", fd, visibility === "INTERNAL" && canNote ? "Note interne ajoutée." : t.email_reply ? "Réponse envoyée par e-mail." : "Réponse envoyée au déclarant.",
+      () => { setBody(""); setFiles([]); });
   };
   return (
     <Card className="p-5 sm:p-6">
       <WidgetHeader title="Échanges" meta={`${t.comments.length} message(s)`} />
       <ol className="mt-4 space-y-3">
         <li className="rounded-2xl bg-muted p-4">
-          <p className="text-xs font-semibold text-muted-foreground">{t.reporter_name || t.application?.name} · {formatDateTime(t.created_at)}</p>
+          <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
+            {t.reporter_name || t.application?.name} · {formatDateTime(t.created_at)}<MailBadge email={firstEmail} />
+          </p>
           <p className="mt-1.5 whitespace-pre-wrap text-sm">{t.description || "Aucune description."}</p>
         </li>
         {t.comments.map((c) => (
@@ -141,6 +168,7 @@ function Conversation({ t }: { t: TicketDetail }) {
             <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
               {c.author}{c.external ? " (déclarant)" : ""} · {formatDateTime(c.created_at)}
               {c.visibility === "INTERNAL" && <span className="inline-flex items-center gap-1 text-warning"><Lock className="size-3" aria-hidden="true" />Interne</span>}
+              <MailBadge email={byComment.get(c.id)} />
             </p>
             <p className="mt-1.5 whitespace-pre-wrap text-sm">{c.body}</p>
           </li>
@@ -148,27 +176,61 @@ function Conversation({ t }: { t: TicketDetail }) {
       </ol>
       {canWrite && t.status !== "CANCELLED" && (
         <form onSubmit={submit} className="mt-5 space-y-3">
-          <div className="flex rounded-full bg-hover p-1 text-xs font-semibold" role="radiogroup" aria-label="Visibilité">
-            {(["PUBLIC", "INTERNAL"] as const).map((v) => (
-              <button key={v} type="button" role="radio" aria-checked={visibility === v} onClick={() => setVisibility(v)}
-                className={cn("flex-1 rounded-full px-3 py-1.5", visibility === v ? "bg-card shadow-card" : "text-muted-foreground")}>
-                {v === "PUBLIC" ? "Réponse au déclarant" : "Note interne"}
-              </button>
-            ))}
-          </div>
+          {canNote && (
+            <div className="flex rounded-full bg-hover p-1 text-xs font-semibold" role="radiogroup" aria-label="Visibilité">
+              {(["PUBLIC", "INTERNAL"] as const).map((v) => (
+                <button key={v} type="button" role="radio" aria-checked={visibility === v} onClick={() => setVisibility(v)}
+                  className={cn("flex-1 rounded-full px-3 py-1.5", visibility === v ? "bg-card shadow-card" : "text-muted-foreground")}>
+                  {v === "INTERNAL" ? "Note interne" : t.email_reply ? "Répondre par e-mail" : "Réponse au déclarant"}
+                </button>
+              ))}
+            </div>
+          )}
+          {t.email_reply && (!canNote || visibility === "PUBLIC") && (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Mail className="size-3.5" aria-hidden="true" />Envoyé à <strong className="font-medium text-foreground">{t.reporter_email}</strong> depuis {t.mailbox?.address}
+            </p>
+          )}
           <label htmlFor="ticket-comment" className="sr-only">Message</label>
           <Textarea id="ticket-comment" value={body} onChange={(e) => setBody(e.target.value)} maxLength={10000} required
-            placeholder={visibility === "PUBLIC" ? "Votre réponse sera visible dans l'application d'origine…" : "Visible uniquement par l'équipe DevFlow…"} />
+            placeholder={visibility === "INTERNAL" && canNote ? "Visible uniquement par l'équipe DevFlow…" : t.email_reply ? "Votre réponse sera envoyée par e-mail au déclarant…" : "Votre réponse sera visible dans l'application d'origine…"} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground">
               <Paperclip className="size-4" aria-hidden="true" />{files.length ? `${files.length} fichier(s)` : "Joindre des fichiers"}
-              <input type="file" multiple className="sr-only" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,text/csv,application/json,application/zip,video/mp4,video/webm"
+              <input type="file" multiple className="sr-only" accept={ATTACHMENT_ACCEPT}
                 onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 5))} />
             </label>
             <Button type="submit" disabled={pending || !body.trim()}><Send />Envoyer</Button>
           </div>
         </form>
       )}
+    </Card>
+  );
+}
+
+/** Journal e-mail du ticket : messages reçus et envoyés, statuts de livraison, motifs de rejet. */
+function EmailLog({ emails }: { emails: TicketEmail[] }) {
+  return (
+    <Card className="p-5 sm:p-6">
+      <WidgetHeader title="E-mails" meta={String(emails.length)} />
+      <ol className="mt-3 space-y-2.5 text-sm">
+        {emails.map((m) => {
+          const tone = ["DEAD", "REJECTED"].includes(m.status) ? "text-destructive" : m.status === "FAILED" ? "text-warning"
+            : ["SENT", "PROCESSED"].includes(m.status) ? "text-success" : "text-muted-foreground";
+          return (
+            <li key={m.id} className="flex gap-2.5">
+              {m.direction === "IN" ? <ArrowDownLeft className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Entrant" />
+                : <ArrowUpRight className="mt-0.5 size-4 shrink-0 text-brand" aria-label="Sortant" />}
+              <div className="min-w-0">
+                <p className="truncate font-medium">{m.kind_label}</p>
+                <p className="truncate text-xs text-muted-foreground">{m.direction === "IN" ? m.from : m.to} · {formatDateTime(m.created_at)}</p>
+                <p className={cn("text-xs font-medium", tone)}>{m.status_label}{m.attempt > 1 ? ` · ${m.attempt} essais` : ""}</p>
+                {m.reason && <p className="break-words text-xs text-muted-foreground">{m.reason}</p>}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </Card>
   );
 }
@@ -193,6 +255,7 @@ export function TicketDetailPage() {
           <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-tight sm:text-[30px]">{t.title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusPill status={t.status} label={t.status_label} /><PriorityPill priority={t.priority} />
+            <SourceBadge source={t.source} />
             <span className="text-xs text-muted-foreground">{t.category_label} · gravité {t.severity_label.toLowerCase()}</span>
             {t.escalation_level > 0 && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">Escalade niv. {t.escalation_level}</span>}
           </div>
@@ -253,6 +316,8 @@ export function TicketDetailPage() {
               <dt className="text-muted-foreground">Projet</dt><dd>{t.project ? <Link className="hover:text-brand" to={`/projects/${t.project.id}`}>{t.project.name}</Link> : "—"}</dd>
               <dt className="text-muted-foreground">Tâche</dt><dd>{t.task ? <Link className="hover:text-brand" to={`/tasks/${t.task.id}`}>{t.task.name}</Link> : "—"}</dd>
               <dt className="text-muted-foreground">Déclarant</dt><dd className="break-all">{t.reporter_name || "—"}{t.reporter_email ? ` · ${t.reporter_email}` : ""}</dd>
+              <dt className="text-muted-foreground">Canal</dt><dd>{t.source_label}{t.mailbox ? ` · ${t.mailbox.address}` : ""}</dd>
+              {t.created_by && <><dt className="text-muted-foreground">Saisi par</dt><dd>{t.created_by.name}</dd></>}
               <dt className="text-muted-foreground">Réf. externe</dt><dd className="break-all">{t.external_id}</dd>
               <dt className="text-muted-foreground">Environnement</dt><dd>{[t.environment, t.app_version].filter(Boolean).join(" · ") || "—"}</dd>
               {t.url && <><dt className="text-muted-foreground">URL</dt><dd className="break-all"><a href={t.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 hover:text-brand">{t.url}<ExternalLink className="size-3" aria-hidden="true" /></a></dd></>}
@@ -278,6 +343,7 @@ export function TicketDetailPage() {
               </ul>
             ) : <p className="mt-2 text-sm text-muted-foreground">Aucune pièce jointe.</p>}
           </Card>
+          {t.emails.length > 0 && <EmailLog emails={t.emails} />}
         </div>
       </div>
 

@@ -282,6 +282,8 @@ urlpatterns += [
 # --- ticketing ---
 from rest_framework.routers import SimpleRouter  # noqa: E402
 
+from django.views.decorators.csrf import csrf_exempt  # noqa: E402
+
 from project.api import views_ticketing as vtk  # noqa: E402
 
 ticket_router = SimpleRouter()
@@ -289,6 +291,7 @@ ticket_router.register("tickets", vtk.TicketViewSet, basename="api-ticket")
 ticket_router.register("ticket-applications", vtk.ExternalApplicationViewSet, basename="api-ticket-application")
 ticket_router.register("ticket-routing-rules", vtk.TicketRoutingRuleViewSet, basename="api-ticket-routing-rule")
 ticket_router.register("ticket-sla-policies", vtk.TicketSLAPolicyViewSet, basename="api-ticket-sla-policy")
+ticket_router.register("ticket-mailboxes", vtk.TicketMailboxViewSet, basename="api-ticket-mailbox")
 
 urlpatterns += [
     # API d'intégration (applications externes, authentification HMAC / identifiants dédiés)
@@ -297,6 +300,8 @@ urlpatterns += [
          name="api-integration-ticket-detail"),
     path("integrations/tickets/<str:external_id>/comments/", vtk.IntegrationTicketCommentView.as_view(),
          name="api-integration-ticket-comments"),
+    # Canal e-mail : webhook entrant du fournisseur (signature HMAC, sans session ni CSRF)
+    path("integrations/mail/<str:inbound_key>/", csrf_exempt(vtk.inbound_mail_webhook), name="api-integration-mail"),
     path("", include(ticket_router.urls)),
 ]
 # --- fin ticketing ---

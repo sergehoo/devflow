@@ -35,6 +35,7 @@ const RULES: [RegExp, (m: RegExpMatchArray, query: URLSearchParams) => string][]
   [/^\/billing\/invoices\/(\d+)\/(?:update\/)?$/, (m) => `/invoices/${m[1]}`],
   // --- tickets ---
   [/^\/tickets\/(\d+)\/?$/, (m) => `/tickets/${m[1]}`],
+  [/^\/tickets\/email\/?$/, () => "/tickets/email"],
   // --- meetings --- (avant le pont générique : pages réunions dédiées)
   [/^\/meetings\/?$/, (_m, q) => withQuery("/meetings", q, ["project", "type", "status", "q", "page"])],
   [/^\/meetings\/create\/?$/, (_m, q) => withQuery("/meetings/new", q, ["project"])],

@@ -1097,3 +1097,42 @@ def purge_ticket_personal_data_task() -> int:
     from project.services.ticketing import purge_personal_data
 
     return purge_personal_data()
+
+
+# ─── Ticketing : canal e-mail ────────────────────────────────────────────────
+
+@shared_task
+def process_ticket_email_task(message_id: int) -> str:
+    from project.services.ticketing_email import process
+
+    return process(message_id)
+
+
+@shared_task
+def send_ticket_email_task(message_id: int) -> str:
+    from project.services.ticketing_email import send
+
+    return send(message_id)
+
+
+@shared_task
+def poll_ticket_mailbox_task(mailbox_id: int) -> dict:
+    from project.models import TicketMailbox
+    from project.services.ticketing_email import poll
+
+    mailbox = TicketMailbox.objects.select_related("workspace", "application").filter(pk=mailbox_id, is_active=True).first()
+    return poll(mailbox) if mailbox else {"status": "inactive"}
+
+
+@shared_task
+def poll_ticket_mailboxes_task() -> int:
+    from project.services.ticketing_email import poll_due
+
+    return poll_due()
+
+
+@shared_task
+def retry_ticket_emails_task() -> int:
+    from project.services.ticketing_email import retry_due
+
+    return retry_due()

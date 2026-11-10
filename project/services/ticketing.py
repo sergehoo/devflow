@@ -176,7 +176,8 @@ def visible_tickets(user, qs=None):
     ws_ids = list(get_user_workspace_ids(user))
     full = rbac_workspace_ids(user, "ticket.view")
     team_ids = dm.TeamMembership.objects.filter(user=user, workspace_id__in=ws_ids, team__isnull=False).values("team_id")
-    return qs.filter(workspace_id__in=ws_ids).filter(Q(workspace_id__in=full) | Q(assignee=user) | Q(team_id__in=team_ids))
+    return qs.filter(workspace_id__in=ws_ids).filter(
+        Q(workspace_id__in=full) | Q(assignee=user) | Q(team_id__in=team_ids) | Q(created_by=user))
 
 
 def can_manage(user, ticket) -> bool:
@@ -357,37 +358,129 @@ def create_from_integration(app: dm.ExternalApplication, data: dict, files=(), i
         raise TicketError("Trop de tickets créés par ce déclarant en une heure.", 429)
     for upload in files:
         validate_upload(upload, app.max_attachment_mb)
-    severity = data.get("severity") or T.Severity.MINOR
+    values = {
+        "external_id": data["external_id"], "idempotency_key": idempotency_key,
+        "reporter_external_id": str(reporter.get("id") or "")[:120], "reporter_name": str(reporter.get("name") or "")[:150],
+        "reporter_email": reporter.get("email") or "", "title": data["title"], "description": data.get("description") or "",
+        "category": data.get("category") or T.Category.BUG, "severity": data.get("severity") or T.Severity.MINOR,
+        "environment": data.get("environment") or "", "app_version": data.get("app_version") or "",
+        "url": sanitize_url(data.get("url") or ""), "metadata": bounded_metadata(data.get("metadata")),
+    }
+    try:
+        ticket = _create(app, values, files=files, source=T.Source.API, origin="API", actor_label=app.name,
+                         attach_external=values["reporter_name"] or app.name)
+    except IntegrityError:
+        again = dm.Ticket.objects.filter(application=app, external_id=data["external_id"]).first()
+        if again:
+            return again, False
+        raise
+    return ticket, True
+
+
+def _create(app: dm.ExternalApplication, values: dict, *, files=(), source: str, origin: str, actor=None,
+            actor_label: str = "", priority: str | None = None, team=None, assignee=None, mailbox=None,
+            attach_external: str = "", attach_visibility: str = "PUBLIC") -> dm.Ticket:
+    """
+    Cœur de création commun aux trois canaux (API, saisie DevFlow, e-mail) :
+    numéro et référence uniques (verrou + nouvel essai), SLA, pièces jointes,
+    journal d'audit, routage (ou affectation manuelle), notifications, webhook.
+    Transaction atomique : rien n'est créé si une étape échoue.
+    """
     for attempt in range(3):
         try:
             with transaction.atomic():
                 number = _next_number(app.workspace_id)
+                severity = values.get("severity") or T.Severity.MINOR
                 ticket = dm.Ticket(
                     workspace_id=app.workspace_id, application=app, number=number, reference=f"TCK-{number:05d}",
-                    external_id=data["external_id"], idempotency_key=idempotency_key,
-                    reporter_external_id=str(reporter.get("id") or "")[:120], reporter_name=str(reporter.get("name") or "")[:150],
-                    reporter_email=reporter.get("email") or "", title=data["title"], description=data.get("description") or "",
-                    category=data.get("category") or T.Category.BUG, severity=severity,
-                    priority=SEVERITY_PRIORITY.get(severity, "P3"), environment=data.get("environment") or "",
-                    app_version=data.get("app_version") or "", url=sanitize_url(data.get("url") or ""),
-                    metadata=bounded_metadata(data.get("metadata")), project_id=app.project_id, sla_policy=policy_for(app),
-                )
+                    source=source, created_by=actor, mailbox=mailbox, sla_policy=policy_for(app),
+                    **{"project_id": app.project_id, **values, "severity": severity,
+                       "priority": priority or SEVERITY_PRIORITY.get(severity, "P3")})
+                ticket.external_id = ticket.external_id or f"devflow-{number}"
                 ticket.created_at = timezone.now()
                 apply_sla(ticket, ticket.created_at)
                 ticket.save()
                 for upload in files:
-                    _store_attachment(ticket, upload, visibility="PUBLIC", external=ticket.reporter_name or app.name)
-                log_event(ticket, "created", actor_label=app.name, origin="API", new={"status": ticket.status}, public=True)
-                route(ticket)
+                    _store_attachment(ticket, upload, visibility=attach_visibility, user=actor,
+                                      external="" if actor else attach_external)
+                log_event(ticket, "created", actor=actor, actor_label=actor_label, origin=origin,
+                          new={"status": ticket.status, "source": source}, public=True)
+                if team or assignee:
+                    _set_assignment(ticket, team, assignee, actor=actor, reason="Affectation à la création")
+                else:
+                    route(ticket, keep_priority=priority is not None)
+                _announce(ticket, actor)
                 emit(ticket, "ticket.created")
-            return ticket, True
+            return ticket
         except IntegrityError:
-            again = dm.Ticket.objects.filter(application=app, external_id=data["external_id"]).first()
-            if again:
-                return again, False
+            if values.get("external_id") and dm.Ticket.objects.filter(application=app, external_id=values["external_id"]).exists():
+                raise
             if attempt == 2:
                 raise
     raise TicketError("Création impossible, réessayez.", 503)
+
+
+def _announce(ticket, actor=None) -> None:
+    """Nouveau ticket en file d'équipe : notification temps réel aux agents éligibles de l'équipe."""
+    if not ticket.team_id or ticket.assignee_id:
+        return
+    members = dm.TeamMembership.objects.filter(team_id=ticket.team_id, workspace_id=ticket.workspace_id).exclude(
+        status__in=[dm.TeamMembership.Status.INACTIVE, dm.TeamMembership.Status.ON_LEAVE]).select_related("user")
+    already = _team_leads(ticket.team) | ({actor.pk} if actor else set())
+    recipients = [m.user_id for m in members[:50] if m.user_id not in already and is_eligible_agent(m.user, ticket.team)]
+    if recipients:
+        notify(ticket, recipients, f"Nouveau ticket {ticket.reference} dans la file {ticket.team.name}", ticket.title)
+
+
+def create_manual(user, data: dict, files=()) -> dm.Ticket:
+    """
+    Saisie DevFlow (session authentifiée). ``data`` validé par l'API :
+    application, title, description, category, severity, priority?, project?,
+    team?, assignee?, reporter_name?, reporter_email?. Droits : ``ticket.create``
+    (+ ``ticket.manage`` pour imposer la priorité, ``ticket.assign`` pour affecter).
+    """
+    from django.contrib.auth import get_user_model
+
+    app = data["application"]
+    ws_id = app.workspace_id
+    if not (user.is_superuser or _rbac(user, "ticket.create", ws_id)):
+        raise TicketError("Vous n'avez pas le droit de créer un ticket dans ce workspace.", 403)
+    if not app.is_active:
+        raise TicketError("Application suspendue ou archivée : choisissez une application active.")
+    project = data.get("project")
+    if project is not None and project.workspace_id != ws_id:
+        raise TicketError("Projet introuvable dans ce workspace.")
+    priority = data.get("priority") or None
+    if priority and not (user.is_superuser or _rbac(user, "ticket.manage", ws_id)):
+        raise TicketError("Seul un gestionnaire du support peut imposer la priorité.", 403)
+    team, assignee = data.get("team"), None
+    if data.get("assignee"):
+        assignee = get_user_model().objects.filter(pk=data["assignee"]).first()
+        if assignee is None:
+            raise TicketError("Agent introuvable.")
+    if team or assignee:
+        if not (user.is_superuser or _rbac(user, "ticket.assign", ws_id)):
+            raise TicketError("Vous n'avez pas le droit d'affecter un ticket : laissez le routage automatique.", 403)
+        if team is None:
+            raise TicketError("Choisissez l'équipe de l'agent.")
+        if team.workspace_id != ws_id:
+            raise TicketError("Équipe introuvable dans ce workspace.")
+        if assignee and not is_eligible_agent(assignee, team):
+            raise TicketError("Cet agent n'est pas un membre actif de l'équipe ou n'a pas de droit sur les tickets.")
+    if dm.Ticket.objects.filter(created_by=user, created_at__gte=timezone.now() - timedelta(minutes=10)).count() >= 30:
+        raise TicketError("Trop de tickets créés en peu de temps : patientez quelques minutes.", 429)
+    max_mb = int(getattr(settings, "TICKET_MAX_ATTACHMENT_MB", 20))
+    for upload in files:
+        validate_upload(upload, max_mb)
+    values = {
+        "title": data["title"], "description": data.get("description") or "",
+        "category": data.get("category") or T.Category.BUG, "severity": data.get("severity") or T.Severity.MINOR,
+        "reporter_name": (data.get("reporter_name") or user.get_full_name() or user.get_username())[:150],
+        "reporter_email": data.get("reporter_email") or "",
+        "project_id": project.pk if project else app.project_id,
+    }
+    return _create(app, values, files=files, source=T.Source.MANUAL, origin="UI", actor=user, priority=priority,
+                   team=team, assignee=assignee)
 
 
 def _store_attachment(ticket, upload, *, visibility: str, user=None, external: str = "", comment=None) -> dm.TicketAttachment:
@@ -430,11 +523,11 @@ def pick_agent(team) -> object | None:
     return next((u for u in users if is_eligible_agent(u, team)), None)
 
 
-def route(ticket, *, actor=None) -> None:
+def route(ticket, *, actor=None, keep_priority: bool = False) -> None:
     """Règle de routage (sinon équipe par défaut de l'application), affectation automatique éventuelle."""
     rule = matching_rule(ticket)
     team = rule.team if rule else ticket.application.default_team
-    if rule and rule.priority_override in dict(T.Priority.choices):
+    if rule and not keep_priority and rule.priority_override in dict(T.Priority.choices):
         ticket.priority = rule.priority_override
         apply_sla(ticket, ticket.created_at)
     if not team:
@@ -535,7 +628,7 @@ def transition(ticket, to: str, *, actor=None, origin: str = "UI", note: str = "
     ticket.status = to
     if to == S.WAITING:
         ticket.sla_paused_at = now
-    if to in (S.IN_PROGRESS, S.WAITING, S.RESOLVED) and not ticket.first_response_at and origin != "API":
+    if to in (S.IN_PROGRESS, S.WAITING, S.RESOLVED) and not ticket.first_response_at and origin not in ("API", "EMAIL"):
         ticket.first_response_at = now
     if to == S.QUALIFIED:
         ticket.qualified_at = ticket.qualified_at or now
@@ -557,8 +650,9 @@ def transition(ticket, to: str, *, actor=None, origin: str = "UI", note: str = "
     log_event(ticket, "status_changed", actor=actor, actor_label=actor_label, origin=origin,
               old={"status": old}, new={"status": to, "note": note[:500]}, public=True)
     if note.strip() and to in (S.RESOLVED, S.CANCELLED, S.WAITING):
-        dm.TicketComment.objects.create(ticket=ticket, author=actor, body=note.strip(), visibility="PUBLIC",
-                                        author_external_name=actor_label if actor is None else "")
+        note_comment = dm.TicketComment.objects.create(ticket=ticket, author=actor, body=note.strip(), visibility="PUBLIC",
+                                                       author_external_name=actor_label if actor is None else "")
+        _email_reply(ticket, note_comment)
     emit(ticket, "ticket.reopened" if reopened else WEBHOOK_FOR.get(to, "ticket.updated"))
     targets = {ticket.assignee_id} - ({actor.pk} if actor else set())
     if targets:
@@ -597,7 +691,7 @@ def update_fields(ticket, *, actor, data: dict) -> dm.Ticket:
 
 
 def add_comment(ticket, *, body: str, visibility: str = "PUBLIC", user=None, external: dict | None = None,
-                files=()) -> dm.TicketComment:
+                files=(), origin: str | None = None) -> dm.TicketComment:
     body = (body or "").strip()
     if not body:
         raise TicketError("Le commentaire est vide.")
@@ -605,7 +699,8 @@ def add_comment(ticket, *, body: str, visibility: str = "PUBLIC", user=None, ext
         raise TicketError("Commentaire trop long (10 000 caractères maximum).")
     if visibility not in ("PUBLIC", "INTERNAL") or (external and visibility != "PUBLIC"):
         raise TicketError("Visibilité invalide.")
-    if user is not None and not can_work(user, ticket) and not (visibility == "PUBLIC" and can_manage(user, ticket)):
+    if user is not None and not can_work(user, ticket) and not (
+            visibility == "PUBLIC" and (can_manage(user, ticket) or ticket.created_by_id == user.pk)):
         raise TicketError("Vous n'avez pas le droit de commenter ce ticket.", 403)
     ext = external or {}
     recent = dm.TicketComment.objects.filter(ticket=ticket, body=body, created_at__gte=timezone.now() - timedelta(seconds=60))
@@ -626,17 +721,24 @@ def add_comment(ticket, *, body: str, visibility: str = "PUBLIC", user=None, ext
             ticket.first_response_at = timezone.now()
             ticket.save(update_fields=["first_response_at", "updated_at"])
         log_event(ticket, "commented", actor=user, actor_label="" if user else (ext.get("name") or ticket.application.name),
-                  origin="UI" if user else "API", new={"visibility": visibility}, public=visibility == "PUBLIC")
+                  origin=origin or ("UI" if user else "API"), new={"visibility": visibility}, public=visibility == "PUBLIC")
         if external:  # réponse du déclarant
-            if ticket.status == S.WAITING:
-                transition(ticket, S.IN_PROGRESS, origin="API", actor_label=ext.get("name") or ticket.application.name)
-            elif ticket.status == S.RESOLVED:
-                transition(ticket, S.IN_PROGRESS, origin="API", actor_label=ext.get("name") or ticket.application.name)
+            if ticket.status in (S.WAITING, S.RESOLVED):
+                transition(ticket, S.IN_PROGRESS, origin=origin or "API", actor_label=ext.get("name") or ticket.application.name)
             notify(ticket, {ticket.assignee_id} if ticket.assignee_id else _team_leads(ticket.team),
                    f"Réponse du déclarant sur {ticket.reference}", body[:200])
         elif visibility == "PUBLIC":
             emit(ticket, "ticket.commented", {"comment": public_comment(comment)})
+            _email_reply(ticket, comment)
     return comment
+
+
+def _email_reply(ticket, comment) -> None:
+    """Réponse publique d'un agent sur un ticket e-mail : envoi au déclarant par la boîte configurée."""
+    if ticket.mailbox_id and ticket.reporter_email and comment.author_id:
+        from project.services.ticketing_email import queue_agent_reply
+
+        queue_agent_reply(ticket, comment)
 
 
 def escalate(ticket, *, actor=None, reason: str = "", origin: str = "UI") -> dm.Ticket:
