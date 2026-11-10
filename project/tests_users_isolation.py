@@ -21,7 +21,22 @@ from django.test import Client, TestCase
 from project import models as dm
 from project.utils.workspaces import users_for_user, users_in_workspaces
 
+
+
 User = get_user_model()
+
+
+def _ensure_profile(user, **fields):
+    """Le profil du propriétaire est déjà créé (signal à la création du workspace) : on le complète au lieu d'en créer un doublon."""
+    from project import models as _dm
+
+    profile = _dm.UserProfile.objects.filter(user=user).first()
+    if profile is None:
+        return _dm.UserProfile.objects.create(user=user, **fields)
+    for key, value in fields.items():
+        setattr(profile, key, value)
+    profile.save()
+    return profile
 
 
 class UsersHelperIsolationTests(TestCase):
@@ -32,19 +47,19 @@ class UsersHelperIsolationTests(TestCase):
             username="alice_iso", email="ai@e.com", password="x",
         )
         cls.ws_a = dm.Workspace.objects.create(name="WS Iso A", owner=cls.alice)
-        dm.UserProfile.objects.create(user=cls.alice, workspace=cls.ws_a)
+        _ensure_profile(user=cls.alice, workspace=cls.ws_a)
 
         cls.bob = User.objects.create_user(
             username="bob_iso", email="bi@e.com", password="x",
         )
-        dm.UserProfile.objects.create(user=cls.bob, workspace=cls.ws_a)
+        _ensure_profile(user=cls.bob, workspace=cls.ws_a)
 
         # Workspace B (totalement isolé)
         cls.carol = User.objects.create_user(
             username="carol_iso", email="ci@e.com", password="x",
         )
         cls.ws_b = dm.Workspace.objects.create(name="WS Iso B", owner=cls.carol)
-        dm.UserProfile.objects.create(user=cls.carol, workspace=cls.ws_b)
+        _ensure_profile(user=cls.carol, workspace=cls.ws_b)
 
         # User externe (aucun workspace)
         cls.outsider = User.objects.create_user(
@@ -99,18 +114,18 @@ class ChatContactsCrossTenantTests(TestCase):
             username="alice_chat_iso", email="ac@e.com", password="pw-a",
         )
         cls.ws_a = dm.Workspace.objects.create(name="WS A Chat", owner=cls.alice)
-        dm.UserProfile.objects.create(user=cls.alice, workspace=cls.ws_a)
+        _ensure_profile(user=cls.alice, workspace=cls.ws_a)
 
         cls.bob = User.objects.create_user(
             username="bob_chat_iso", email="bc@e.com", password="x",
         )
-        dm.UserProfile.objects.create(user=cls.bob, workspace=cls.ws_a)
+        _ensure_profile(user=cls.bob, workspace=cls.ws_a)
 
         cls.carol = User.objects.create_user(
             username="carol_chat_iso", email="cc@e.com", password="x",
         )
         ws_b = dm.Workspace.objects.create(name="WS B Chat", owner=cls.carol)
-        dm.UserProfile.objects.create(user=cls.carol, workspace=ws_b)
+        _ensure_profile(user=cls.carol, workspace=ws_b)
 
     def test_contacts_endpoint_excludes_other_workspace(self):
         client = Client()
@@ -135,7 +150,7 @@ class TaskFormAssigneeIsolationTests(TestCase):
             username="a_tf", email="atf@e.com", password="x",
         )
         cls.ws_a = dm.Workspace.objects.create(name="WS A TF", owner=cls.alice)
-        dm.UserProfile.objects.create(user=cls.alice, workspace=cls.ws_a)
+        _ensure_profile(user=cls.alice, workspace=cls.ws_a)
         dm.TeamMembership.objects.create(
             user=cls.alice, workspace=cls.ws_a, role="ADMIN",
         )
@@ -143,7 +158,7 @@ class TaskFormAssigneeIsolationTests(TestCase):
         cls.bob = User.objects.create_user(
             username="b_tf", email="btf@e.com", password="x",
         )
-        dm.UserProfile.objects.create(user=cls.bob, workspace=cls.ws_a)
+        _ensure_profile(user=cls.bob, workspace=cls.ws_a)
         dm.TeamMembership.objects.create(
             user=cls.bob, workspace=cls.ws_a, role="DEVELOPER",
         )
@@ -152,7 +167,7 @@ class TaskFormAssigneeIsolationTests(TestCase):
             username="c_tf", email="ctf@e.com", password="x",
         )
         other_ws = dm.Workspace.objects.create(name="WS B TF", owner=cls.carol_other_ws)
-        dm.UserProfile.objects.create(user=cls.carol_other_ws, workspace=other_ws)
+        _ensure_profile(user=cls.carol_other_ws, workspace=other_ws)
         dm.TeamMembership.objects.create(
             user=cls.carol_other_ws, workspace=other_ws, role="ADMIN",
         )
@@ -162,7 +177,7 @@ class TaskFormAssigneeIsolationTests(TestCase):
 
         form = TaskForm(
             current_workspace=self.ws_a,
-            current_user=self.alice,
+            user=self.alice,  # signature actuelle de TaskForm
         )
         # Le queryset des assignees ne doit pas inclure carol
         assignees = list(form.fields["assignee"].queryset.values_list(

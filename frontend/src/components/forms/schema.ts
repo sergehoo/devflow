@@ -18,10 +18,11 @@ export interface FormFieldSchema {
 
 export const formSchemaKey = (name: string, id?: number, query?: Record<string, string>) => ["forms", name, id ?? "new", query ?? {}] as const;
 
-export function useFormSchema(name: string, id?: number, query?: Record<string, string>) {
+/** `endpoint` (facultatif) : vue dédiée au même contrat que `/api/v1/forms/` (ex. génération de facture). */
+export function useFormSchema(name: string, id?: number, query?: Record<string, string>, endpoint?: string) {
   return useQuery({
-    queryKey: formSchemaKey(name, id, query),
-    queryFn: ({ signal }) => api<{ fields: FormFieldSchema[] }>(id ? `forms/${name}/${id}/` : `forms/${name}/`, { signal, params: query }),
+    queryKey: endpoint ? ([...formSchemaKey(name, id, query), endpoint] as const) : formSchemaKey(name, id, query),
+    queryFn: ({ signal }) => api<{ fields: FormFieldSchema[] }>(endpoint ?? (id ? `forms/${name}/${id}/` : `forms/${name}/`), { signal, params: query }),
     staleTime: 0,
   });
 }

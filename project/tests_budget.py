@@ -27,18 +27,18 @@ class BudgetServiceTestCase(TestCase):
     """Couvre les calculs TJM, marges, forecast, risques."""
 
     def setUp(self):
-        self.workspace = dm.Workspace.objects.create(name="WS Test")
-
         self.user = User.objects.create_user(
             username="alice", email="alice@example.com", password="x"
         )
-        dm.UserProfile.objects.create(
+        # Workspace.owner est obligatoire ; le profil du propriétaire est créé par signal → on le complète.
+        self.workspace = dm.Workspace.objects.create(name="WS Test", owner=self.user)
+        dm.UserProfile.objects.update_or_create(
             user=self.user,
-            workspace=self.workspace,
+            defaults=dict(workspace=self.workspace,
             cost_per_day=Decimal("400"),
             billable_rate_per_day=Decimal("700"),
             capacity_hours_per_day=Decimal("8"),
-            availability_percent=100,
+            availability_percent=100,)
         )
 
         # Tarif actif (DAILY)

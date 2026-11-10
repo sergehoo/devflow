@@ -180,11 +180,15 @@ def send_pm_task_overdue_email_task(task_id, pm_id, extend_url, expire_url, days
 # Tâche Celery : génération asynchrone d'une ProjectAIProposal
 # =========================================================================
 @shared_task(bind=True, max_retries=2, default_retry_delay=60)
-def generate_project_ai_proposal_task(self, project_id, triggered_by_id=None, use_ai=True):
+def generate_project_ai_proposal_task(self, project_id, triggered_by_id=None, use_ai=True, proposal_id=None):
     """
     Tâche async appelée par le signal post_save de Project.
     Crée une ProjectAIProposal complète (roadmap, milestones, sprints,
     backlog, tâches, dépendances, affectations).
+
+    ``proposal_id`` : proposition « en attente » créée par un déclenchement
+    explicite (bouton « Générer suggestions IA ») ; elle est complétée (pas de
+    doublon orphelin) et le garde-fou d'idempotence ne s'applique pas.
     """
     User = get_user_model()
     from project.services.ai.services.project_structure import (
@@ -201,9 +205,19 @@ def generate_project_ai_proposal_task(self, project_id, triggered_by_id=None, us
     if triggered_by_id:
         triggered_by = User.objects.filter(pk=triggered_by_id).first()
 
+    placeholder = None
+    if proposal_id:
+        placeholder = dm.ProjectAIProposal.objects.filter(
+            pk=proposal_id, project=project, status=dm.ProjectAIProposal.Status.PENDING,
+        ).first()
+        if placeholder is None:
+            # Proposition attendue rejetée / terminée entre-temps : pas de
+            # nouvelle génération (ni d'appel IA) que personne n'attend plus.
+            return {"ok": True, "skipped": True, "proposal_id": proposal_id}
+
     # Idempotence : si on a déjà une proposition non-terminale récente, on ne
     # régénère pas (évite la duplication en cas de double save).
-    existing = dm.ProjectAIProposal.objects.filter(
+    existing = None if placeholder else dm.ProjectAIProposal.objects.filter(
         project=project,
         status__in=[
             dm.ProjectAIProposal.Status.PENDING,
@@ -219,6 +233,7 @@ def generate_project_ai_proposal_task(self, project_id, triggered_by_id=None, us
             project=project,
             triggered_by=triggered_by,
             use_ai=use_ai,
+            proposal=placeholder,
         )
         return {
             "ok": True,
@@ -228,6 +243,12 @@ def generate_project_ai_proposal_task(self, project_id, triggered_by_id=None, us
         }
     except Exception as exc:
         logger.exception("AI proposal generation failed for project %s", project_id)
+        if placeholder is not None and self.request.retries >= (self.max_retries or 0):
+            # Dernière tentative : la proposition attendue passe en échec
+            # (sinon le suivi de génération resterait « en cours » indéfiniment).
+            dm.ProjectAIProposal.objects.filter(
+                pk=placeholder.pk, status=dm.ProjectAIProposal.Status.PENDING,
+            ).update(status=dm.ProjectAIProposal.Status.FAILED, error_message=str(exc)[:1000])
         try:
             self.retry(exc=exc)
         except Exception:
@@ -1046,3 +1067,33 @@ def send_recording_minutes_email_async(self, recording_id: int, extra_emails=Non
         except Exception:
             pass
         return {"ok": False, "reason": str(exc)}
+
+
+# ─── Ticketing multi-applications ────────────────────────────────────────────
+
+@shared_task
+def deliver_ticket_webhook_task(delivery_id: int) -> str:
+    from project.services.ticketing_webhooks import deliver
+
+    return deliver(delivery_id)
+
+
+@shared_task
+def check_ticket_slas_task() -> dict:
+    from project.services.ticketing import check_slas
+
+    return check_slas()
+
+
+@shared_task
+def retry_ticket_webhooks_task() -> int:
+    from project.services.ticketing_webhooks import retry_due
+
+    return retry_due()
+
+
+@shared_task
+def purge_ticket_personal_data_task() -> int:
+    from project.services.ticketing import purge_personal_data
+
+    return purge_personal_data()

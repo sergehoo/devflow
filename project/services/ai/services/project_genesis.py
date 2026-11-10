@@ -111,7 +111,7 @@ class ProjectGenesisService:
         effective_methodology = methodology or dm.Project.Methodology.AGILE
 
         # 1. Création du Project minimal
-        project = dm.Project.objects.create(
+        project = dm.Project(
             workspace=workspace,
             team=team,
             name=name,
@@ -125,10 +125,14 @@ class ProjectGenesisService:
             budget=budget,
             methodology=effective_methodology,
         )
+        # Genesis génère la proposition de façon synchrone (étape 2) : le
+        # déclenchement asynchrone du signal post_save ferait un second appel
+        # IA payant et laisserait une proposition READY en double (dont
+        # l'application dupliquerait toute la structure).
+        project._skip_ai_trigger = True
+        project.save()
 
-        # Le signal post_save Project peut auto-déclencher une proposition
-        # via Celery — on vérifie qu'il n'y en a pas déjà une en cours
-        # (idempotence).
+        # Idempotence (proposition déjà en cours pour ce projet).
         existing = dm.ProjectAIProposal.objects.filter(
             project=project,
             status__in=[

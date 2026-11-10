@@ -180,7 +180,7 @@ export function Header({ me }: { me: Me }) {
                 <DropdownMenuSeparator />
               </div>
               <DropdownMenuItem asChild>
-                <a href={legacyUrl("/profile/")}><User /> Mon profil</a>
+                <Link to="/profile"><User /> Mon profil</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <a href={legacyUrl("/dashboard/classic/")}><Monitor /> Interface classique</a>

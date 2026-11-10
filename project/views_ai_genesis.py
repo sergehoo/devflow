@@ -15,6 +15,7 @@ from datetime import datetime
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -96,11 +97,14 @@ class ProjectGenesisForm(forms.Form):
         user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
         if user and user.is_authenticated:
-            owned = dm.Workspace.objects.filter(owner=user, is_archived=False)
-            membered = dm.Workspace.objects.filter(
-                memberships__user=user, is_archived=False
-            ).distinct()
-            self.fields["workspace"].queryset = (owned | membered).distinct().order_by("name")
+            # Un seul filtre OR : ``(owned | membered.distinct())`` levait
+            # « Cannot combine a unique query with a non-unique query » (500).
+            self.fields["workspace"].queryset = (
+                dm.Workspace.objects
+                .filter(Q(owner=user) | Q(memberships__user=user), is_archived=False)
+                .distinct()
+                .order_by("name")
+            )
 
 
 # =========================================================================

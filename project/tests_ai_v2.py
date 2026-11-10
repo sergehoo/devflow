@@ -22,11 +22,26 @@ from django.test import TestCase, override_settings
 
 from project import models as dm
 from project.services.ai.quota import (
+
+
     AIPromptLibrary,
     AIQuotaService,
 )
 
 User = get_user_model()
+
+
+def _ensure_profile(user, **fields):
+    """Le profil du propriétaire est déjà créé (signal à la création du workspace) : on le complète au lieu d'en créer un doublon."""
+    from project import models as _dm
+
+    profile = _dm.UserProfile.objects.filter(user=user).first()
+    if profile is None:
+        return _dm.UserProfile.objects.create(user=user, **fields)
+    for key, value in fields.items():
+        setattr(profile, key, value)
+    profile.save()
+    return profile
 
 
 class AIQuotaServiceTests(TestCase):
@@ -155,7 +170,7 @@ class PhaseFourEndpointsTests(TestCase):
         cls.workspace_a = dm.Workspace.objects.create(
             name="WS A", owner=cls.user_a,
         )
-        dm.UserProfile.objects.create(user=cls.user_a, workspace=cls.workspace_a)
+        _ensure_profile(user=cls.user_a, workspace=cls.workspace_a)
         cls.project_a = dm.Project.objects.create(
             workspace=cls.workspace_a, name="Projet A4",
             owner=cls.user_a,
@@ -170,7 +185,7 @@ class PhaseFourEndpointsTests(TestCase):
         cls.workspace_b = dm.Workspace.objects.create(
             name="WS B", owner=cls.user_b,
         )
-        dm.UserProfile.objects.create(user=cls.user_b, workspace=cls.workspace_b)
+        _ensure_profile(user=cls.user_b, workspace=cls.workspace_b)
         cls.project_b = dm.Project.objects.create(
             workspace=cls.workspace_b, name="Projet B4",
             owner=cls.user_b,

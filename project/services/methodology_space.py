@@ -74,10 +74,15 @@ def build_space(project) -> dict:
             "tasks": [_task(t) for t in sprint.tasks.select_related("assignee").order_by("priority")],
         }
         data["backlog"] = [
-            {"id": b.pk, "title": str(b), "status_label": b.get_item_type_display()}
+            {"id": b.pk, "title": str(b), "status_label": b.get_item_type_display(),
+             "story_points": b.story_points, "rank": b.rank}
             for b in project.backlog_items.filter(is_archived=False).order_by("rank", "-created_at")[:50]
         ]
-        data["sprints"] = [{"id": s.pk, "name": str(s), "status_label": s.get_status_display()}
+        # Sprints récents : mêmes colonnes que scrum_workspace.html (SP planifiés / complétés / vélocité).
+        data["sprints"] = [{"id": s.pk, "name": str(s), "status": s.status, "status_label": s.get_status_display(),
+                            "total_story_points": s.total_story_points or 0,
+                            "completed_story_points": s.completed_story_points or 0,
+                            "velocity_completed": s.velocity_completed or 0}
                            for s in project.sprints.order_by("-number")[:5]]
     elif kind == "kanban" and methodology:
         columns = []
@@ -95,6 +100,7 @@ def build_space(project) -> dict:
             {"id": p.pk, "name": p.name, "status_label": p.get_status_display() if hasattr(p, "get_status_display") else "",
              "start_date": getattr(p, "start_date", None), "end_date": getattr(p, "end_date", None),
              "progress": getattr(p, "progress_percent", None),
+             "status": getattr(p, "status", ""), "gate_required": bool(getattr(p, "gate_required", False)),
              "owner": (p.owner.get_full_name() or p.owner.get_username()) if getattr(p, "owner_id", None) else ""}
             for p in project.phases.select_related("owner").order_by("position", "id")
         ]

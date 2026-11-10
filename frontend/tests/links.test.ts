@@ -13,7 +13,12 @@ describe("resolveLegacyLink", () => {
     expect(resolveLegacyLink("/my-day/")).toEqual({ kind: "app", to: "/my-day" });
   });
   it("keeps non-migrated pages on the legacy UI", () => {
-    expect(resolveLegacyLink("/workspaces/3/financial-ai/portfolio/?tab=x")).toEqual({ kind: "legacy", href: "/workspaces/3/financial-ai/portfolio/?tab=x" });
+    expect(resolveLegacyLink("/ai-insights/dashboard/")).toEqual({ kind: "legacy", href: "/ai-insights/dashboard/" });
+  });
+  it("opens migrated finance, invoice and profile pages in React", () => {
+    expect(resolveLegacyLink("/workspaces/3/financial-ai/portfolio/?tab=x")).toEqual({ kind: "app", to: "/finance/portfolio" });
+    expect(resolveLegacyLink("/billing/invoices/12/")).toEqual({ kind: "app", to: "/invoices/12" });
+    expect(resolveLegacyLink("/profile/password/")).toEqual({ kind: "app", to: "/profile" });
   });
   it("refuses external or protocol-relative URLs (no open redirect)", () => {
     expect(resolveLegacyLink("https://evil.test/")).toBeNull();

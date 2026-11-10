@@ -25,11 +25,17 @@ import json
 from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.conf import settings
+from django.test import Client, TestCase, override_settings
+
+# Rendu des templates historiques sans manifeste collectstatic (environnement de test).
+STATIC_STORAGES = {**settings.STORAGES, "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}}
 from django.urls import reverse
 from django.utils import timezone
 
 from project import models as dm
+
+
 
 User = get_user_model()
 
@@ -37,6 +43,19 @@ User = get_user_model()
 # ---------------------------------------------------------------------------
 # Helpers de setup
 # ---------------------------------------------------------------------------
+def _ensure_profile(user, **fields):
+    """Le profil du propriétaire est déjà créé (signal à la création du workspace) : on le complète au lieu d'en créer un doublon."""
+    from project import models as _dm
+
+    profile = _dm.UserProfile.objects.filter(user=user).first()
+    if profile is None:
+        return _dm.UserProfile.objects.create(user=user, **fields)
+    for key, value in fields.items():
+        setattr(profile, key, value)
+    profile.save()
+    return profile
+
+
 class MultiTenantSetupMixin:
     """
     Crée deux workspaces étanches W1 et W2 avec leurs propres owners.
@@ -55,7 +74,7 @@ class MultiTenantSetupMixin:
             name="Workspace A",
             owner=cls.user_a,
         )
-        dm.UserProfile.objects.create(
+        _ensure_profile(
             user=cls.user_a,
             workspace=cls.workspace_a,
         )
@@ -68,7 +87,7 @@ class MultiTenantSetupMixin:
             name="Workspace B",
             owner=cls.user_b,
         )
-        dm.UserProfile.objects.create(
+        _ensure_profile(
             user=cls.user_b,
             workspace=cls.workspace_b,
         )
@@ -99,6 +118,7 @@ class MultiTenantSetupMixin:
 # ---------------------------------------------------------------------------
 # 1) MilestoneListView — fuite via override get_queryset
 # ---------------------------------------------------------------------------
+@override_settings(STORAGES=STATIC_STORAGES)
 class MilestoneListSecurityTests(MultiTenantSetupMixin, TestCase):
     def test_user_a_does_not_see_milestones_from_workspace_b(self):
         # Crée un milestone dans W2
@@ -562,6 +582,7 @@ class MultiModeDRFSecurityTests(MultiTenantSetupMixin, TestCase):
 # ===========================================================================
 # Phase 1 — Quick actions DRF (PR7)
 # ===========================================================================
+@override_settings(STORAGES=STATIC_STORAGES)
 class QuickActionsSecurityTests(MultiTenantSetupMixin, TestCase):
     """
     Vérifie les nouveaux endpoints quick-actions :

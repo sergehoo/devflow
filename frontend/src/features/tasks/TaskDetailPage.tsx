@@ -17,7 +17,7 @@ import { STATUS_BADGE, isOverdue } from "./constants";
 import { QuickUpdatePanel } from "./QuickUpdatePanel";
 import { TaskStructure } from "./TaskStructure";
 
-function ReassignDialog({ taskId, open, onOpenChange }: { taskId: number; open: boolean; onOpenChange: (o: boolean) => void }) {
+export function ReassignDialog({ taskId, open, onOpenChange }: { taskId: number; open: boolean; onOpenChange: (o: boolean) => void }) {
   const [q, setQ] = useState("");
   const [note, setNote] = useState("");
   const query = useDebouncedValue(q);

@@ -18,6 +18,19 @@ from project.services.chat import ChatService
 User = get_user_model()
 
 
+def _ensure_profile(user, **fields):
+    """Le profil du propriétaire est déjà créé (signal) : on le complète au lieu d'en créer un doublon."""
+    from project import models as _dm
+
+    profile = _dm.UserProfile.objects.filter(user=user).first()
+    if profile is None:
+        return _dm.UserProfile.objects.create(user=user, **fields)
+    for key, value in fields.items():
+        setattr(profile, key, value)
+    profile.save()
+    return profile
+
+
 class ChatServiceTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -35,7 +48,7 @@ class ChatServiceTests(TestCase):
         )
         # Alice + Bob + Charlie sont membres du même workspace via profile
         for u in (cls.alice, cls.bob, cls.charlie):
-            dm.UserProfile.objects.create(user=u, workspace=cls.workspace)
+            _ensure_profile(user=u, workspace=cls.workspace)
 
     def test_find_or_create_direct_idempotent(self):
         c1 = ChatService.find_or_create_direct(
@@ -108,7 +121,7 @@ class ChatServiceTests(TestCase):
             username="outside", email="o@example.com", password="x",
         )
         other_ws = dm.Workspace.objects.create(name="Other WS", owner=outside)
-        dm.UserProfile.objects.create(user=outside, workspace=other_ws)
+        _ensure_profile(user=outside, workspace=other_ws)
 
         contacts = ChatService.contacts_for(self.alice)
         ids = {c["id"] for c in contacts}
@@ -131,14 +144,14 @@ class ChatEndpointsCrossTenantTests(TestCase):
         )
         cls.ws_a = dm.Workspace.objects.create(name="WS A ep", owner=cls.alice)
         cls.ws_b = dm.Workspace.objects.create(name="WS B ep", owner=cls.bob_otherws)
-        dm.UserProfile.objects.create(user=cls.alice, workspace=cls.ws_a)
-        dm.UserProfile.objects.create(user=cls.bob_otherws, workspace=cls.ws_b)
+        _ensure_profile(user=cls.alice, workspace=cls.ws_a)
+        _ensure_profile(user=cls.bob_otherws, workspace=cls.ws_b)
 
         # Canal privé dans WS B entre 2 fictifs B-only — Alice ne doit pas y accéder
         cls.bob_friend = User.objects.create_user(
             username="b_friend", email="bf@example.com", password="x",
         )
-        dm.UserProfile.objects.create(user=cls.bob_friend, workspace=cls.ws_b)
+        _ensure_profile(user=cls.bob_friend, workspace=cls.ws_b)
         cls.channel_b = ChatService.find_or_create_direct(
             user_a=cls.bob_otherws, user_b=cls.bob_friend, workspace=cls.ws_b,
         )

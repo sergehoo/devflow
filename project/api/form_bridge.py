@@ -45,6 +45,9 @@ def _form_views():
         "timesheet-entry": (v.TimesheetEntryCreateView, v.TimesheetEntryUpdateView),
         "team": (v.TeamCreateView, v.TeamUpdateView),
         "member": (v.TeamMembershipCreateView, v.TeamMembershipUpdateView),
+        # Profil de l'utilisateur connecté (aucun pk : la vue résout request.user).
+        "profile": (v.ProfileUpdateView, v.ProfileUpdateView),
+        "password": (v.ProfilePasswordChangeView, v.ProfilePasswordChangeView),
     }
 
 
@@ -225,6 +228,8 @@ class LegacyFormView(APIView):
                 {"id": view.object.pk, "messages": notices},
                 status=status.HTTP_200_OK if pk else status.HTTP_201_CREATED,
             )
+        if response.status_code in (301, 302) and name in ("profile", "password"):  # vues sans objet créé
+            return Response({"id": None, "messages": notices}, status=status.HTTP_200_OK)
         if form is not None and form.errors:
             return Response(form_errors(form), status=status.HTTP_400_BAD_REQUEST)
         return Response({"detail": "Enregistrement impossible."}, status=status.HTTP_400_BAD_REQUEST)

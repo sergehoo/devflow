@@ -7,6 +7,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordChangeForm
 from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.utils import timezone
 
 from .models import (
@@ -958,9 +959,14 @@ class ProjectDocumentImportForm(BaseStyledModelForm):
         ]
         widgets = {
             "project": forms.Select(),
-            "file": forms.ClearableFileInput(),
+            "file": forms.ClearableFileInput(attrs={"accept": ".pdf,.docx"}),
             "status": forms.Select(),
         }
+
+    # SECURITY : seuls les formats analysables (ProjectDocumentAIService.extract_text)
+    # sont acceptés — un .html / .svg servi depuis l'origine de l'application
+    # exécuterait du script avec la session de celui qui l'ouvre (XSS stockée).
+    ALLOWED_EXTENSIONS = ("pdf", "docx")
 
     def __init__(self, *args, **kwargs):
         workspace = kwargs.pop("workspace", None)
@@ -968,6 +974,11 @@ class ProjectDocumentImportForm(BaseStyledModelForm):
         super().__init__(*args, **kwargs)
 
         self.fields["status"].required = False
+        self.fields["file"].validators.append(FileExtensionValidator(
+            self.ALLOWED_EXTENSIONS, message="Format non pris en charge : importez un PDF ou un document Word (.docx).",
+        ))
+        if not self.fields["file"].help_text:
+            self.fields["file"].help_text = "Formats acceptés : PDF, Word (.docx)."
 
         if workspace is not None:
             self.fields["project"].queryset = (
@@ -976,8 +987,15 @@ class ProjectDocumentImportForm(BaseStyledModelForm):
                 .order_by("name")
             )
         else:
+            # SECURITY : sans workspace explicite, uniquement les projets des
+            # workspaces de l'utilisateur (la liste exposait tous les tenants).
+            projects = Project.objects.filter(is_archived=False)
+            if self.allowed_workspaces is not None:
+                projects = projects.filter(workspace__in=self.allowed_workspaces)
+            else:
+                projects = projects.none()
             self.fields["project"].queryset = (
-                Project.objects.filter(is_archived=False)
+                projects
                 .select_related("workspace", "team", "owner", "product_manager", "category")
                 .order_by("name")
             )

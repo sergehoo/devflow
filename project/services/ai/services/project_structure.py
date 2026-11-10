@@ -197,6 +197,12 @@ class StructureGenerationResult:
 class ProjectAIStructureService:
     """Génération automatique d'une structure de projet."""
 
+    # Champs renseignés par la génération (le statut est géré à part).
+    GENERATED_FIELDS = (
+        "raw_payload", "used_provider", "used_model", "tokens_used", "prompt_snapshot",
+        "summary", "risks_summary", "recommendations", "error_message", "triggered_by", "updated_at",
+    )
+
     @classmethod
     @transaction.atomic
     def generate_for_project(
@@ -204,17 +210,51 @@ class ProjectAIStructureService:
         project: dm.Project,
         triggered_by: User | None = None,
         use_ai: bool = True,
+        proposal: dm.ProjectAIProposal | None = None,
+        document_text: str = "",
     ) -> StructureGenerationResult:
         """
         Point d'entrée principal. Crée (ou met à jour) une proposition IA
         pour ce projet.
+
+        * ``proposal`` : proposition « en attente » (PENDING, sans item) créée
+          par le déclenchement asynchrone ; elle est complétée au lieu d'en
+          créer une seconde (sinon elle restait orpheline en « En attente »).
+          Si elle n'est plus en attente (rejetée entre-temps), rien n'est généré.
+        * ``document_text`` : texte d'un document source (import documentaire)
+          transmis à l'IA comme contexte supplémentaire.
         """
-        proposal = dm.ProjectAIProposal.objects.create(
-            project=project,
-            workspace=project.workspace,
-            status=dm.ProjectAIProposal.Status.GENERATING,
-            triggered_by=triggered_by,
-        )
+        Status = dm.ProjectAIProposal.Status
+        if (
+            proposal is not None
+            and proposal.project_id == project.pk
+            and not proposal.items.exists()
+        ):
+            # Prise en charge atomique : la proposition attendue n'est complétée
+            # que si elle est toujours « en attente » (elle a pu être rejetée
+            # entre-temps — la génération n'a alors plus lieu d'être).
+            claimed = dm.ProjectAIProposal.objects.filter(pk=proposal.pk, status=Status.PENDING).update(
+                status=Status.GENERATING,
+                triggered_by=triggered_by or proposal.triggered_by,
+                error_message="",
+                updated_at=timezone.now(),
+            )
+            proposal.refresh_from_db()
+            if not claimed:
+                logger.info(
+                    "AI proposal %s is no longer pending (%s): generation skipped.",
+                    proposal.pk, proposal.status,
+                )
+                return StructureGenerationResult(
+                    proposal=proposal, used_provider=proposal.used_provider or "", items_created=0,
+                )
+        else:
+            proposal = dm.ProjectAIProposal.objects.create(
+                project=project,
+                workspace=project.workspace,
+                status=dm.ProjectAIProposal.Status.GENERATING,
+                triggered_by=triggered_by,
+            )
         dm.ProjectAIProposalLog.objects.create(
             proposal=proposal,
             action=dm.ProjectAIProposalLog.Action.TRIGGERED,
@@ -227,7 +267,10 @@ class ProjectAIStructureService:
 
         if use_ai:
             try:
-                payload, used_provider = cls._call_ai(project, proposal)
+                if document_text:
+                    payload, used_provider = cls._call_ai(project, proposal, document_text=document_text)
+                else:
+                    payload, used_provider = cls._call_ai(project, proposal)
             except Exception as exc:
                 logger.exception("AI structuring failed: %s", exc)
                 payload = None
@@ -250,8 +293,23 @@ class ProjectAIStructureService:
             with transaction.atomic():
                 items_created = cls._apply_payload(proposal, payload, project, used_provider)
 
-        proposal.status = dm.ProjectAIProposal.Status.READY
-        proposal.save()
+        # Contenu généré enregistré sans toucher au statut, puis passage à READY
+        # seulement si la proposition est toujours « en cours » : un rejet
+        # survenu pendant la génération n'est jamais écrasé.
+        proposal.save(update_fields=list(cls.GENERATED_FIELDS))
+        became_ready = dm.ProjectAIProposal.objects.filter(pk=proposal.pk, status=Status.GENERATING).update(
+            status=Status.READY, updated_at=timezone.now(),
+        )
+        if became_ready:
+            proposal.status = Status.READY
+        else:
+            proposal.refresh_from_db(fields=["status", "rejected_at", "validated_at", "validated_by", "updated_at"])
+            logger.info(
+                "AI proposal %s changed to %s during generation: status kept.", proposal.pk, proposal.status,
+            )
+            if proposal.status == Status.REJECTED:
+                # Même effet que le rejet sur les éléments créés après coup.
+                proposal.items.update(item_status=dm.ProjectAIProposalItem.ItemStatus.REJECTED)
 
         dm.ProjectAIProposalLog.objects.create(
             proposal=proposal,
@@ -300,7 +358,9 @@ class ProjectAIStructureService:
         return cls._instantiate_items(proposal, payload, project)
 
     @classmethod
-    def _call_ai(cls, project: dm.Project, proposal: dm.ProjectAIProposal) -> tuple[dict, str]:
+    def _call_ai(
+        cls, project: dm.Project, proposal: dm.ProjectAIProposal, document_text: str = "",
+    ) -> tuple[dict, str]:
         provider = get_ai_provider()
         if not provider.is_available():
             return {}, "heuristic"
@@ -414,6 +474,9 @@ class ProjectAIStructureService:
             "existing_releases": [{"name": r["name"], "released_at": r["released_at"].isoformat() if r["released_at"] else None} for r in existing_releases],
             "budget_meta": budget_meta,
         }
+        if document_text:
+            # Import documentaire : le document fait foi pour le périmètre.
+            prompt_payload["source_document"] = document_text[:12000]
 
         proposal.prompt_snapshot = json.dumps(prompt_payload, ensure_ascii=False)[:8000]
 

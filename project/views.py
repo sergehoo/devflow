@@ -3905,9 +3905,11 @@ class ProjectDocumentImportListView(DevflowListView):
             {
                 "stats": stats,
                 "status_choices": dm.ProjectDocumentImport.ImportStatus.choices,
-                "workspace_list": dm.Workspace.objects.filter(is_archived=False).order_by("name"),
+                # SECURITY : filtres limités aux workspaces de l'utilisateur
+                # (les listes exposaient les noms des autres tenants).
+                "workspace_list": self.get_user_workspaces().filter(is_archived=False),
                 "project_list": (
-                    dm.Project.objects.filter(is_archived=False)
+                    dm.Project.objects.filter(is_archived=False, workspace__in=self.get_user_workspaces())
                     .select_related("workspace")
                     .order_by("name")
                 ),
@@ -4147,7 +4149,51 @@ class ProjectMemberDetailView(DevflowDetailView):
     page_title = "Détail membre projet"
 
 
-class ProjectMemberCreateView(DevflowCreateView):
+class ProjectMemberRightsMixin:
+    """
+    SECURITY — ajout / modification / retrait d'une affectation projet réservés
+    à ``can_manage_project_members`` (RBAC ``project.edit`` ou
+    ``team.manage_members``, ou responsable du projet), même schéma que PR28.
+    Objet hors workspace → 404 (``get_object`` scopé) avant tout 403.
+    """
+
+    member_rights_denied = "Vous n'avez pas le droit de gérer les membres de ce projet."
+
+    def _member_projects(self):
+        """Projet de l'affectation existante + projet visé par le formulaire (POST / ``?project=``)."""
+        projects = [self.get_object().project] if self.kwargs.get("pk") else []
+        raw = self.request.POST.get("project") or self.request.GET.get("project")
+        try:
+            project_id = int(raw) if raw else None
+        except (TypeError, ValueError):
+            project_id = None
+        if project_id is not None and not any(p.pk == project_id for p in projects):
+            target = (
+                dm.Project.objects.select_related("workspace")
+                .filter(pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user))
+                .first()
+            )
+            if target is not None:  # projet hors workspace : rejeté par la validation du formulaire
+                projects.append(target)
+        return projects
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            from project.services.project_member_permissions import (
+                can_manage_members_in_workspace, can_manage_project_members,
+            )
+
+            projects = self._member_projects()
+            if projects:
+                allowed = all(can_manage_project_members(request.user, p) for p in projects)
+            else:  # formulaire vierge : droit RBAC sur le workspace courant
+                allowed = can_manage_members_in_workspace(request.user, self.get_current_workspace())
+            if not allowed:
+                raise PermissionDenied(self.member_rights_denied)
+        return super().dispatch(request, *args, **kwargs)
+
+
+class ProjectMemberCreateView(ProjectMemberRightsMixin, DevflowCreateView):
     model = dm.ProjectMember
     form_class = ProjectMemberForm
     template_name = "project/project_member/form.html"
@@ -4163,7 +4209,7 @@ class ProjectMemberCreateView(DevflowCreateView):
         return initial
 
 
-class ProjectMemberUpdateView(DevflowUpdateView):
+class ProjectMemberUpdateView(ProjectMemberRightsMixin, DevflowUpdateView):
     model = dm.ProjectMember
     form_class = ProjectMemberForm
     template_name = "project/project_member/form.html"
@@ -4172,7 +4218,7 @@ class ProjectMemberUpdateView(DevflowUpdateView):
     success_list_url_name = "project_member_list"
 
 
-class ProjectMemberDeleteView(DevflowDeleteView):
+class ProjectMemberDeleteView(ProjectMemberRightsMixin, DevflowDeleteView):
     model = dm.ProjectMember
     section = "project"
     page_title = "Supprimer membre projet"
@@ -4212,6 +4258,10 @@ def sprint_status_update(request):
             pk=sprint_id,
             workspace_id__in=user_workspace_ids,
         )
+        # SECURITY : changement de statut réservé au RBAC sprint.edit (chef de projet, propriétaire).
+        from project.services.rbac import RBACService
+        if not RBACService.can(request.user, "sprint.edit", target=sprint):
+            return JsonResponse({"success": False, "message": "Action non autorisée pour votre rôle."}, status=403)
         sprint.status = status
         sprint.save(update_fields=["status", "updated_at"])
 
@@ -4221,6 +4271,8 @@ def sprint_status_update(request):
             "status": sprint.status,
             "status_label": sprint.get_status_display(),
         })
+    except Http404:
+        return JsonResponse({"success": False, "message": "Introuvable."}, status=404)
     except Exception as exc:
         return JsonResponse(
             {"success": False, "message": str(exc)},
@@ -4313,6 +4365,8 @@ def task_status_update(request):
         task.save(update_fields=["status", "updated_at"])
         return JsonResponse({"success": True, "status": task.status,
                              "via_workflow": False})
+    except Http404:
+        return JsonResponse({"success": False, "message": "Introuvable."}, status=404)
     except Exception as exc:
         return JsonResponse({"success": False, "message": str(exc)}, status=400)
 
@@ -7503,6 +7557,11 @@ class MilestoneCreateView(DevflowCreateView):
     def get_workspace(self):
         workspace = getattr(self.request, "workspace", None)
 
+        if not workspace and self.request.GET.get("workspace"):
+            # ``?workspace=`` explicite (fiche d'un projet hors workspace courant) :
+            # validé par get_current_workspace (404 si l'utilisateur n'y a pas accès).
+            workspace = self.get_current_workspace()
+
         if not workspace:
             workspace = getattr(getattr(self.request.user, "profile", None), "workspace", None)
 
@@ -7964,6 +8023,10 @@ def roadmap_item_shift_dates(request):
             dm.RoadmapItem, pk=item_id,
             roadmap__workspace_id__in=get_user_workspace_ids(request.user),
         )
+        # SECURITY : décalage réservé au RBAC roadmap.edit.
+        from project.services.rbac import RBACService
+        if not RBACService.can(request.user, "roadmap.edit", workspace=roadmap_item.roadmap.workspace):
+            return JsonResponse({"success": False, "message": "Action non autorisée pour votre rôle."}, status=403)
 
         if delta_days == 0:
             return JsonResponse({"success": True, "message": "Aucun changement."})
@@ -7995,6 +8058,8 @@ def roadmap_item_shift_dates(request):
             "end_date_display": roadmap_item.end_date.strftime("%d/%m/%Y"),
         })
 
+    except Http404:
+        return JsonResponse({"success": False, "message": "Introuvable."}, status=404)
     except Exception as exc:
         return JsonResponse(
             {"success": False, "message": str(exc)},

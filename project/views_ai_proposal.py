@@ -473,9 +473,12 @@ class ProjectAIProposalTriggerView(LoginRequiredMixin, View):
             def _run():
                 try:
                     from project.tasks import generate_project_ai_proposal_task
+                    # La proposition PENDING créée ci-dessus est complétée par
+                    # la tâche (plus de doublon orphelin « En attente »).
                     generate_project_ai_proposal_task.delay(
                         project_id=project.pk,
                         triggered_by_id=request.user.pk,
+                        proposal_id=proposal.pk,
                     )
                 except Exception:
                     # Celery indispo → fallback : on lance la génération
@@ -489,6 +492,7 @@ class ProjectAIProposalTriggerView(LoginRequiredMixin, View):
                                     project=project,
                                     triggered_by=request.user,
                                     use_ai=True,
+                                    proposal=proposal,
                                 )
                             except Exception as exc:
                                 dm.ProjectAIProposal.objects.filter(pk=proposal.pk).update(

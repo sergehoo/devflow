@@ -1,5 +1,7 @@
 import { ExternalLink, FileDown, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { api } from "@/services/api";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/feedback/states";
@@ -104,6 +106,9 @@ export function ResourceDetailPage() {
           {d.downloads.map((x) => <Button key={x.href} variant="outline" asChild><a href={legacyUrl(x.href)} target="_blank" rel="noreferrer"><FileDown />{x.label}</a></Button>)}
           {d.actions.map((a) => <Button key={a.code} variant="outline" onClick={() => setConfirm(a)}>{a.label}</Button>)}
           {meta.can_update && <Button variant="outline" asChild><Link to={`/m/${name}/${id}/edit`}><Pencil />Modifier</Link></Button>}
+          {name === "invoice" && <Button variant="outline" asChild><Link to={`/invoices/${id}`}>Lignes, totaux et paiements</Link></Button>}
+          {name === "sprint" && <Button variant="outline" asChild><Link to={`/sprints/${id}/board`}>Board du sprint</Link></Button>}
+          {name === "roadmap-item" && <ShiftDates itemId={id} />}
           {meta.can_delete && <Button variant="destructive" onClick={() => setConfirm({ code: "delete", label: "Supprimer" })}><Trash2 />Supprimer</Button>}
         </>} />
       <Card>
@@ -146,5 +151,27 @@ export function ResourceFormPage() {
           navigate(meta.has_detail && newId ? `/m/${name}/${newId}` : `/m/${name}`);
         }} />
     </div>
+  );
+}
+
+/** Décalage des dates d'un élément de roadmap (vue Django existante, RBAC roadmap.edit). */
+function ShiftDates({ itemId }: { itemId: number }) {
+  const qc = useQueryClient();
+  const [days, setDays] = useState("7");
+  const shift = async () => {
+    try {
+      await api(`roadmap-items/${itemId}/shift-dates/`, { method: "POST", body: { delta_days: Number(days) } });
+      toast.success("Dates décalées.");
+      void qc.invalidateQueries({ queryKey: ["resources"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <label className="sr-only" htmlFor="shift-days">Décalage en jours</label>
+      <input id="shift-days" type="number" value={days} onChange={(e) => setDays(e.target.value)} className="h-9 w-20 rounded-xl border bg-card px-2 text-sm" />
+      <Button variant="outline" onClick={() => void shift()}>Décaler (jours)</Button>
+    </span>
   );
 }

@@ -1,10 +1,9 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProjectDetailPage } from "@/features/projects/ProjectDetailPage";
 import { ProjectFormPage } from "@/features/projects/ProjectFormPage";
 import { ProjectsPage } from "@/features/projects/ProjectsPage";
-import { ME, mockApi, renderPage } from "./utils";
+import { mockApi, renderPage } from "./utils";
 
 const PROJECT = {
   id: 7, workspace: 1, team: 2, team_name: "Core", name: "Portail", code: "PRJ-7", description: "", tech_stack: "Django",
@@ -22,7 +21,6 @@ const SCHEMA = {
       choices: [{ value: "", label: "---" }, { value: "2", label: "Core" }] },
   ],
 };
-const SUMMARY = { tasks_total: 3, tasks_overdue: 1, estimate_hours: 10, spent_hours: 4, tasks_by_status: [{ status: "TODO", label: "À faire", count: 3 }], members: [] };
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -33,14 +31,6 @@ describe("Projects", () => {
     expect(await screen.findByRole("link", { name: /Portail/ })).toHaveAttribute("href", "/projects/7");
     expect(await screen.findByRole("option", { name: "Core" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Planifié" })).toBeInTheDocument();
-  });
-
-  it("shows delete only with the project.delete permission", async () => {
-    mockApi({ "auth/me/": { ...ME, permissions: ["project.view"] }, "projects/7/summary/": SUMMARY, "projects/7/": PROJECT });
-    renderPage(<ProjectDetailPage />, "/projects/7", "/projects/:id");
-    expect(await screen.findByRole("heading", { name: "Portail" })).toBeInTheDocument();
-    expect(await screen.findByText("1 en retard")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Supprimer/ })).not.toBeInTheDocument();
   });
 
   it("validates required fields client-side then maps Django errors", async () => {

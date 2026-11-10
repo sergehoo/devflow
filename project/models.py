@@ -6585,3 +6585,10 @@ class SecurityAuditLog(models.Model):
 
     def __str__(self):
         return f"[{self.severity}] {self.event_type} · {self.action} · {self.created_at:%Y-%m-%d %H:%M}"
+
+
+# Ticketing multi-applications (modèles déclarés dans un module dédié, même app « project »).
+from project.models_ticketing import (  # noqa: E402,F401
+    ExternalApplication, Ticket, TicketAttachment, TicketComment, TicketEvent, TicketRoutingRule,
+    TicketSLAPolicy, TicketWebhookDelivery,
+)

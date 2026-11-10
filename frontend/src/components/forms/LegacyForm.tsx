@@ -77,8 +77,10 @@ function FieldInput({ f, form, error }: { f: FormFieldSchema; form: ReturnType<t
   );
 }
 
-export function LegacyForm({ name, id, query, submitLabel = "Enregistrer", onSuccess, onCancel, exclude = [], hidden = [], compact }: {
+export function LegacyForm({ name, id, query, submitLabel = "Enregistrer", onSuccess, onCancel, exclude = [], hidden = [], compact, endpoint }: {
   name: string;
+  /** Vue dédiée au même contrat que `/api/v1/forms/<nom>/` (GET champs, POST → `{id, messages}` ou erreurs 400). */
+  endpoint?: string;
   id?: number;
   /** Paramètres GET transmis à la vue Django (ex. `project` pour préremplir). */
   query?: Record<string, string>;
@@ -90,18 +92,18 @@ export function LegacyForm({ name, id, query, submitLabel = "Enregistrer", onSuc
   hidden?: string[];
   compact?: boolean;
 }) {
-  const schema = useFormSchema(name, id, query);
+  const schema = useFormSchema(name, id, query, endpoint);
   if (schema.isPending) return <PageSkeleton />;
   if (schema.isError) return <ErrorState message={schema.error.message} onRetry={() => void schema.refetch()} />;
   return (
-    <LegacyFormBody key={`${name}-${id ?? "new"}`} name={name} id={id} query={query} compact={compact}
+    <LegacyFormBody key={`${name}-${id ?? "new"}`} name={name} id={id} query={query} compact={compact} endpoint={endpoint}
       fields={schema.data.fields.filter((f) => !exclude.includes(f.name)).map((f) => (hidden.includes(f.name) ? { ...f, type: "hidden" } : f))}
       submitLabel={submitLabel} onSuccess={onSuccess} onCancel={onCancel} />
   );
 }
 
-function LegacyFormBody({ name, id, query, fields, submitLabel, onSuccess, onCancel, compact }: {
-  name: string; id?: number; query?: Record<string, string>; fields: FormFieldSchema[]; submitLabel: string; compact?: boolean;
+function LegacyFormBody({ name, id, query, fields, submitLabel, onSuccess, onCancel, compact, endpoint }: {
+  name: string; id?: number; query?: Record<string, string>; fields: FormFieldSchema[]; submitLabel: string; compact?: boolean; endpoint?: string;
   onSuccess: (r: { id: number; messages: string[] }) => void; onCancel?: () => void;
 }) {
   const resolver = useMemo(() => zodResolver(buildZod(fields)), [fields]);
@@ -121,7 +123,7 @@ function LegacyFormBody({ name, id, query, fields, submitLabel, onSuccess, onCan
   const onSubmit = form.handleSubmit(async (values) => {
     setGlobalErrors([]);
     try {
-      const res = await api<{ id: number; messages: string[] }>(id ? `forms/${name}/${id}/` : `forms/${name}/`, {
+      const res = await api<{ id: number; messages: string[] }>(endpoint ?? (id ? `forms/${name}/${id}/` : `forms/${name}/`), {
         method: "POST", body: toFormData(fields.filter((f) => !f.disabled), values), params: query,
       });
       onSuccess(res);

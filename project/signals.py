@@ -561,3 +561,15 @@ def push_notification_realtime(sender, instance, created, **kwargs):
     transaction.on_commit(lambda: push_to_users(
         [instance.recipient_id], "notification", {"notification": serialize_notification(instance)},
     ))
+
+
+
+@receiver(post_save, sender=dm.Task)
+def sync_linked_tickets(sender, instance, created, **kwargs):
+    """Tâche liée terminée → tickets résolus (sens unique, sans boucle)."""
+    if created or instance.status != dm.Task.Status.DONE:
+        return
+    from project.services.ticketing import sync_from_task
+
+    if dm.Ticket.objects.filter(task=instance).exists():
+        sync_from_task(instance)

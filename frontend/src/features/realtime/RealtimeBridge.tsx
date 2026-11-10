@@ -58,6 +58,9 @@ export function RealtimeBridge() {
         case "chat.read":
           void qc.invalidateQueries({ queryKey: CONVERSATIONS_KEY });
           break;
+        case "ticket.changed":
+          void qc.invalidateQueries({ queryKey: ["tickets"] });
+          break;
       }
     }, { heartbeat: true });
   }, [qc, navigate]);

@@ -83,11 +83,14 @@ class _WorkspaceAccessMixin:
             return False
         if user.is_superuser:
             return True
-        return dm.TeamMembership.objects.filter(
+        member = dm.TeamMembership.objects.filter(
             workspace=workspace,
             user=user,
             status=dm.TeamMembership.Status.ACTIVE,
-        ).exists()
+        ).exists() or workspace.owner_id == user.pk
+        # SECURITY : données financières du portefeuille → RBAC budget.view (comme la fiche projet).
+        from project.services.rbac import RBACService
+        return member and RBACService.can(user, "budget.view", workspace=workspace)
 
 
 class WorkspaceAllocationAdviceView(LoginRequiredMixin, _WorkspaceAccessMixin, View):

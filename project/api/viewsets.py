@@ -346,7 +346,8 @@ class ProjectViewSet(RBACUpdateArchiveMixin, WorkspaceScopedViewSetMixin, viewse
         throttle_classes=[AIActionRateThrottle],
     )
     def ai_forecast(self, request, pk=None):
-        project = self.get_object()
+        # SECURITY (chantier projet) : coûts / marges → mêmes droits que ProjectBudgetForecastView.
+        project = self._financial_project(request)
         forecast = BudgetForecastService.forecast(project, use_ai=True)
         return Response(forecast.to_dict())
 
@@ -357,7 +358,8 @@ class ProjectViewSet(RBACUpdateArchiveMixin, WorkspaceScopedViewSetMixin, viewse
         throttle_classes=[AIActionRateThrottle],
     )
     def ai_risk_analysis(self, request, pk=None):
-        project = self.get_object()
+        # SECURITY (chantier projet) : mêmes droits que ProjectRiskAnalysisView (can_view_financials).
+        project = self._financial_project(request)
         signals = RiskAnalysisService.analyze(project, persist=True, use_ai=True)
         return Response(
             {

@@ -48,6 +48,10 @@ def user_can_access_media(user, path: str) -> bool:
         return True
     if path.startswith(f"exports/u{user.pk}/"):
         return True
+    if path.startswith("tickets/"):
+        # Pièces jointes de tickets : droits objet (visibilité publique / interne, équipe, affectation).
+        from project.services.ticketing import can_download_path
+        return can_download_path(user, path)
     workspace_ids = get_user_workspace_ids(user)
     if not workspace_ids:
         return False
@@ -70,12 +74,36 @@ def _serve(path: str):
         response = HttpResponse()
         response["X-Accel-Redirect"] = f"/protected-media/{quote(path)}"
         response["Content-Type"] = mimetypes.guess_type(path)[0] or "application/octet-stream"
-        return response
+        return _harden(response, path)
     try:
         full_path = safe_join(str(settings.MEDIA_ROOT), path)
-        return FileResponse(open(full_path, "rb"))
+        return _harden(FileResponse(open(full_path, "rb")), path)
     except (OSError, ValueError):
         raise Http404("Fichier introuvable.")
+
+
+# Types affichables « inline » sans exécution de script sur l'origine de l'application.
+INLINE_SAFE_TYPES = frozenset({
+    "application/pdf", "text/plain",
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp",
+})
+
+
+def _harden(response, path: str):
+    """
+    SECURITY (défense en profondeur) : tout fichier dont le type pourrait
+    exécuter du script (HTML, SVG, XML…) est servi en téléchargement et sous
+    ``Content-Security-Policy: sandbox`` — jamais rendu sur l'origine de l'app
+    avec la session de l'utilisateur. PDF, images matricielles, audio et vidéo
+    restent affichables (aperçus, lecture des enregistrements).
+    """
+    response["X-Content-Type-Options"] = "nosniff"
+    content_type = (response.get("Content-Type") or "").split(";")[0].strip().lower()
+    if content_type in INLINE_SAFE_TYPES or content_type.startswith(("audio/", "video/")):
+        return response
+    response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(posixpath.basename(path))}"
+    response["Content-Security-Policy"] = "sandbox"
+    return response
 
 
 def protected_media(request, path):

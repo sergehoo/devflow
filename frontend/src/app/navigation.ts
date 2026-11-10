@@ -1,5 +1,5 @@
 import {
-  BarChart3, Briefcase, CalendarDays, CheckSquare, LayoutDashboard, MessageSquare, Settings, Sun, Users,
+  BarChart3, Briefcase, CalendarDays, CheckSquare, LayoutDashboard, LifeBuoy, MessageSquare, Settings, Sun, Users,
   type LucideIcon,
 } from "lucide-react";
 import { can } from "@/lib/permissions";
@@ -42,6 +42,12 @@ export const NAVIGATION: NavGroup[] = [
       { label: "Objectifs & OKR", to: "/m/objective" },
       { label: "Risques", to: "/m/risk" },
       { label: "Analyses & suggestions IA", to: "/m/ai-insight" },
+      { label: "Assistant IA", to: "/assistant" },
+      // --- ai ---
+      { label: "Créer un projet avec l'IA", to: "/projects/genesis" },
+      { label: "Propositions IA", to: "/ai-proposals" },
+      { label: "Imports documentaires", to: "/imports" },
+      // --- fin ai ---
     ],
   },
   {
@@ -62,13 +68,20 @@ export const NAVIGATION: NavGroup[] = [
   },
   {
     label: "Finance", icon: BarChart3, visible: anyOf("budget.view", "billing.view"), items: [
-      { label: "Cockpit financier", visible: anyOf("budget.view"),
-        legacy: (me) => (me.workspace ? `/workspaces/${me.workspace.id}/financial-ai/portfolio/` : null) },
+      { label: "Cockpit financier", to: "/finance/portfolio", visible: anyOf("budget.view") },
       { label: "Dépenses", to: "/m/project-expense", visible: anyOf("budget.view") },
-      { label: "Allocation IA des ressources", visible: anyOf("budget.view"),
-        legacy: (me) => (me.workspace ? `/workspaces/${me.workspace.id}/financial-ai/allocation/view/` : null) },
+      { label: "Allocation IA des ressources", to: "/finance/allocation", visible: anyOf("budget.view") },
       { label: "Factures", to: "/m/invoice", visible: anyOf("billing.view") },
       { label: "Clients", to: "/m/invoice-client", visible: anyOf("billing.view") },
+    ],
+  },
+  // --- tickets ---
+  {
+    label: "Support", icon: LifeBuoy, visible: anyOf("ticket.view", "ticket.view_assigned"), items: [
+      { label: "Ticket Center", to: "/tickets" },
+      { label: "Tickets", to: "/tickets/list" },
+      { label: "Applications connectées", to: "/tickets/applications", visible: anyOf("ticket.view") },
+      { label: "Routage & SLA", to: "/tickets/settings", visible: anyOf("ticket.view") },
     ],
   },
   // --- meetings ---

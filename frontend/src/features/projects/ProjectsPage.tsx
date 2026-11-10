@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { FileUp, Plus, Search } from "lucide-react";
+import { FileUp, Plus, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { DataTable } from "@/components/data/DataTable";
@@ -13,7 +13,6 @@ import { formatDate } from "@/lib/format";
 import { useDebouncedValue } from "@/lib/hooks";
 import { useProjects, type Project, type ProjectFilters } from "./api";
 import { HEALTH } from "./constants";
-import { useMe } from "@/features/auth/api";
 
 const columns: ColumnDef<Project, unknown>[] = [
   {
@@ -47,7 +46,6 @@ const columns: ColumnDef<Project, unknown>[] = [
 const EMPTY: ProjectFilters = { search: "", status: "", priority: "", health_status: "", team: "", ordering: "-updated_at", page: 1 };
 
 export function ProjectsPage() {
-  const { data: me } = useMe();
   const [filters, setFilters] = useState<ProjectFilters>(EMPTY);
   const search = useDebouncedValue(filters.search);
   const { data, isPending, isError, error, refetch } = useProjects({ ...filters, search });
@@ -66,7 +64,10 @@ export function ProjectsPage() {
         title="Projets"
         description={data ? `${data.count} projet(s)` : undefined}
         actions={<>
-          <Button variant="outline" asChild><Link to={`/m/project-import/new${me?.workspace ? `?workspace=${me.workspace.id}` : ""}`}><FileUp />Importer un document</Link></Button>
+          {/* --- ai --- */}
+          <Button variant="outline" asChild><Link to="/imports?new=1"><FileUp />Importer un document</Link></Button>
+          <Button variant="outline" asChild><Link to="/projects/genesis"><Sparkles />Créer avec l'IA</Link></Button>
+          {/* --- fin ai --- */}
           <Button asChild><Link to="/projects/new"><Plus />Nouveau projet</Link></Button>
         </>}
       />

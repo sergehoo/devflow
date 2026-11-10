@@ -46,7 +46,11 @@ def _serialize_for_json(value: Any) -> Any:
         return {k: _serialize_for_json(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_serialize_for_json(v) for v in value]
-    return value
+    if hasattr(value, "_meta") and hasattr(value, "pk"):  # instance de modèle (ex. ProjectBudget) : référence figée
+        return {"id": value.pk, "label": str(value)}
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
 def _decimal_or_zero(value: Any) -> Decimal:

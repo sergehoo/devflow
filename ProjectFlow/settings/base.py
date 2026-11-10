@@ -109,7 +109,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     "allauth.account.middleware.AccountMiddleware",
-
+    # Anciennes pages HTML migrées → React (302, désactivable : DEVFLOW_REACT_DEFAULT=False ; ?classic=1).
+    "project.middleware_react.LegacyToReactRedirectMiddleware",
 ]
 
 ROOT_URLCONF = 'ProjectFlow.urls'
@@ -205,6 +206,10 @@ CELERY_TASK_ROUTES = {
 }
 
 CELERY_BEAT_SCHEDULE = {
+    # Ticketing : SLA (alertes, dépassements, escalade), webhooks en attente, conservation des données.
+    "ticket-sla-check": {"task": "project.tasks.check_ticket_slas_task", "schedule": crontab(minute="*/5")},
+    "ticket-webhook-retry": {"task": "project.tasks.retry_ticket_webhooks_task", "schedule": crontab(minute="*/10")},
+    "ticket-personal-data-purge": {"task": "project.tasks.purge_ticket_personal_data_task", "schedule": crontab(hour=3, minute=30)},
     # Balayage de toutes les tâches DevFlow 2x/jour pour envoyer
     # automatiquement des relances aux assignees et notifier les PM.
     # Heures locales : 9h00 (matin) et 16h00 (après-midi) Africa/Abidjan.

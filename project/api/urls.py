@@ -278,3 +278,104 @@ urlpatterns += [
     path("meetings/<int:meeting_pk>/recordings/upload/", vmt.MeetingRecordingUploadView.as_view(),
          name="api-meeting-recording-upload"),
 ]
+
+# --- ticketing ---
+from rest_framework.routers import SimpleRouter  # noqa: E402
+
+from project.api import views_ticketing as vtk  # noqa: E402
+
+ticket_router = SimpleRouter()
+ticket_router.register("tickets", vtk.TicketViewSet, basename="api-ticket")
+ticket_router.register("ticket-applications", vtk.ExternalApplicationViewSet, basename="api-ticket-application")
+ticket_router.register("ticket-routing-rules", vtk.TicketRoutingRuleViewSet, basename="api-ticket-routing-rule")
+ticket_router.register("ticket-sla-policies", vtk.TicketSLAPolicyViewSet, basename="api-ticket-sla-policy")
+
+urlpatterns += [
+    # API d'intégration (applications externes, authentification HMAC / identifiants dédiés)
+    path("integrations/tickets/", vtk.IntegrationTicketListCreateView.as_view(), name="api-integration-tickets"),
+    path("integrations/tickets/<str:external_id>/", vtk.IntegrationTicketDetailView.as_view(),
+         name="api-integration-ticket-detail"),
+    path("integrations/tickets/<str:external_id>/comments/", vtk.IntegrationTicketCommentView.as_view(),
+         name="api-integration-ticket-comments"),
+    path("", include(ticket_router.urls)),
+]
+# --- fin ticketing ---
+# --- ai ---
+# Structuration automatique des projets par l'IA (Genesis, propositions,
+# import documentaire, copilote) — frontend React. Voir project/api/views_ai.py.
+from project.api import views_ai as _ai  # noqa: E402
+
+urlpatterns += [
+    path("ai/status/", _ai.AIStatusView.as_view(), name="api-ai-status"),
+    path("ai/genesis/", _ai.GenesisView.as_view(), name="api-ai-genesis"),
+    path("ai-proposals/", _ai.AIProposalListView.as_view(), name="api-ai-proposal-list"),
+    path("ai-proposals/<int:pk>/", _ai.AIProposalDetailView.as_view(), name="api-ai-proposal-detail"),
+    path("ai-proposals/<int:pk>/items/<int:item_pk>/form/", _ai.AIProposalItemFormView.as_view(),
+         name="api-ai-proposal-item-form"),
+    path("ai-proposals/<int:pk>/items/<int:item_pk>/<slug:action>/", _ai.AIProposalItemActionView.as_view(),
+         name="api-ai-proposal-item-action"),
+    path("ai-proposals/<int:pk>/<slug:action>/", _ai.AIProposalActionView.as_view(), name="api-ai-proposal-action"),
+    path("projects/<int:pk>/ai-proposals/", _ai.ProjectAIProposalsView.as_view(), name="api-project-ai-proposals"),
+    path("projects/<int:pk>/ai-proposals/trigger/", _ai.ProjectAIProposalTriggerAPIView.as_view(),
+         name="api-project-ai-proposal-trigger"),
+    path("projects/<int:pk>/ai-proposals/status/", _ai.ProjectAIProposalStatusAPIView.as_view(),
+         name="api-project-ai-proposal-status"),
+    path("projects/<int:pk>/copilot/", _ai.ProjectCopilotChatView.as_view(), name="api-project-copilot"),
+    path("projects/<int:pk>/copilot/logs/", _ai.ProjectCopilotLogsView.as_view(), name="api-project-copilot-logs"),
+    path("imports/", _ai.ImportListView.as_view(), name="api-import-list"),
+    path("imports/<int:pk>/", _ai.ImportDetailView.as_view(), name="api-import-detail"),
+    path("imports/<int:pk>/analyze/", _ai.ImportAnalyzeView.as_view(), name="api-import-analyze"),
+]
+# --- fin ai ---
+# --- projet ---
+# Fiche projet complète React (contexte ProjectDetailView, onglets paresseux) + actions de la fiche.
+from project.api.views_projet import (  # noqa: E402
+    ProjectAIForecastView, ProjectAIGenerationView, ProjectAIRiskAnalysisView, ProjectDetailTabsView,
+    ProjectInvoiceGenerateView,
+)
+
+urlpatterns += [
+    path("projects/<int:pk>/detail-tabs/", ProjectDetailTabsView.as_view(), name="api-project-detail-tabs"),
+    path("projects/<int:pk>/detail-tabs/ai-forecast/", ProjectAIForecastView.as_view(),
+         name="api-project-detail-ai-forecast"),
+    path("projects/<int:pk>/detail-tabs/ai-risk-analysis/", ProjectAIRiskAnalysisView.as_view(),
+         name="api-project-detail-ai-risk-analysis"),
+    path("projects/<int:pk>/detail-tabs/ai-generation/", ProjectAIGenerationView.as_view(),
+         name="api-project-detail-ai-generation"),
+    path("projects/<int:pk>/detail-tabs/invoice-generate/", ProjectInvoiceGenerateView.as_view(),
+         name="api-project-detail-invoice-generate"),
+]
+
+# --- finance ---
+from project.api import views_finance as vfi  # noqa: E402
+
+urlpatterns += [
+    path("finance/portfolio/", vfi.FinancePortfolioView.as_view(), name="api-finance-portfolio"),
+    path("finance/allocation/", vfi.FinanceAllocationView.as_view(), name="api-finance-allocation"),
+    path("invoices/<int:pk>/lines/", vfi.InvoiceLinesAPI.as_view(), name="api-invoice-lines"),
+    path("invoices/<int:pk>/lines/reorder/", vfi.InvoiceReorderAPI.as_view(), name="api-invoice-lines-reorder"),
+    path("invoices/<int:pk>/totals/", vfi.InvoiceTotalsAPI.as_view(), name="api-invoice-totals"),
+    path("invoices/<int:pk>/payments/", vfi.InvoicePaymentsAPI.as_view(), name="api-invoice-payments"),
+    path("invoice-lines/<int:pk>/", vfi.InvoiceLineAPI.as_view(), name="api-invoice-line"),
+]
+# --- fin finance ---
+
+# --- agile ---
+from project.api import views_agile as vag  # noqa: E402
+
+urlpatterns += [
+    path("sprints/<int:pk>/status/", vag.SprintStatusAPI.as_view(), name="api-sprint-status"),
+    path("roadmap-items/<int:pk>/shift-dates/", vag.RoadmapShiftAPI.as_view(), name="api-roadmap-item-shift"),
+]
+# --- fin agile ---
+
+# --- assistant ---
+from project.api import views_assistant as vas  # noqa: E402
+
+urlpatterns += [
+    path("assistant/welcome/", vas.AssistantWelcomeAPI.as_view(), name="api-assistant-welcome"),
+    path("assistant/send/", vas.AssistantSendAPI.as_view(), name="api-assistant-send"),
+    path("assistant/sessions/<int:session_id>/messages/", vas.AssistantHistoryAPI.as_view(), name="api-assistant-history"),
+    path("assistant/sessions/<int:session_id>/close/", vas.AssistantCloseAPI.as_view(), name="api-assistant-close"),
+]
+# --- fin assistant ---
