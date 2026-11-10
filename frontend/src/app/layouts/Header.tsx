@@ -128,7 +128,7 @@ export function Header({ me }: { me: Me }) {
           <Menu />
         </Button>
         <Link to="/" className="flex items-center gap-2 font-bold lg:hidden" aria-label="DevFlow — tableau de bord">
-          <BrandMark className="size-9 rounded-xl" />
+          <BrandMark size={36} />
         </Link>
         <Greeting me={me} />
         <div className="mx-auto hidden w-full max-w-[440px] md:block">

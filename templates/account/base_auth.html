@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Dev'Flow — Auth{% endblock %}</title>
+    {% include "partials/_favicons.html" %}
 
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;1,9..144,300&display=swap"
           rel="stylesheet">
@@ -942,6 +943,7 @@
             <div class="visual-card">
                 <div class="visual-content">
                     <div class="brand-badge">
+                        {% include "partials/_devflow_mark.html" with size=44 %}
                         <div>
                             <div class="brand-name">Dev'Flow</div>
                             <div class="brand-sub">Project workspace intelligence</div>
@@ -988,6 +990,7 @@
             <div class="form-wrap">
                 <div class="company-logo-top">
                     <div class="company-logo-badge">
+                        {% include "partials/_devflow_mark.html" with size=30 %}
                         <div class="company-logo-name">Dev'Flow</div>
                     </div>
                 </div>

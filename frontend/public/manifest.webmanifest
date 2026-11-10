@@ -1,0 +1,17 @@
+{
+  "name": "DevFlow",
+  "short_name": "DevFlow",
+  "description": "Pilotage de projets, équipes, budgets et support.",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "background_color": "#F5F1E8",
+  "theme_color": "#F5F1E8",
+  "lang": "fr",
+  "icons": [
+    { "src": "favicon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+    { "src": "icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ]
+}

@@ -6,6 +6,7 @@ import { NAVIGATION, resolveLegacy, type NavGroup, type NavItem } from "@/app/na
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DevFlowLogo } from "@/components/brand/DevFlowLogo";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useLogout } from "@/features/auth/api";
 import { cn, legacyUrl } from "@/lib/utils";
@@ -20,13 +21,9 @@ const EXACT = new Set(["/", "/meetings", "/timesheets"]);
 const visibleItems = (group: NavGroup, me: Me) => (group.items ?? []).filter((i) => !i.visible || i.visible(me));
 const isActive = (pathname: string, to: string) => (EXACT.has(to) ? pathname === to : pathname === to || pathname.startsWith(`${to}/`));
 
-export function BrandMark({ className }: { className?: string }) {
-  return (
-    <span aria-hidden="true" className={cn("relative flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_4px_14px_rgba(255,212,79,0.45)]", className)}>
-      <span className="text-lg font-extrabold leading-none tracking-tighter">D</span>
-      <span className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 rounded-[3px] bg-primary" />
-    </span>
-  );
+/** Symbole DevFlow (variante compacte, lisible de 24 à 48 px). */
+export function BrandMark({ size = 44 }: { size?: number }) {
+  return <DevFlowLogo variant="compact" size={size} title={null} />;
 }
 
 /** Classe d'un bouton d'icône : actif = fond gris clair + indicateur jaune à gauche. */
@@ -178,7 +175,7 @@ export function MobileSidebar({ me }: { me: Me }) {
           onClick={(e) => { if ((e.target as HTMLElement).closest("a")) setOpen(false); }}
         >
           <Drawer.Title className="flex items-center gap-3 px-1 pb-4 text-lg font-bold">
-            <BrandMark className="size-10" />DevFlow
+            <DevFlowLogo variant="full" size={36} />
           </Drawer.Title>
           <nav aria-label="Navigation principale" className="flex-1 space-y-1 overflow-y-auto">
             {NAVIGATION.filter((g) => !g.visible || g.visible(me)).map((g) =>
