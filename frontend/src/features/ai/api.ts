@@ -126,6 +126,8 @@ export interface ImportRow {
   has_error: boolean;
   /** Message d'erreur sinon début du texte extrait (comme la liste historique). */
   excerpt: string;
+  /** « tracking_sheet » : classeur de suivi, traité par l'assistant d'import du suivi. */
+  kind?: string;
 }
 
 export interface ImportList {

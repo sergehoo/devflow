@@ -1136,3 +1136,14 @@ def retry_ticket_emails_task() -> int:
     from project.services.ticketing_email import retry_due
 
     return retry_due()
+
+
+# ---------------------------------------------------------------------------
+# Suivi Pôle Développement
+# ---------------------------------------------------------------------------
+@shared_task(name="project.tasks.run_tracking_alert_sweep")
+def run_tracking_alert_sweep() -> dict:
+    """Échéances, retards, inactivité, décisions attendues et blocages (niveau projet)."""
+    from project.services.tracking_notifications import run_sweep
+
+    return run_sweep()

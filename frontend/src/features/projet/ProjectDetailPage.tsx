@@ -22,6 +22,7 @@ import { useFormDialog, type FormSpec } from "./formDialog";
 import { ProgressBar } from "./ui";
 
 // Onglets chargés à la demande (un fichier par famille d'onglets).
+import { ProjectTrackingSummary } from "@/features/pilotage/ProjectTrackingSummary";
 import { ProjectTickets } from "@/features/tickets/TicketsPages";
 
 const PlanningTab = lazy(() => import("./tabs/PlanningTab").then((m) => ({ default: m.PlanningTab })));
@@ -231,6 +232,7 @@ export function ProjectDetailPage() {
       <section id="projet-tabpanel" role="tabpanel" aria-labelledby={`tab-${active}`} aria-busy={switching} className="min-w-0">
         {switching ? <TabSkeleton /> : <Suspense fallback={<TabSkeleton />}><TabContent d={d} openForm={form.open} /></Suspense>}
       </section>
+      <ProjectTrackingSummary projectId={d.project.id} />
       <ProjectTickets projectId={d.project.id} />
       {form.element}
     </div>

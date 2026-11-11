@@ -1,6 +1,6 @@
-import { ArrowLeft, ExternalLink, FileText, FileUp, Loader2, Search, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileSpreadsheet, FileText, FileUp, Loader2, Search, Sparkles, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/feedback/states";
 import { LegacyForm } from "@/components/forms/LegacyForm";
@@ -13,10 +13,14 @@ import { Badge, Skeleton } from "@/components/ui/misc";
 import { useMe } from "@/features/auth/api";
 import { useDebouncedValue } from "@/lib/hooks";
 import { formatDateTime } from "@/lib/format";
+import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { useAnalyzeImport, useImport, useImports, type AnalyzeResult, type ImportDetail } from "./api";
 import { COUNT_LABELS } from "./constants";
 import { AIStatusNotice, Stat, StatusBadge } from "./shared";
+
+/** Un classeur de suivi s'ouvre dans son assistant d'import, pas dans l'analyse IA documentaire. */
+const importPath = (r: { id: number; kind?: string }) => (r.kind === "tracking_sheet" ? `/imports/tracking/${r.id}` : `/imports/${r.id}`);
 
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg"]);
 
@@ -40,6 +44,7 @@ function UploadDialog({ projectId, onClose }: { projectId: string | null; onClos
 
 /** Liste des imports documentaires (recherche, filtres, statistiques) + dépôt. */
 export function ImportsPage() {
+  const { data: me } = useMe();
   const [search, setSearch] = useSearchParams();
   const [q, setQ] = useState(search.get("q") ?? "");
   const debounced = useDebouncedValue(q);
@@ -63,6 +68,7 @@ export function ImportsPage() {
         description="Déposez un cahier des charges : l'IA en extrait la structure du projet (jalons, sprints, tâches) à valider avant création."
         actions={<>
           <Button variant="outline" asChild><Link to="/ai-proposals">Propositions IA</Link></Button>
+          {can(me?.permissions, "project.create") && <Button variant="outline" asChild><Link to="/imports/tracking"><FileSpreadsheet />Importer le suivi Excel</Link></Button>}
           <Button onClick={() => set("new", "1")}><FileUp />Importer un document</Button>
         </>} />
 
@@ -114,7 +120,7 @@ export function ImportsPage() {
                   <FileText className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link to={`/imports/${r.id}`} className="break-all font-medium hover:text-brand">{r.file_name || `Import n° ${r.id}`}</Link>
+                      <Link to={importPath(r)} className="break-all font-medium hover:text-brand">{r.file_name || `Import n° ${r.id}`}</Link>
                       {r.file_ext && <Badge className="uppercase">{r.file_ext}</Badge>}
                       <StatusBadge status={r.status} label={r.status_label} />
                     </div>
@@ -126,7 +132,7 @@ export function ImportsPage() {
                       {` · ${[r.workspace ? `Workspace ${r.workspace}` : null, r.uploaded_by, formatDateTime(r.created_at)].filter(Boolean).join(" · ")}`}
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" asChild><Link to={`/imports/${r.id}`}>Ouvrir</Link></Button>
+                  <Button variant="outline" size="sm" asChild><Link to={importPath(r)}>Ouvrir</Link></Button>
                 </li>
               ))}
             </ul>
@@ -214,6 +220,7 @@ export function ImportDetailPage() {
 
   if (isPending) return <PageSkeleton />;
   if (isError) return <ErrorState message={error.message} onRetry={() => void refetch()} />;
+  if (doc.kind === "tracking_sheet") return <Navigate to={importPath(doc)} replace />;
 
   const counts = result ? Object.entries(result.counts).filter(([k, v]) => COUNT_LABELS[k] && typeof v === "number" && v > 0) : [];
   const info: [string, string][] = [
@@ -312,7 +319,7 @@ export function ImportDetailPage() {
                 <ul className="space-y-2">
                   {doc.related.map((r) => (
                     <li key={r.id}>
-                      <Link to={`/imports/${r.id}`} className="block rounded-xl border p-3 hover:border-primary">
+                      <Link to={importPath(r)} className="block rounded-xl border p-3 hover:border-primary">
                         <span className="block break-all text-sm font-medium">{r.file_name}</span>
                         <span className="text-xs text-muted-foreground">{r.status_label} · {formatDateTime(r.created_at)}</span>
                       </Link>

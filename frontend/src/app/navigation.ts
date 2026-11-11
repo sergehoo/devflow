@@ -1,5 +1,5 @@
 import {
-  BarChart3, Briefcase, CalendarDays, CheckSquare, LayoutDashboard, LifeBuoy, MessageSquare, Settings, Sun, Users,
+  BarChart3, Briefcase, CalendarDays, CheckSquare, Gauge, LayoutDashboard, LifeBuoy, MessageSquare, Settings, Sun, Users,
   type LucideIcon,
 } from "lucide-react";
 import { can } from "@/lib/permissions";
@@ -50,6 +50,13 @@ export const NAVIGATION: NavGroup[] = [
       // --- fin ai ---
     ],
   },
+  // --- pilotage --- vue consolidée qui remplace le classeur Excel de suivi
+  {
+    label: "Pilotage", icon: Gauge, visible: anyOf("project.view", "task.view_assigned"), items: [
+      { label: "Suivi Pôle Développement", to: "/pilotage/suivi" },
+    ],
+  },
+  // --- fin pilotage ---
   {
     label: "Exécution", icon: CheckSquare, items: [
       { label: "Tâches", to: "/tasks" },

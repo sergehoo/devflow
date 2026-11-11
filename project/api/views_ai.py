@@ -53,7 +53,7 @@ from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.text import Truncator
 from rest_framework import permissions, status
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -851,6 +851,8 @@ def _import_row(obj) -> dict:
         "created_at": _iso(obj.created_at),
         "has_error": bool(obj.error_message),
         "excerpt": _import_excerpt(obj),
+        # « tracking_sheet » : classeur de suivi, traité par l'assistant dédié (views_tracking).
+        "kind": (obj.ai_payload or {}).get("kind", "") if isinstance(obj.ai_payload, dict) else "",
     }
 
 
@@ -969,6 +971,9 @@ class ImportAnalyzeView(APIView):
             raise PermissionDenied("Action non autorisée pour votre rôle.")
         if _analysis_running(obj):
             return _conflict("Une analyse est déjà en cours pour ce document.")
+        if isinstance(obj.ai_payload, dict) and obj.ai_payload.get("kind") == "tracking_sheet":
+            # L'analyse documentaire écraserait l'état de l'assistant de suivi (ai_payload).
+            raise ValidationError({"detail": "Ce classeur de suivi se traite depuis l'assistant d'import du suivi."})
 
         Status = dm.ProjectDocumentImport.ImportStatus
         use_ai = _flag(request.data.get("use_ai"), True)

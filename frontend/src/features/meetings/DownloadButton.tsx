@@ -1,7 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import { legacyUrl } from "@/lib/utils";
 
 export const DOWNLOAD_ERROR = "Le document n'a pas pu être généré. Réessayez plus tard ; si le problème persiste, contactez l'administrateur.";
@@ -16,12 +16,15 @@ function filenameFrom(res: Response): string | null {
  * historique redirige vers son ancienne page avec un message : on reste ici et on
  * affiche l'erreur.
  */
-export function DownloadButton({ href, filename, children }: { href: string; filename: string; children: ReactNode }) {
+export function DownloadButton({ href, filename, children, variant = "outline", size }: {
+  href: string; filename: string; children: ReactNode; variant?: ButtonProps["variant"]; size?: ButtonProps["size"];
+}) {
   const [pending, setPending] = useState(false);
   const download = async () => {
     setPending(true);
     try {
-      const res = await fetch(legacyUrl(href), { credentials: "include", redirect: "manual" });
+      // Les exports de l'API (/api/…) passent par la même origine que le reste du client HTTP.
+      const res = await fetch(href.startsWith("/api/") ? href : legacyUrl(href), { credentials: "include", redirect: "manual" });
       const type = res.headers.get("Content-Type") ?? "";
       if (!res.ok || res.type === "opaqueredirect" || type.startsWith("text/html")) throw new Error(DOWNLOAD_ERROR);
       const url = URL.createObjectURL(await res.blob());
@@ -37,7 +40,7 @@ export function DownloadButton({ href, filename, children }: { href: string; fil
     }
   };
   return (
-    <Button type="button" variant="outline" disabled={pending} aria-busy={pending} onClick={download}>
+    <Button type="button" variant={variant} size={size} disabled={pending} aria-busy={pending} onClick={download}>
       {pending && <Loader2 className="animate-spin" aria-hidden="true" />}
       {children}
     </Button>

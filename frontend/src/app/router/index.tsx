@@ -174,9 +174,16 @@ export const router = createBrowserRouter(
           handle: { crumb: "Imports documentaires" },
           children: [
             { index: true, lazy: async () => ({ Component: (await import("@/features/ai/ImportsPages")).ImportsPage }) },
+            // --- pilotage --- assistant d'import du classeur de suivi (déclaré avant « :id »)
+            { path: "tracking", handle: { crumb: "Suivi Excel" }, lazy: async () => ({ Component: (await import("@/features/pilotage/TrackingImportPage")).TrackingImportsPage }) },
+            { path: "tracking/:id", handle: { crumb: "Assistant d'import" }, lazy: async () => ({ Component: (await import("@/features/pilotage/TrackingImportPage")).TrackingImportWizardPage }) },
+            // --- fin pilotage ---
             { path: ":id", handle: { crumb: "Document" }, lazy: async () => ({ Component: (await import("@/features/ai/ImportsPages")).ImportDetailPage }) },
           ],
         },
+        // --- pilotage --- Suivi Pôle Développement
+        { path: "pilotage/suivi", handle: { crumb: "Suivi Pôle Développement" }, lazy: async () => ({ Component: (await import("@/features/pilotage/PilotagePage")).PilotagePage }) },
+        // --- fin pilotage ---
         // Anciennes pages génériques (pont en lecture seule) → écrans dédiés ; « …/:id/edit » reste au pont.
         {
           path: "m/ai-proposal",

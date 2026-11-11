@@ -20,6 +20,10 @@ describe("resolveLegacyLink", () => {
     expect(resolveLegacyLink("/billing/invoices/12/")).toEqual({ kind: "app", to: "/invoices/12" });
     expect(resolveLegacyLink("/profile/password/")).toEqual({ kind: "app", to: "/profile" });
   });
+  it("opens the tracking board (notifications) in React, keeping its filters", () => {
+    expect(resolveLegacyLink("/pilotage/suivi/")).toEqual({ kind: "app", to: "/pilotage/suivi" });
+    expect(resolveLegacyLink("/pilotage/suivi/?late=1&x=2")).toEqual({ kind: "app", to: "/pilotage/suivi?late=1" });
+  });
   it("refuses external or protocol-relative URLs (no open redirect)", () => {
     expect(resolveLegacyLink("https://evil.test/")).toBeNull();
     expect(resolveLegacyLink("//evil.test/x")).toBeNull();

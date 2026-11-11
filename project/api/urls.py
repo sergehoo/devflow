@@ -332,6 +332,29 @@ urlpatterns += [
     path("imports/<int:pk>/analyze/", _ai.ImportAnalyzeView.as_view(), name="api-import-analyze"),
 ]
 # --- fin ai ---
+# --- pilotage ---
+# Suivi Pôle Développement : vue consolidée, exports, synthèse, assistant d'import du classeur.
+from project.api import views_tracking as _trk  # noqa: E402
+
+urlpatterns += [
+    path("tracking/board/", _trk.TrackingBoardView.as_view(), name="api-tracking-board"),
+    path("tracking/export/", _trk.TrackingExportView.as_view(), name="api-tracking-export"),
+    path("tracking/brief/", _trk.TrackingBriefView.as_view(), name="api-tracking-brief"),
+    path("tracking/projects/<int:pk>/", _trk.TrackingProjectView.as_view(), name="api-tracking-project"),
+    path("tracking/imports/", _trk.TrackingImportListView.as_view(), name="api-tracking-import-list"),
+    path("tracking/imports/<int:pk>/", _trk.TrackingImportDetailView.as_view(), name="api-tracking-import-detail"),
+    path("tracking/imports/<int:pk>/analyze/", _trk.TrackingImportActionView.as_view(action="analyze"),
+         name="api-tracking-import-analyze"),
+    path("tracking/imports/<int:pk>/apply/", _trk.TrackingImportActionView.as_view(action="apply"),
+         name="api-tracking-import-apply"),
+    path("tracking/imports/<int:pk>/rollback/", _trk.TrackingImportActionView.as_view(action="rollback"),
+         name="api-tracking-import-rollback"),
+    path("tracking/imports/<int:pk>/records/", _trk.TrackingImportRecordsView.as_view(),
+         name="api-tracking-import-records"),
+    path("tracking/imports/<int:pk>/tasks/", _trk.TrackingImportTaskSearchView.as_view(),
+         name="api-tracking-import-tasks"),
+]
+# --- fin pilotage ---
 # --- projet ---
 # Fiche projet complète React (contexte ProjectDetailView, onglets paresseux) + actions de la fiche.
 from project.api.views_projet import (  # noqa: E402

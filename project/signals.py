@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db.models import Q
-from django.db.models.signals import post_delete, post_save, pre_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
@@ -573,3 +573,52 @@ def sync_linked_tickets(sender, instance, created, **kwargs):
 
     if dm.Ticket.objects.filter(task=instance).exists():
         sync_from_task(instance)
+
+
+# ---------------------------------------------------------------------------
+# Suivi Pôle Développement : alertes immédiates (nouvelle alerte, décision
+# attendue, changement de porteur). Les objets créés par l'import du classeur
+# portent ``_skip_tracking_notification`` : un seul récapitulatif par porteur.
+# ---------------------------------------------------------------------------
+@receiver(post_save, sender=dm.Risk)
+def tracking_notify_new_risk(sender, instance, created, **kwargs):
+    if not created or getattr(instance, "_skip_tracking_notification", False):
+        return
+    if instance.status != dm.Risk.Status.OPEN:
+        return
+    from project.services.tracking_notifications import notify_new_risk
+
+    notify_new_risk(instance)
+
+
+@receiver(m2m_changed, sender=dm.MeetingDecision.projects.through)
+def tracking_notify_pending_decision(sender, instance, action, reverse, pk_set, **kwargs):
+    if action != "post_add" or reverse or not pk_set:
+        return
+    if getattr(instance, "_skip_tracking_notification", False):
+        return
+    if instance.status != dm.MeetingDecision.Status.PENDING:
+        return
+    from project.services.tracking_notifications import notify_pending_decision
+
+    notify_pending_decision(instance, pk_set)
+
+
+@receiver(pre_save, sender=dm.Project)
+def cache_previous_project_owner(sender, instance, update_fields=None, **kwargs):
+    instance._previous_owner_id = instance.owner_id
+    if instance.pk and (update_fields is None or "owner" in update_fields):
+        instance._previous_owner_id = (
+            dm.Project.objects.filter(pk=instance.pk).values_list("owner_id", flat=True).first()
+        )
+
+
+@receiver(post_save, sender=dm.Project)
+def tracking_notify_owner_change(sender, instance, created, **kwargs):
+    if created or getattr(instance, "_skip_tracking_notification", False):
+        return
+    previous = getattr(instance, "_previous_owner_id", instance.owner_id)
+    if instance.owner_id and previous != instance.owner_id:
+        from project.services.tracking_notifications import notify_owner_change
+
+        notify_owner_change(instance, previous)

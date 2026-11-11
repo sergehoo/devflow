@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/misc";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/feedback/states";
 import { useMe } from "@/features/auth/api";
+import { ExportTrackingButton } from "@/features/pilotage/ExportTrackingButton";
 import { formatHours, formatMoney, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useDashboard, useDashboardInsights, type DashboardSummary } from "./api";
@@ -120,7 +121,7 @@ export function DashboardPage() {
       <PageHeader
         title="Tableau de bord"
         description={<>Bonjour {me?.first_name || me?.full_name}, voici l'activité de <span className="font-medium text-foreground">{data.workspace.name}</span>{data.workspace.quarter_label ? ` · ${data.workspace.quarter_label}` : ""}.</>}
-        actions={<Button asChild><Link to="/tasks/new"><Plus />Nouvelle tâche</Link></Button>}
+        actions={<><ExportTrackingButton gated /><Button asChild><Link to="/tasks/new"><Plus />Nouvelle tâche</Link></Button></>}
       />
 
       {/* Grille de référence : 23 % / 52 % / 25 % (≥ xl) ; 2 colonnes (≥ md) ; empilée sur mobile. */}

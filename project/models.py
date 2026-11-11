@@ -1636,6 +1636,13 @@ class Risk(TimeStampedModel, SoftDeleteModel):
         ESCALATED = "ESCALATED", "Escaladé"
         CLOSED = "CLOSED", "Clos"
 
+    class Category(models.TextChoices):
+        """Nature de l'alerte (suivi de pilotage) : un risque n'est pas un blocage."""
+        RISK = "RISK", "Risque"
+        DEPENDENCY = "DEPENDENCY", "Dépendance"
+        BLOCKER = "BLOCKER", "Blocage"
+        ALERT = "ALERT", "Alerte"
+
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="risks")
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="risks")
     task = models.ForeignKey(Task, on_delete=models.SET_NULL, null=True, blank=True, related_name="risks")
@@ -1644,6 +1651,7 @@ class Risk(TimeStampedModel, SoftDeleteModel):
     severity = models.CharField(max_length=12, choices=Severity.choices, default=Severity.MEDIUM)
     probability = models.CharField(max_length=12, choices=Probability.choices, default=Probability.MEDIUM)
     status = models.CharField(max_length=15, choices=Status.choices, default=Status.OPEN)
+    category = models.CharField(max_length=12, choices=Category.choices, default=Category.RISK, db_index=True)
     impact_score = models.PositiveSmallIntegerField(default=0)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
                               related_name="owned_risks")
@@ -2100,7 +2108,13 @@ class UserPreference(TimeStampedModel):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class Label(TimeStampedModel):
+    class Kind(models.TextChoices):
+        TAG = "TAG", "Étiquette"
+        # Entreprise / filiale du groupe à laquelle un projet ou une tâche est rattaché.
+        COMPANY = "COMPANY", "Entreprise"
+
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="labels")
+    kind = models.CharField(max_length=12, choices=Kind.choices, default=Kind.TAG, db_index=True)
     name = models.CharField(max_length=60)
     color = models.CharField(max_length=20, default="#F4722B")
     description = models.CharField(max_length=160, blank=True)
@@ -3027,6 +3041,70 @@ class ProjectDocumentImport(TimeStampedModel):
 
     def __str__(self):
         return f"Import {self.pk} · {self.workspace.name}"
+
+
+class ProjectStakeholder(TimeStampedModel):
+    """
+    Partie prenante nommée d'un projet ou d'une activité (porteur, interlocuteur).
+
+    Sert aux personnes qui ne sont pas (encore) des utilisateurs DevFlow : le
+    nom est conservé tel quel, ``user`` est renseigné lorsqu'un rapprochement
+    a été validé. Aucun compte n'est jamais créé à partir de cette table.
+    """
+
+    class Role(models.TextChoices):
+        PORTEUR = "PORTEUR", "Porteur"
+        INTERLOCUTEUR = "INTERLOCUTEUR", "Interlocuteur"
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="stakeholders")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="stakeholders")
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, null=True, blank=True, related_name="stakeholders")
+    role = models.CharField(max_length=15, choices=Role.choices, default=Role.INTERLOCUTEUR)
+    name = models.CharField(max_length=160)
+    name_key = models.CharField(max_length=160, db_index=True, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                             related_name="stakeholder_links")
+
+    class Meta:
+        ordering = ["role", "name"]
+        indexes = [models.Index(fields=["project", "task", "role"], name="stakeholder_scope_idx")]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_role_display()})"
+
+
+class ProjectImportRecord(TimeStampedModel):
+    """
+    Trace d'une donnée importée : ligne source, texte d'origine, objet DevFlow
+    créé / mis à jour / rattaché. Permet l'audit et l'annulation logique d'un
+    import (``ProjectDocumentImport`` porte le fichier, la date et l'auteur).
+    """
+
+    class Action(models.TextChoices):
+        CREATED = "CREATED", "Créé"
+        UPDATED = "UPDATED", "Mis à jour"
+        LINKED = "LINKED", "Rattaché"
+        SKIPPED = "SKIPPED", "Ignoré"
+
+    document_import = models.ForeignKey(ProjectDocumentImport, on_delete=models.CASCADE, related_name="records")
+    section = models.CharField(max_length=12)
+    row_number = models.PositiveIntegerField()
+    field = models.CharField(max_length=40)
+    item_index = models.PositiveSmallIntegerField(default=0)
+    original_text = models.TextField(blank=True)
+    action = models.CharField(max_length=10, choices=Action.choices)
+    target_model = models.CharField(max_length=40, blank=True)
+    target_id = models.PositiveBigIntegerField(null=True, blank=True)
+    previous = models.JSONField(default=dict, blank=True)
+    source_key = models.CharField(max_length=64, blank=True, db_index=True)
+    rolled_back_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [models.Index(fields=["document_import", "section", "row_number"], name="import_record_row_idx")]
+
+    def __str__(self):
+        return f"{self.section} L{self.row_number} · {self.field} · {self.action}"
 
 
 class ProjectKPI(TimeStampedModel):
@@ -4184,6 +4262,10 @@ class MeetingDecision(TimeStampedModel, SoftDeleteModel):
     projects = models.ManyToManyField(
         "Project", related_name="meeting_decisions", blank=True,
         help_text="Projets impactés par cette décision.",
+    )
+    task = models.ForeignKey(
+        "Task", on_delete=models.SET_NULL, null=True, blank=True, related_name="decisions",
+        help_text="Tâche / activité concernée lorsque la décision porte sur une activité précise.",
     )
 
     title = models.CharField(max_length=250)

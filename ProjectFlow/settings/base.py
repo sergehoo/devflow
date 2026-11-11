@@ -223,6 +223,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "project.tasks.run_task_reminder_sweep",
         "schedule": crontab(hour=16, minute=0),
     },
+    # Suivi Pôle Développement : alertes de niveau projet (les relances de
+    # tâches restent assurées par le balayage ci-dessus).
+    "tracking-alert-sweep": {
+        "task": "project.tasks.run_tracking_alert_sweep",
+        "schedule": crontab(hour=7, minute=45),
+    },
     # Phase 3 — PR16 : Budget V2
     # 5h00 : recalcule EAC + Cost Variance avant le scan d'alertes
     "recompute-project-eac-sweep": {

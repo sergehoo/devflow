@@ -63,6 +63,9 @@ const RULES: [RegExp, (m: RegExpMatchArray, query: URLSearchParams) => string][]
   [/^\/project-imports\/create\/?$/, (_m, q) => (/^\d+$/.test(q.get("project") ?? "") ? `/imports?new=1&project=${q.get("project")}` : "/imports?new=1")],
   [/^\/project-imports\/?$/, () => "/imports"],
   // --- fin ai ---
+  // --- pilotage ---
+  [/^\/pilotage\/suivi\/?$/, (_m, q) => withQuery("/pilotage/suivi", q, ["project", "late", "alert", "status"])],
+  // --- fin pilotage ---
 ];
 
 /** Recopie les paramètres GET utiles (`?project=12`) dans la route React. */

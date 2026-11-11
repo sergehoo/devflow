@@ -9,6 +9,7 @@ import { PageHeader, Pagination } from "@/components/layout/page";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Badge, Skeleton } from "@/components/ui/misc";
+import { ExportTrackingButton } from "@/features/pilotage/ExportTrackingButton";
 import { formatDate } from "@/lib/format";
 import { useDebouncedValue } from "@/lib/hooks";
 import { useProjects, type Project, type ProjectFilters } from "./api";
@@ -64,6 +65,7 @@ export function ProjectsPage() {
         title="Projets"
         description={data ? `${data.count} projet(s)` : undefined}
         actions={<>
+          <ExportTrackingButton gated />
           {/* --- ai --- */}
           <Button variant="outline" asChild><Link to="/imports?new=1"><FileUp />Importer un document</Link></Button>
           <Button variant="outline" asChild><Link to="/projects/genesis"><Sparkles />Créer avec l'IA</Link></Button>
