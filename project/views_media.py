@@ -52,6 +52,10 @@ def user_can_access_media(user, path: str) -> bool:
         # Pièces jointes de tickets : droits objet (visibilité publique / interne, équipe, affectation).
         from project.services.ticketing import can_download_path
         return can_download_path(user, path)
+    if path.startswith("ticket-mail/"):
+        # E-mails bruts (en-têtes complets, corps et pièces jointes non filtrés) : administrateurs du support.
+        from project.services.ticketing import can_read_mail_path
+        return can_read_mail_path(user, path)
     workspace_ids = get_user_workspace_ids(user)
     if not workspace_ids:
         return False

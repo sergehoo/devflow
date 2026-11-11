@@ -52,6 +52,31 @@ def _name(user) -> str:
     return (user.get_full_name() or user.get_username()) if user else ""
 
 
+def _same(given: str, expected: str) -> bool:
+    """Comparaison à temps constant ; en octets pour qu'une valeur non ASCII soit refusée, jamais une erreur 500."""
+    return hmac.compare_digest((given or "").encode("utf-8", "replace"), expected.encode())
+
+
+def _digits(raw: str) -> bool:
+    """Entier positif en chiffres ASCII (``str.isdigit`` seul accepte « ² », que ``int`` refuse)."""
+    return bool(raw) and raw.isascii() and raw.isdigit() and len(raw) <= 12
+
+
+def _fresh(timestamp: str) -> bool:
+    """Horodatage Unix dans la fenêtre de tolérance."""
+    return _digits(timestamp) and abs(time.time() - int(timestamp)) <= MAX_SKEW_SECONDS
+
+
+def _int_param(request, name: str) -> int | None:
+    """Paramètre d'URL entier facultatif ; 400 (et non 500) s'il est mal formé."""
+    raw = request.query_params.get(name, "")
+    if not raw:
+        return None
+    if not _digits(raw):
+        raise ValidationError({name: "Identifiant invalide."})
+    return int(raw)
+
+
 # ═══ Authentification des applications ═══════════════════════════════════════
 
 class ApplicationAuthentication(BaseAuthentication):
@@ -73,18 +98,22 @@ class ApplicationAuthentication(BaseAuthentication):
         if app is None:
             logger.warning("integration auth: unknown key %s", key_id[:20])
             raise AuthenticationFailed("Identifiants d'application invalides.")
-        secret = svc.get_secret(app)
+        try:
+            secret = svc.get_secret(app)
+        except svc.SecretError:  # clé de chiffrement modifiée : refus propre, alerte dans les journaux
+            logger.error("integration auth: unreadable secret for %s (TICKETING_ENCRYPTION_KEY ?)", app.key_id)
+            raise AuthenticationFailed("Identifiants d'application invalides.")
         if secret_given is not None:
-            if not hmac.compare_digest(secret_given.strip(), secret):
+            if not _same(secret_given.strip(), secret):
                 logger.warning("integration auth: bad secret for %s", app.key_id)
                 raise AuthenticationFailed("Identifiants d'application invalides.")
         else:
             ts = request.headers.get("X-DevFlow-Timestamp", "")
             sig = request.headers.get("X-DevFlow-Signature", "").removeprefix("sha256=")
-            if not ts.isdigit() or abs(time.time() - int(ts)) > MAX_SKEW_SECONDS:
+            if not _fresh(ts):
                 raise AuthenticationFailed("Horodatage absent ou hors fenêtre (5 min).")
             expected = svc.signature(secret, ts, request.method, request.path, request._request.body)
-            if not hmac.compare_digest(sig, expected):
+            if not _same(sig, expected):
                 logger.warning("integration auth: bad signature for %s", app.key_id)
                 raise AuthenticationFailed("Signature invalide.")
             if not cache.add(f"ticketing:sig:{expected}", 1, MAX_SKEW_SECONDS * 2):
@@ -224,7 +253,11 @@ class IntegrationTicketCommentView(IntegrationBase):
         if hasattr(data, "getlist"):
             import json
 
-            data = {"body": data.get("body", ""), "author": json.loads(data["author"]) if data.get("author") else {}}
+            try:
+                author = json.loads(data["author"]) if data.get("author") else {}
+            except ValueError:
+                raise ValidationError({"author": "JSON invalide."})
+            data = {"body": data.get("body", ""), "author": author}
         serializer = IntegrationCommentSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -316,8 +349,9 @@ class ExternalApplicationViewSet(WorkspaceScopedViewSetMixin, viewsets.ModelView
         qs = super().get_queryset().annotate(open_tickets=Count("tickets", filter=Q(tickets__status__in=T.OPEN_STATUSES)))
         if not self.request.user.is_superuser:
             qs = qs.filter(workspace_id__in=rbac_workspace_ids(self.request.user, "ticket.view"))
-        if self.request.query_params.get("workspace"):
-            qs = qs.filter(workspace_id=self.request.query_params["workspace"])
+        workspace_id = _int_param(self.request, "workspace")
+        if workspace_id is not None:
+            qs = qs.filter(workspace_id=workspace_id)
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -442,8 +476,9 @@ class _AdminConfigViewSet(WorkspaceScopedViewSetMixin, viewsets.ModelViewSet):
         qs = super().get_queryset()
         if not self.request.user.is_superuser:
             qs = qs.filter(workspace_id__in=rbac_workspace_ids(self.request.user, "ticket.view"))
-        if self.request.query_params.get("workspace"):
-            qs = qs.filter(workspace_id=self.request.query_params["workspace"])
+        workspace_id = _int_param(self.request, "workspace")
+        if workspace_id is not None:
+            qs = qs.filter(workspace_id=workspace_id)
         return qs
 
     def _check(self, workspace):
@@ -507,6 +542,17 @@ def ticket_row(t: dm.Ticket) -> dict:
 
 def ticket_detail(t: dm.Ticket, user) -> dict:
     manage = svc.can_manage(user, t)
+    work = svc.can_work(user, t)
+    # Un simple déclarant (``created_by`` sans droit ticket) ne reçoit que le fil public :
+    # ni notes internes, ni pièces jointes internes, ni journal complet, ni conversation e-mail.
+    internal = svc.can_see_internal(user, t)
+    comments = t.comments.select_related("author")
+    attachments = t.attachments.select_related("uploaded_by")
+    events = t.events.select_related("actor")
+    if not internal:
+        comments = comments.filter(visibility="PUBLIC")
+        attachments = attachments.filter(visibility="PUBLIC")
+        events = events.filter(is_public=True)
     return {
         **ticket_row(t),
         "description": t.description, "environment": t.environment, "app_version": t.app_version, "url": t.url,
@@ -519,19 +565,19 @@ def ticket_detail(t: dm.Ticket, user) -> dict:
             "id": c.pk, "body": c.body, "visibility": c.visibility, "created_at": c.created_at,
             "author": _name(c.author) if c.author_id else (c.author_external_name or t.reporter_name or t.application.name),
             "external": c.author_id is None,
-        } for c in t.comments.select_related("author")],
+        } for c in comments],
         "attachments": [{
             "id": a.pk, "name": a.original_name, "mime_type": a.mime_type, "size": a.size, "visibility": a.visibility,
             "created_at": a.created_at, "uploaded_by": _name(a.uploaded_by) if a.uploaded_by_id else a.uploaded_by_external,
             "download_url": f"/api/v1/tickets/{t.pk}/attachments/{a.pk}/",
-        } for a in t.attachments.select_related("uploaded_by")],
+        } for a in attachments],
         "events": [{
             "id": e.pk, "action": e.action, "actor": _name(e.actor) if e.actor_id else e.actor_label, "origin": e.origin,
             "old": e.old_value, "new": e.new_value, "public": e.is_public, "created_at": e.created_at,
-        } for e in t.events.select_related("actor")],
+        } for e in events],
         "allowed_transitions": [{"value": s, "label": T.Status(s).label} for s in svc.allowed_transitions(t, user)],
-        "rights": {"manage": manage, "assign": svc.can_assign(user, t), "work": svc.can_work(user, t),
-                   "reply": svc.can_work(user, t) or manage or t.created_by_id == user.pk},
+        "rights": {"manage": manage, "assign": svc.can_assign(user, t), "work": work, "internal": internal,
+                   "reply": work or manage or t.created_by_id == user.pk},
         "created_by": {"id": t.created_by_id, "name": _name(t.created_by)} if t.created_by_id else None,
         "mailbox": {"id": t.mailbox_id, "name": t.mailbox.name, "address": t.mailbox.address} if t.mailbox_id else None,
         "email_reply": bool(t.mailbox_id and t.reporter_email and t.mailbox.is_active),
@@ -539,7 +585,7 @@ def ticket_detail(t: dm.Ticket, user) -> dict:
             "id": m.pk, "direction": m.direction, "kind": m.kind, "kind_label": m.get_kind_display(), "status": m.status,
             "status_label": m.get_status_display(), "from": m.from_address, "to": m.to_addresses, "subject": m.subject,
             "reason": m.reason, "comment_id": m.comment_id, "attempt": m.attempt, "created_at": m.created_at,
-        } for m in t.email_messages.order_by("created_at")[:200]],
+        } for m in (t.email_messages.order_by("created_at")[:200] if internal else ())],
     }
 
 
@@ -550,7 +596,7 @@ def _workspace_id(request) -> int:
     ids = set(get_user_workspace_ids(request.user))
     raw = request.query_params.get("workspace", "")
     if raw:
-        if not raw.isdigit() or int(raw) not in ids:
+        if not _digits(raw) or int(raw) not in ids:
             raise Http404
         return int(raw)
     profile = getattr(request.user, "profile", None)
@@ -610,21 +656,22 @@ class TicketViewSet(WorkspaceScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = svc.visible_tickets(self.request.user, super().get_queryset())
         p = self.request.query_params
-        if p.get("workspace"):
-            qs = qs.filter(workspace_id=p["workspace"])
+        workspace_id = _int_param(self.request, "workspace")
+        if workspace_id is not None:
+            qs = qs.filter(workspace_id=workspace_id)
         for param, field in (("status", "status"), ("priority", "priority"), ("severity", "severity"), ("category", "category")):
             if p.get(param):
                 qs = qs.filter(**{f"{field}__in": p[param].split(",")})
         for param in ("application", "team", "project"):
-            if p.get(param, "").isdigit():
-                qs = qs.filter(**{f"{param}_id": p[param]})
+            if _digits(p.get(param, "")):
+                qs = qs.filter(**{f"{param}_id": int(p[param])})
         assignee = p.get("assignee", "")
         if assignee == "me":
             qs = qs.filter(assignee=self.request.user)
         elif assignee == "none":
             qs = qs.filter(assignee__isnull=True)
-        elif assignee.isdigit():
-            qs = qs.filter(assignee_id=assignee)
+        elif _digits(assignee):
+            qs = qs.filter(assignee_id=int(assignee))
         if p.get("open") == "1":
             qs = qs.filter(status__in=T.OPEN_STATUSES)
         if p.get("breached") == "1":
@@ -681,8 +728,8 @@ class TicketViewSet(WorkspaceScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
         """Agents affectables d'une équipe (membres actifs avec droit ticket), pour la création."""
         from project.utils.workspaces import get_user_workspace_ids
 
-        team_id = request.query_params.get("team", "")
-        team = dm.Team.objects.filter(pk=team_id, workspace_id__in=get_user_workspace_ids(request.user)).first() if team_id.isdigit() else None
+        team_id = _int_param(request, "team")
+        team = dm.Team.objects.filter(pk=team_id, workspace_id__in=get_user_workspace_ids(request.user)).first() if team_id else None
         if team is None:
             raise Http404
         if not (request.user.is_superuser or svc._rbac(request.user, "ticket.assign", team.workspace_id)):
@@ -736,7 +783,7 @@ class TicketViewSet(WorkspaceScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     def assignable(self, request, pk=None):
         ticket = self.get_object()
         teams = dm.Team.objects.filter(workspace_id=ticket.workspace_id, is_archived=False).order_by("name")
-        team_id = request.query_params.get("team") or ticket.team_id
+        team_id = _int_param(request, "team") or ticket.team_id
         team = teams.filter(pk=team_id).first() if team_id else None
         agents = []
         if team:
@@ -915,8 +962,9 @@ class TicketMailboxViewSet(WorkspaceScopedViewSetMixin, viewsets.ModelViewSet):
         qs = super().get_queryset()
         if not self.request.user.is_superuser:
             qs = qs.filter(workspace_id__in=rbac_workspace_ids(self.request.user, "ticket.admin"))
-        if self.request.query_params.get("workspace"):
-            qs = qs.filter(workspace_id=self.request.query_params["workspace"])
+        workspace_id = _int_param(self.request, "workspace")
+        if workspace_id is not None:
+            qs = qs.filter(workspace_id=workspace_id)
         return qs
 
     def _apply_secrets(self, mailbox, data):
@@ -1073,10 +1121,14 @@ def inbound_mail_webhook(request, inbound_key):
         return JsonResponse({"detail": "Message trop volumineux."}, status=413)
     ts = request.headers.get("X-DevFlow-Timestamp", "")
     sig = request.headers.get("X-DevFlow-Signature", "").removeprefix("sha256=")
-    secret = mail.get_secret(mailbox, "webhook_secret")
-    if not secret or not ts.isdigit() or abs(time.time() - int(ts)) > MAX_SKEW_SECONDS:
+    try:
+        secret = mail.get_secret(mailbox, "webhook_secret")
+    except svc.SecretError:  # clé de chiffrement modifiée : refus propre, alerte dans les journaux
+        logger.error("inbound mail webhook: unreadable secret for mailbox %s (TICKETING_ENCRYPTION_KEY ?)", mailbox.pk)
+        secret = ""
+    if not _fresh(ts):
         return JsonResponse({"detail": "Horodatage absent ou hors fenêtre."}, status=401)
-    if not hmac.compare_digest(sig, hooks.sign(secret, ts, body)):
+    if not secret or not _same(sig, hooks.sign(secret, ts, body)):
         logger.warning("inbound mail webhook: bad signature for mailbox %s", mailbox.pk)
         return JsonResponse({"detail": "Signature invalide."}, status=401)
     if not cache.add(f"ticketing:mailhook:sig:{sig}", 1, MAX_SKEW_SECONDS * 2):

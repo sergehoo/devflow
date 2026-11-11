@@ -19,3 +19,9 @@ INSTALLED_APPS = [a for a in INSTALLED_APPS if a not in {
 
 # Désactiver l'IA externe par défaut en tests
 AI_BACKEND = "none"
+
+# Cache mémoire local, même si REDIS_URL / CACHE_URL est défini dans l'environnement
+CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "devflow-tests"}}
+# Clés de chiffrement du ticketing déterministes (jamais celles de l'environnement)
+TICKETING_ENCRYPTION_KEY = ""
+TICKETING_ENCRYPTION_KEYS_OLD = []

@@ -369,12 +369,14 @@ AI_LOCAL_MODEL = os.getenv("AI_LOCAL_MODEL", "llama3.2:3b")
 AI_LOCAL_API_KEY = os.getenv("AI_LOCAL_API_KEY", "ollama")
 
 # Chaîne de fallback en mode AI_BACKEND="auto" — ordre de préférence.
-# Valeurs possibles : deepseek, openai, anthropic, claude, local, ollama
-# Default : "deepseek,anthropic,local"
+# Valeurs possibles : deepseek, openai, anthropic (alias claude), local (alias ollama)
 #   1. DeepSeek (économique, rapide)
-#   2. Anthropic Claude (qualité premium, payant)
-#   3. Ollama / Local (gratuit, dernier recours)
-AI_FALLBACK_CHAIN = os.getenv("AI_FALLBACK_CHAIN", "deepseek,anthropic,local")
+#   2. OpenAI
+#   3. Anthropic Claude (qualité premium)
+#   4. Ollama / Local (dernier recours)
+# Un fournisseur sans configuration valide (clé API ou URL absente) est ignoré ;
+# la bascule n'a lieu que pour les erreurs éligibles (panne, quota, clé invalide).
+AI_FALLBACK_CHAIN = os.getenv("AI_FALLBACK_CHAIN", "") or "deepseek,openai,anthropic,local"
 
 # ── Anthropic Claude (PR-REC-1) ────────────────────────────────────
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -547,6 +549,61 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Cache partagé — indispensable en production multi-processus (workers
+# gunicorn + Celery) : anti-rejeu des signatures HMAC, quotas des applications
+# externes, verrous de relève IMAP, throttles DRF et présence reposent dessus.
+# CACHE_URL (prioritaire) ou REDIS_URL → Redis ; sinon cache mémoire local
+# (développement, tests). La base Redis 1 est utilisée par défaut pour ne
+# jamais partager la base 0 du broker Celery.
+# ─────────────────────────────────────────────────────────────────────────
+def _cache_location() -> str:
+    from urllib.parse import urlsplit, urlunsplit
+
+    url = os.getenv("CACHE_URL", "").strip()
+    if url:
+        return url
+    parts = urlsplit(os.getenv("REDIS_URL", "").strip())
+    if parts.scheme not in ("redis", "rediss") or not parts.netloc:
+        return ""
+    return urlunsplit(parts._replace(path="/1"))
+
+
+_CACHE_LOCATION = _cache_location()
+if _CACHE_LOCATION:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _CACHE_LOCATION,
+            "KEY_PREFIX": "devflow",
+            # Redis indisponible : échec rapide plutôt que requête bloquée.
+            "OPTIONS": {"socket_connect_timeout": 2, "socket_timeout": 2},
+        },
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "devflow",
+        },
+    }
+
+# ─────────────────────────────────────────────────────────────────────────
+# Ticketing multicanal
+# ─────────────────────────────────────────────────────────────────────────
+# Clé dédiée au chiffrement des secrets du ticketing (secrets des applications
+# externes, mots de passe IMAP/SMTP, secrets de webhook). Vide → dérivée de
+# SECRET_KEY. Identique sur web, worker et beat. Rotation : placer l'ancienne
+# valeur dans TICKETING_ENCRYPTION_KEYS_OLD (liste séparée par des virgules)
+# puis lancer `manage.py ticketing_reencrypt_secrets`.
+TICKETING_ENCRYPTION_KEY = os.getenv("TICKETING_ENCRYPTION_KEY", "").strip()
+TICKETING_ENCRYPTION_KEYS_OLD = [
+    key.strip() for key in os.getenv("TICKETING_ENCRYPTION_KEYS_OLD", "").split(",") if key.strip()
+]
+TICKET_MAX_ATTACHMENT_MB = int(os.getenv("TICKET_MAX_ATTACHMENT_MB", "20"))
+TICKET_MAIL_MAX_MB = int(os.getenv("TICKET_MAIL_MAX_MB", "25"))
 # =========================
 # EMAIL CONFIG
 # =========================

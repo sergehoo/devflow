@@ -89,10 +89,12 @@ def deliver(pk: int) -> str:
     """Une tentative de livraison ; replanifie avec backoff en cas d'échec."""
     import requests
 
-    from project.services.ticketing import get_secret
+    from project.services.ticketing import SecretError, get_secret
 
     with transaction.atomic():
-        d = (dm.TicketWebhookDelivery.objects.select_for_update().select_related("application").filter(pk=pk).first())
+        # of=("self",) : seule la livraison est verrouillée, pas l'application, pendant l'appel HTTP.
+        d = (dm.TicketWebhookDelivery.objects.select_for_update(of=("self",)).select_related("application")
+             .filter(pk=pk).first())
         if d is None or d.status in (D.SUCCESS, D.DEAD):
             return "skip"
         if d.next_attempt_at and d.next_attempt_at > timezone.now() + timedelta(seconds=5):
@@ -100,13 +102,13 @@ def deliver(pk: int) -> str:
         d.attempt += 1
         body = json.dumps(d.payload, separators=(",", ":"), default=str).encode()
         timestamp = str(int(time.time()))
-        headers = {
-            "Content-Type": "application/json", "User-Agent": "DevFlow-Webhooks/1.0",
-            "X-DevFlow-Event": d.event, "X-DevFlow-Event-Id": str(d.event_id), "X-DevFlow-Delivery-Attempt": str(d.attempt),
-            "X-DevFlow-Timestamp": timestamp, "X-DevFlow-Signature": f"sha256={sign(get_secret(d.application), timestamp, body)}",
-        }
         ok = False
         try:
+            headers = {
+                "Content-Type": "application/json", "User-Agent": "DevFlow-Webhooks/1.0",
+                "X-DevFlow-Event": d.event, "X-DevFlow-Event-Id": str(d.event_id), "X-DevFlow-Delivery-Attempt": str(d.attempt),
+                "X-DevFlow-Timestamp": timestamp, "X-DevFlow-Signature": f"sha256={sign(get_secret(d.application), timestamp, body)}",
+            }
             check_destination(d.destination)
             response = requests.post(d.destination, data=body, headers=headers, timeout=(3, 10), allow_redirects=False)
             d.response_status, d.response_excerpt = response.status_code, (response.text or "")[:300]
@@ -116,6 +118,9 @@ def deliver(pk: int) -> str:
             d.status, d.error, d.next_attempt_at = D.DEAD, str(exc)[:300], None
             d.save()
             return "dead"
+        except SecretError as exc:  # clé de chiffrement modifiée : échec compté, backoff puis abandon
+            logger.error("ticket webhook %s : secret de l'application %s illisible", pk, d.application_id)
+            d.error = str(exc)[:300]
         except requests.RequestException as exc:
             d.error = f"{type(exc).__name__}: {exc}"[:300]
         if ok:

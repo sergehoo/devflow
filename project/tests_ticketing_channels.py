@@ -27,7 +27,7 @@ from django.utils import timezone
 from project import models as dm
 from project.services import ticketing as svc
 from project.services import ticketing_email as mail
-from project.tests_ticketing import PNG, TicketingFixture
+from project.tests_ticketing import PNG, PUBLIC_IP, URL, TicketingFixture
 
 M = dm.TicketEmailMessage
 
@@ -507,3 +507,184 @@ class InboundWebhookTests(ChannelFixture):
         self.mailbox.save()
         self.assertEqual(self.post(body).status_code, 404)
         self.assertFalse(M.objects.exists())
+
+
+# ─── Durcissement avant production ───────────────────────────────────────────
+
+class HardeningTests(ChannelFixture):
+    """Fil public du déclarant, e-mails bruts, identifiants malformés, clé de chiffrement."""
+
+    def cred(self):
+        return {"HTTP_AUTHORIZATION": f"DevFlowApp {self.app.key_id}:{self.secret}"}
+
+    def hook(self, body, ts=None, sig=None):
+        ts = str(int(time.time())) if ts is None else ts
+        sig = hmac.new(b"whsec-test", f"{ts}.".encode() + body, hashlib.sha256).hexdigest() if sig is None else sig
+        return self.client.post(f"/api/v1/integrations/mail/{self.mailbox.inbound_key}/", data=body, content_type="message/rfc822",
+                                HTTP_X_DEVFLOW_TIMESTAMP=ts, HTTP_X_DEVFLOW_SIGNATURE=f"sha256={sig}")
+
+    def test_reporter_without_ticket_right_only_gets_the_public_thread(self):
+        self.rule.delete()
+        res = self.api(self.outsider).post("/api/v1/tickets/", json.dumps({"application": self.app.pk, "title": "Bug saisie"}),
+                                           content_type="application/json")
+        self.assertEqual(res.status_code, 201, res.content)
+        t = dm.Ticket.objects.get(pk=res.json()["id"])
+        svc.add_comment(t, body="Note interne : client sensible", visibility="INTERNAL", user=self.owner,
+                        files=[SimpleUploadedFile("logs.txt", b"ERROR 500", content_type="text/plain")])
+        svc.add_comment(t, body="Nous analysons.", visibility="PUBLIC", user=self.owner)
+        M.objects.create(mailbox=self.mailbox, ticket=t, direction="OUT", kind="AGENT_REPLY", status="SENT",
+                         message_id="<out-1@alpha.test>", subject="Re: Bug saisie", to_addresses="client@acme.test")
+        att = t.attachments.get()
+        self.assertEqual(att.visibility, "INTERNAL")
+        mine = self.api(self.outsider).get(f"/api/v1/tickets/{t.pk}/")
+        self.assertEqual(mine.status_code, 200)
+        data = mine.json()
+        self.assertEqual([c["body"] for c in data["comments"]], ["Nous analysons."])
+        self.assertEqual((data["attachments"], data["emails"]), ([], []))
+        self.assertTrue(all(e["public"] for e in data["events"]))
+        self.assertEqual((data["rights"]["internal"], data["rights"]["reply"]), (False, True))
+        self.assertNotIn("Note interne", mine.content.decode())
+        self.assertEqual(self.api(self.outsider).get(f"/api/v1/tickets/{t.pk}/attachments/{att.pk}/").status_code, 404)
+        from project.views_media import user_can_access_media
+        self.assertFalse(user_can_access_media(self.outsider, att.file.name))
+        full = self.api(self.pm).get(f"/api/v1/tickets/{t.pk}/").json()  # droit ticket.view : fil complet
+        self.assertEqual((len(full["comments"]), len(full["attachments"]), len(full["emails"])), (2, 1, 1))
+        self.assertTrue(full["rights"]["internal"])
+        self.assertEqual(self.api(self.pm).get(f"/api/v1/tickets/{t.pk}/attachments/{att.pk}/").status_code, 200)
+
+    def test_raw_email_files_are_reserved_to_support_admins(self):
+        from project.views_media import user_can_access_media
+        row = self.receive(raw_email(body="Mot de passe provisoire : hunter2"))
+        path = row.raw.name
+        self.assertTrue(path.startswith("ticket-mail/"), path)
+        self.assertTrue(user_can_access_media(self.owner, path))
+        for user in (self.pm, self.agent1, self.outsider, self.bob):
+            self.assertFalse(user_can_access_media(user, path), user.username)
+        self.assertFalse(user_can_access_media(self.owner, "ticket-mail/1/1/inconnu.eml"))
+        self.assertEqual(self.api(self.agent1).get(f"/media/{path}").status_code, 404)
+        self.assertEqual(self.api(self.bob).get(f"/media/{path}").status_code, 404)
+        self.assertEqual(self.api(self.owner).get(f"/media/{path}").status_code, 200)
+        self.client.logout()
+        self.assertIn(self.client.get(f"/media/{path}").status_code, (302, 401, 403, 404))
+
+    def test_non_ascii_or_malformed_credentials_are_rejected_without_error(self):
+        body = json.dumps({"external_id": "EXT-9", "title": "Injection"}).encode()
+        now = str(int(time.time()))
+        for headers in (
+            {"HTTP_X_DEVFLOW_APP": self.app.key_id, "HTTP_X_DEVFLOW_TIMESTAMP": now, "HTTP_X_DEVFLOW_SIGNATURE": "sha256=é²"},
+            {"HTTP_X_DEVFLOW_APP": self.app.key_id, "HTTP_X_DEVFLOW_TIMESTAMP": "²",
+             "HTTP_X_DEVFLOW_SIGNATURE": svc.signature(self.secret, "²", "POST", URL, body)},
+            {"HTTP_X_DEVFLOW_APP": self.app.key_id, "HTTP_X_DEVFLOW_TIMESTAMP": "9" * 40, "HTTP_X_DEVFLOW_SIGNATURE": "x"},
+            {"HTTP_AUTHORIZATION": f"DevFlowApp {self.app.key_id}:sécret²"},
+        ):
+            res = self.client.post(URL, body, content_type="application/json", **headers)
+            self.assertEqual(res.status_code, 401, headers)
+        self.assertFalse(dm.Ticket.objects.filter(external_id="EXT-9").exists())
+        raw = raw_email()
+        self.assertEqual(self.hook(raw, sig="é²").status_code, 401)
+        self.assertEqual(self.hook(raw, ts="²").status_code, 401)
+        self.assertEqual(self.hook(raw, ts="9" * 40).status_code, 401)
+        self.assertFalse(M.objects.exists())
+
+    def test_malformed_author_and_identifiers_return_400(self):
+        self.create()
+        res = self.client.post(f"{URL}EXT-1/comments/", {"body": "Bonjour", "author": "{pas du json"}, **self.cred())
+        self.assertEqual(res.status_code, 400, res.content)
+        client = self.api(self.owner)
+        for url in ("/api/v1/tickets/?workspace=abc", "/api/v1/tickets/?workspace=1%20OR%201", "/api/v1/tickets/agents/?team=x",
+                    "/api/v1/ticket-mailboxes/?workspace=x", "/api/v1/ticket-applications/?workspace=x"):
+            self.assertEqual(client.get(url).status_code, 400, url)
+        self.assertEqual(client.get("/api/v1/tickets/?team=x&application=²&assignee=1e3").status_code, 200)  # filtres ignorés
+        self.assertEqual(client.get("/api/v1/tickets/create-options/?workspace=x").status_code, 404)
+
+    def test_unreadable_secrets_fail_closed_and_count_as_attempts(self):
+        from project.services import ticketing_webhooks as hooks
+        self.app.webhook_url = "https://hooks.client.test/devflow"
+        self.app.save()
+        self.mailbox.smtp_host, self.mailbox.smtp_username = "smtp.alpha.test", "support@alpha.test"
+        mail.set_secret(self.mailbox, "smtp_password", "S3cr3t-pass")
+        self.mailbox.save()
+        ack = M.objects.get(kind="ACK", ticket=self.receive(raw_email()).ticket)
+        delivery = dm.TicketWebhookDelivery.objects.latest("pk")
+        with override_settings(SECRET_KEY="cle-django-remplacee"):  # la clé ayant chiffré les secrets a disparu
+            with self.assertRaises(svc.SecretError):
+                svc.get_secret(self.app)
+            self.assertEqual(self.client.get(URL, **self.cred()).status_code, 401)
+            self.assertEqual(self.signed("GET", URL).status_code, 401)
+            self.assertEqual(self.hook(raw_email()).status_code, 401)
+            with mock.patch("socket.getaddrinfo", return_value=PUBLIC_IP), mock.patch("requests.post") as post:
+                self.assertEqual(hooks.deliver(delivery.pk), "failed")
+            post.assert_not_called()
+            delivery.refresh_from_db()
+            self.assertEqual((delivery.attempt, delivery.status), (1, "FAILED"))
+            self.assertIn("Secret illisible", delivery.error)
+            dm.TicketWebhookDelivery.objects.filter(pk=delivery.pk).update(attempt=hooks.MAX_ATTEMPTS - 1, next_attempt_at=timezone.now())
+            self.assertEqual(hooks.deliver(delivery.pk), "dead")
+            with mock.patch("socket.getaddrinfo", return_value=PUBLIC_IP), self.assertLogs("devflow.ticketing.email", "WARNING") as logs:
+                self.assertEqual(mail.send(ack.pk), "failed")
+                ack.refresh_from_db()
+                self.assertEqual(ack.attempt, 1)
+                self.assertIsNotNone(ack.next_attempt_at)
+                self.assertIn("SecretError", ack.reason)
+                M.objects.filter(pk=ack.pk).update(attempt=mail.MAX_ATTEMPTS - 1)
+                self.assertEqual(mail.send(ack.pk), "dead")
+            self.assertIn("SecretError", logs.output[0])
+        self.assertEqual(self.client.get(URL, **self.cred()).status_code, 200)  # clé d'origine : tout refonctionne
+
+    def test_dedicated_key_introduction_rotation_and_reencryption(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        token = self.app.secret_encrypted
+        out = StringIO()
+        ticket = self.receive(raw_email()).ticket
+        old_id = mail.make_message_id(ticket, self.mailbox)  # jeton de conversation émis avant la clé dédiée
+        with override_settings(TICKETING_ENCRYPTION_KEY="cle-dediee-1"):
+            self.assertEqual(mail.ticket_from_tokens(old_id, self.ws.pk), ticket)  # conversation en cours préservée
+            self.assertIsNone(mail.ticket_from_tokens(old_id, self.other_ws.pk))
+            new_id = mail.make_message_id(ticket, self.mailbox)
+            self.assertNotEqual(old_id.split(".")[2], new_id.split(".")[2])
+            # Introduire la clé dédiée ne casse rien : l'ancienne clé (dérivée de SECRET_KEY) reste lisible.
+            self.assertEqual(svc.get_secret(self.app), self.secret)
+            self.assertEqual(self.client.get(URL, **self.cred()).status_code, 200)
+            call_command("ticketing_reencrypt_secrets", "--dry-run", stdout=out, stderr=out)
+            self.app.refresh_from_db()
+            self.assertEqual(self.app.secret_encrypted, token)
+            call_command("ticketing_reencrypt_secrets", stdout=out, stderr=out)
+            self.app.refresh_from_db()
+            self.mailbox.refresh_from_db()
+            self.assertNotEqual(self.app.secret_encrypted, token)
+            with override_settings(SECRET_KEY="cle-django-remplacee"):  # la clé dédiée suffit désormais
+                self.assertEqual(svc.get_secret(self.app), self.secret)
+                self.assertEqual(mail.get_secret(self.mailbox, "webhook_secret"), "whsec-test")
+        self.assertNotIn(self.secret, out.getvalue())
+        self.assertNotIn("whsec-test", out.getvalue())
+        with override_settings(TICKETING_ENCRYPTION_KEY="cle-dediee-2", TICKETING_ENCRYPTION_KEYS_OLD=["cle-dediee-1"],
+                               SECRET_KEY="cle-django-remplacee"):  # rotation : ancienne clé conservée en lecture
+            self.assertEqual(svc.get_secret(self.app), self.secret)
+            self.assertEqual(mail.ticket_from_tokens(new_id, self.ws.pk), ticket)
+            self.assertIsNone(mail.ticket_from_tokens(old_id, self.ws.pk))  # clé retirée : jeton refusé
+            svc.set_secret(self.app, "dfs_nouveau")  # les nouveaux secrets sont chiffrés avec la clé principale
+        with override_settings(TICKETING_ENCRYPTION_KEY="cle-dediee-2", SECRET_KEY="cle-django-remplacee"):
+            self.assertEqual(svc.get_secret(self.app), "dfs_nouveau")
+            self.app.refresh_from_db()
+        with override_settings(TICKETING_ENCRYPTION_KEY="cle-dediee-2", SECRET_KEY="cle-django-remplacee"):
+            with self.assertRaises(svc.SecretError):
+                svc.get_secret(self.app)
+            with self.assertRaises(CommandError):
+                call_command("ticketing_reencrypt_secrets", "--dry-run", stdout=StringIO(), stderr=StringIO())
+
+    def test_shared_cache_location_is_derived_from_the_environment(self):
+        import os
+
+        from ProjectFlow.settings.base import _cache_location
+        with mock.patch.dict(os.environ, {"REDIS_URL": "redis://redis:6379/0"}, clear=False):
+            os.environ.pop("CACHE_URL", None)
+            self.assertEqual(_cache_location(), "redis://redis:6379/1")
+            os.environ["CACHE_URL"] = "rediss://cache.internal:6380/4"
+            self.assertEqual(_cache_location(), "rediss://cache.internal:6380/4")
+        with mock.patch.dict(os.environ, {"REDIS_URL": "", "CACHE_URL": ""}, clear=False):
+            self.assertEqual(_cache_location(), "")
+        with mock.patch.dict(os.environ, {"REDIS_URL": "memcached://x", "CACHE_URL": ""}, clear=False):
+            self.assertEqual(_cache_location(), "")

@@ -38,11 +38,28 @@ class TicketError(Exception):
 
 # ─── Identifiants d'intégration ──────────────────────────────────────────────
 
-def _fernet():
-    from cryptography.fernet import Fernet
+def encryption_materials() -> list[str]:
+    """
+    Clés de chiffrement, de la principale aux anciennes : ``TICKETING_ENCRYPTION_KEY``
+    (à défaut ``SECRET_KEY``), puis ``TICKETING_ENCRYPTION_KEYS_OLD``, puis ``SECRET_KEY``.
+    """
+    primary = getattr(settings, "TICKETING_ENCRYPTION_KEY", "") or settings.SECRET_KEY
+    old = getattr(settings, "TICKETING_ENCRYPTION_KEYS_OLD", None) or []
+    return list(dict.fromkeys(m for m in (primary, *old, settings.SECRET_KEY) if m))
 
-    material = getattr(settings, "TICKETING_ENCRYPTION_KEY", "") or settings.SECRET_KEY
-    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(f"devflow-ticketing:{material}".encode()).digest()))
+
+def _fernet():
+    """
+    Chiffre avec la clé principale ; déchiffre avec la principale puis les anciennes.
+    Introduire ``TICKETING_ENCRYPTION_KEY`` (ou la faire tourner) ne rend donc aucun
+    secret existant illisible ; ``ticketing_reencrypt_secrets`` les rechiffre ensuite.
+    """
+    from cryptography.fernet import Fernet, MultiFernet
+
+    return MultiFernet([
+        Fernet(base64.urlsafe_b64encode(hashlib.sha256(f"devflow-ticketing:{material}".encode()).digest()))
+        for material in encryption_materials()
+    ])
 
 
 def new_credentials() -> tuple[str, str]:
@@ -54,8 +71,22 @@ def set_secret(app: dm.ExternalApplication, secret: str) -> None:
     app.secret_last4 = secret[-4:]
 
 
+class SecretError(Exception):
+    """Secret chiffré illisible : ``TICKETING_ENCRYPTION_KEY`` modifiée ou donnée corrompue."""
+
+
+def decrypt_secret(token: str) -> str:
+    """Déchiffre un secret stocké ; ``SecretError`` (message sans donnée sensible) s'il est illisible."""
+    from cryptography.fernet import InvalidToken
+
+    try:
+        return _fernet().decrypt((token or "").encode()).decode()
+    except (InvalidToken, ValueError) as exc:
+        raise SecretError("Secret illisible : clé de chiffrement modifiée ou donnée corrompue.") from exc
+
+
 def get_secret(app: dm.ExternalApplication) -> str:
-    return _fernet().decrypt(app.secret_encrypted.encode()).decode()
+    return decrypt_secret(app.secret_encrypted)
 
 
 def rotate_secret(app: dm.ExternalApplication) -> str:
@@ -210,16 +241,36 @@ def is_eligible_agent(user, team: dm.Team) -> bool:
     return member and any(_rbac(user, a, team.workspace_id) for a in ("ticket.manage", "ticket.work_assigned"))
 
 
+def can_see_internal(user, ticket) -> bool:
+    """
+    Voir les éléments internes (notes, pièces jointes internes, journal complet,
+    conversation e-mail) : équipe support uniquement. Un simple déclarant
+    (``created_by`` sans droit ticket) ne voit que le fil public.
+    """
+    return can_work(user, ticket) or _rbac(user, "ticket.view", ticket.workspace_id)
+
+
 def can_download(user, attachment: dm.TicketAttachment) -> bool:
     ticket = attachment.ticket
     if not visible_tickets(user, dm.Ticket.objects.filter(pk=ticket.pk)).exists():
         return False
-    return attachment.visibility == "PUBLIC" or can_work(user, ticket) or _rbac(user, "ticket.view", ticket.workspace_id)
+    return attachment.visibility == "PUBLIC" or can_see_internal(user, ticket)
 
 
 def can_download_path(user, path: str) -> bool:
     att = dm.TicketAttachment.objects.select_related("ticket").filter(file=path).first()
     return bool(att and user.is_authenticated and can_download(user, att))
+
+
+def can_read_mail_path(user, path: str) -> bool:
+    """E-mail brut (``.eml``) : administrateurs du support du workspace de la boîte uniquement."""
+    from project.utils.workspaces import get_user_workspace_ids
+
+    row = dm.TicketEmailMessage.objects.select_related("mailbox").filter(raw=path).first()
+    if row is None or not user.is_authenticated:
+        return False
+    workspace_id = row.mailbox.workspace_id
+    return user.is_superuser or (workspace_id in set(get_user_workspace_ids(user)) and can_admin(user, workspace_id))
 
 
 # ─── SLA ─────────────────────────────────────────────────────────────────────

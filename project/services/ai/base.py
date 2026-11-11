@@ -60,3 +60,11 @@ class HeuristicFallbackError(RuntimeError):
     Levée par les services IA quand aucun provider n'est disponible et
     qu'on doit retomber sur l'heuristique. Ce n'est PAS une vraie erreur.
     """
+
+
+class ProviderUnavailableError(RuntimeError):
+    """
+    Le provider ne peut pas servir la requête pour une raison d'infrastructure
+    (SDK absent, client non initialisé, configuration incomplète). Toujours
+    éligible à la bascule vers le provider suivant de la chaîne.
+    """

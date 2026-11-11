@@ -90,7 +90,7 @@ def set_secret(mailbox: dm.TicketMailbox, name: str, value: str) -> None:
 
 def get_secret(mailbox: dm.TicketMailbox, name: str) -> str:
     token = getattr(mailbox, SECRET_FIELDS[name])
-    return svc._fernet().decrypt(token.encode()).decode() if token else ""
+    return svc.decrypt_secret(token) if token else ""
 
 
 def new_inbound_key() -> str:
@@ -136,8 +136,9 @@ def check_host(host: str, port: int) -> None:
 
 # ─── Jeton de conversation ───────────────────────────────────────────────────
 
-def thread_token(ticket_id: int) -> str:
-    material = getattr(settings, "TICKETING_ENCRYPTION_KEY", "") or settings.SECRET_KEY
+def thread_token(ticket_id: int, material: str | None = None) -> str:
+    """Jeton de conversation, signé avec la clé principale (ou ``material`` pour vérifier une ancienne clé)."""
+    material = material or svc.encryption_materials()[0]
     key = hashlib.sha256(f"devflow-ticket-thread:{material}".encode()).digest()
     return hmac.new(key, str(ticket_id).encode(), hashlib.sha256).hexdigest()[:20]
 
@@ -151,7 +152,8 @@ def make_message_id(ticket: dm.Ticket | None, mailbox: dm.TicketMailbox) -> str:
 def ticket_from_tokens(text: str, workspace_id: int) -> dm.Ticket | None:
     for match in TOKEN_RE.finditer(text or ""):
         ticket_id, token = int(match[1]), match[2]
-        if hmac.compare_digest(token, thread_token(ticket_id)):
+        # Anciennes clés acceptées en lecture : une rotation ne coupe pas les conversations en cours.
+        if any(hmac.compare_digest(token, thread_token(ticket_id, m)) for m in svc.encryption_materials()):
             ticket = dm.Ticket.objects.filter(pk=ticket_id, workspace_id=workspace_id).first()
             if ticket:
                 return ticket
@@ -593,6 +595,9 @@ def send(pk: int) -> str:
                 smtplib.SMTPAuthenticationError) as exc:
             permanent, error = True, exc
         except (smtplib.SMTPException, OSError, ssl.SSLError, TemporaryMailError) as exc:
+            error = exc
+        except Exception as exc:  # secret illisible, erreur imprévue : tentative comptée, jamais de boucle infinie
+            logger.warning("ticket mail %s : envoi en échec (%s)", pk, type(exc).__name__, exc_info=True)
             error = exc
         else:
             error = None

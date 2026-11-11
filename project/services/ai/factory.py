@@ -2,27 +2,25 @@
 Factory : choisit le provider IA actif selon ``settings.AI_BACKEND``.
 
 Valeurs supportées :
-- "deepseek"           → toujours DeepSeek seul (pas de fallback)
-- "openai"             → toujours OpenAI seul
-- "local"              → toujours endpoint local (Ollama, vLLM…) seul
-- "auto" (default)     → chaîne fallback automatique avec bascule
-                         transparente runtime : DeepSeek → Ollama/Local
-                         → (Null si tout est down). En cas d'erreur SDK ou
-                         de timeout sur DeepSeek, le caller obtient quand
-                         même une réponse via Ollama, sans changement côté
-                         service métier. Recommandé en prod.
-- "none"               → aucun provider, services IA retombent sur heuristiques
+- "auto" (défaut)      → chaîne ``AI_FALLBACK_CHAIN`` (cf. ci-dessous).
+                         Recommandé en production.
+- "deepseek" / "openai" / "anthropic" / "local"
+                       → ce fournisseur seul, sans bascule
+                         (alias : "claude" = anthropic, "ollama" = local).
+- "none"               → aucun provider : les services IA appliquent leurs
+                         heuristiques déterministes (tests, audits).
 
-Variable d'environnement avancée :
-    AI_FALLBACK_CHAIN="deepseek,openai,local"
-    Liste personnalisée des providers à inclure dans la chaîne, dans l'ordre
-    de préférence. Utilisé uniquement si AI_BACKEND="auto".
-    Si non défini, la chaîne par défaut est : deepseek → local.
+Chaîne de bascule (mode "auto") :
+    AI_FALLBACK_CHAIN="deepseek,openai,anthropic,local"   # défaut
+    Liste ordonnée, par préférence décroissante. Les noms inconnus sont
+    ignorés (WARNING) ; les fournisseurs sans configuration valide (clé API
+    ou URL absente) sont écartés dès la construction.
 
-NB : le mode "auto" utilise ``FallbackChainProvider`` qui catch les
-exceptions de chaque provider et bascule. C'est différent du comportement
-historique où on retournait un seul provider sélectionné par
-``is_available()`` (pas de bascule runtime).
+    - aucun fournisseur configuré → ``_NullProvider`` (heuristiques) ;
+    - un seul                    → ce provider, retourné tel quel ;
+    - plusieurs                  → ``FallbackChainProvider`` : bascule à
+      l'exécution, uniquement pour les erreurs éligibles
+      (cf. ``fallback.is_fallback_eligible``).
 """
 
 from __future__ import annotations
@@ -32,7 +30,7 @@ import logging
 from django.conf import settings
 
 from .anthropic_provider import AnthropicProvider
-from .base import AIProvider
+from .base import AIProvider, ProviderUnavailableError
 from .deepseek_provider import DeepSeekProvider
 from .fallback import FallbackChainProvider
 from .local_provider import LocalProvider
@@ -48,7 +46,7 @@ class _NullProvider(AIProvider):
         return False
 
     def generate(self, messages, *, temperature=0.2, max_tokens=None, json_mode=False, **kwargs):
-        raise RuntimeError("AI backend disabled (settings.AI_BACKEND='none')")
+        raise ProviderUnavailableError("Aucun provider IA configuré (AI_BACKEND / AI_FALLBACK_CHAIN).")
 
 
 # Mapping nom → classe pour parser AI_FALLBACK_CHAIN proprement
@@ -62,65 +60,61 @@ _PROVIDER_CLASSES = {
 }
 
 
-def _build_fallback_chain() -> FallbackChainProvider:
-    """
-    Construit la chaîne de fallback à partir de ``AI_FALLBACK_CHAIN`` ou
-    de la valeur par défaut DeepSeek → Local (Ollama).
+DEFAULT_FALLBACK_CHAIN = ("deepseek", "openai", "anthropic", "local")
 
-    Tous les providers de la chaîne sont instanciés. ``FallbackChainProvider``
-    se chargera lui-même de skipper ceux qui ne sont pas disponibles
-    (``is_available() == False``) et de basculer en cas d'erreur runtime.
-    """
-    chain_setting = getattr(settings, "AI_FALLBACK_CHAIN", "")
-    if chain_setting:
-        names = [n.strip().lower() for n in str(chain_setting).split(",") if n.strip()]
-    else:
-        # Default DevFlow : DeepSeek principal, Ollama secours.
-        names = ["deepseek", "local"]
 
+def fallback_chain_names() -> list[str]:
+    """Noms demandés par ``AI_FALLBACK_CHAIN`` (chaîne CSV ou liste), sinon le défaut."""
+    raw = getattr(settings, "AI_FALLBACK_CHAIN", None)
+    items = raw.split(",") if isinstance(raw, str) else list(raw or [])
+    names = [str(item).strip().lower() for item in items if str(item).strip()]
+    return names or list(DEFAULT_FALLBACK_CHAIN)
+
+
+def configured_providers() -> list[AIProvider]:
+    """
+    Providers de la chaîne réellement utilisables, dans l'ordre de préférence.
+
+    Sont écartés : les noms inconnus, les doublons (alias compris) et les
+    fournisseurs sans configuration valide (``is_available() == False``).
+    """
     providers: list[AIProvider] = []
-    seen = set()
-    for name in names:
-        if name in seen:
-            continue
-        seen.add(name)
+    seen: set[type] = set()
+    for name in fallback_chain_names():
         provider_cls = _PROVIDER_CLASSES.get(name)
         if provider_cls is None:
-            logger.warning(
-                "AI_FALLBACK_CHAIN: provider inconnu '%s' — ignoré", name,
-            )
+            logger.warning("AI_FALLBACK_CHAIN: provider inconnu '%s' — ignoré", name)
             continue
+        if provider_cls in seen:
+            continue
+        seen.add(provider_cls)
         try:
-            providers.append(provider_cls())
-        except Exception as exc:  # pragma: no cover
-            logger.exception(
-                "AI_FALLBACK_CHAIN: échec instanciation %s : %s", name, exc,
-            )
-
-    if not providers:
-        logger.warning(
-            "AI_FALLBACK_CHAIN: aucun provider valide — chaîne vide, services "
-            "IA retomberont sur l'heuristique.",
-        )
-
-    return FallbackChainProvider(providers, name="auto")
+            provider = provider_cls()
+            available = provider.is_available()
+        except Exception:  # pragma: no cover — configuration invalide d'un fournisseur
+            logger.exception("AI_FALLBACK_CHAIN: échec d'initialisation de '%s' — ignoré", name)
+            continue
+        if not available:
+            logger.debug("AI_FALLBACK_CHAIN: '%s' non configuré — ignoré", name)
+            continue
+        providers.append(provider)
+    return providers
 
 
 def get_ai_provider(prefer: str | None = None) -> AIProvider:
-    backend = (prefer or getattr(settings, "AI_BACKEND", "auto") or "auto").lower()
+    backend = (prefer or getattr(settings, "AI_BACKEND", "auto") or "auto").strip().lower()
 
-    if backend == "deepseek":
-        return DeepSeekProvider()
-    if backend == "openai":
-        return OpenAIProvider()
-    if backend == "local":
-        return LocalProvider()
     if backend == "none":
         return _NullProvider()
+    if backend != "auto":
+        provider_cls = _PROVIDER_CLASSES.get(backend)
+        if provider_cls is not None:
+            return provider_cls()
+        logger.warning("AI_BACKEND inconnu '%s' — mode auto appliqué", backend)
 
-    # auto — chaîne de fallback runtime (bascule sur erreur, pas juste
-    # sélection à l'init).
-    chain = _build_fallback_chain()
-    if chain.is_available():
-        return chain
-    return _NullProvider()
+    providers = configured_providers()
+    if not providers:
+        return _NullProvider()
+    if len(providers) == 1:
+        return providers[0]
+    return FallbackChainProvider(providers, name="auto")

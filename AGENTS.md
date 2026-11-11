@@ -218,11 +218,25 @@ AI_BACKEND=auto                                  # default : DeepSeek prioritair
 
 ### Chaîne de fallback en mode `auto`
 
+La chaîne est configurable : `AI_FALLBACK_CHAIN=deepseek,openai,anthropic,local`
+(valeur par défaut, ordre de préférence décroissant).
+
 1. **DeepSeek** (si `DEEPSEEK_API_KEY` non vide)
 2. OpenAI (si `OPENAI_API_KEY` non vide)
-3. Local (Ollama / vLLM si `AI_LOCAL_BASE_URL` configuré)
-4. NullProvider → tous les services basculent automatiquement sur
+3. Anthropic (si `ANTHROPIC_API_KEY` non vide)
+4. Local (Ollama / vLLM si `AI_LOCAL_BASE_URL` configuré)
+5. NullProvider → tous les services basculent automatiquement sur
    leurs heuristiques déterministes (jamais d'erreur utilisateur)
+
+Règles (`project/services/ai/factory.py`, `fallback.py`) :
+
+- un fournisseur sans configuration valide est **ignoré** ; s'il n'en reste
+  qu'un, il est retourné tel quel (pas de wrapper) ;
+- la bascule vers le fournisseur suivant n'a lieu que pour les **erreurs
+  éligibles** : réseau/timeout, 5xx, 429, 401/402/403, 404, client non
+  initialisé (`is_fallback_eligible`). Une requête refusée (400, 413, 422) ou
+  une erreur de code est remontée : le service métier applique son heuristique ;
+- en streaming, pas de bascule une fois le premier chunk émis.
 
 ### Modèles DeepSeek utilisables
 
@@ -241,3 +255,27 @@ AI_BACKEND=local     # force Ollama / vLLM
 AI_BACKEND=none      # désactive l'IA, force heuristiques (tests, audits)
 ```
 
+
+---
+
+## 🎫 Ticketing — secrets, cache et déploiement
+
+Procédure de mise en production : `DEPLOIEMENT_TICKETING.md`.
+
+- **Secrets** (applications, IMAP, SMTP, webhooks) : toujours via
+  `project.services.ticketing.set_secret` / `decrypt_secret` (Fernet, clé
+  `TICKETING_ENCRYPTION_KEY`, repli sur `SECRET_KEY`). Les anciennes clés
+  (`TICKETING_ENCRYPTION_KEYS_OLD`) restent acceptées en lecture ; un secret
+  illisible lève `SecretError` — à traiter comme un refus propre (401, tentative
+  comptée), jamais comme une erreur 500 ni une boucle de reprises.
+- **Fil public** : un déclarant sans droit ticket (`created_by` seul) ne reçoit
+  que les commentaires, pièces jointes et événements publics
+  (`svc.can_see_internal`). Tout nouveau champ exposé par `ticket_detail` doit
+  respecter ce filtre.
+- **E-mails bruts** (`ticket-mail/…`) : réservés aux administrateurs support
+  (`svc.can_read_mail_path`).
+- **Cache** : Redis partagé dès que `REDIS_URL` ou `CACHE_URL` est défini
+  (anti-rejeu HMAC, quotas, verrous de relève). Ne pas supposer un cache par
+  processus.
+- **Paramètres entiers d'URL** (`?workspace=`, `?team=`) : passer par
+  `_int_param` / `_digits` dans `project/api/views_ticketing.py` (400 sinon).

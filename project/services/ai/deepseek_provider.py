@@ -25,7 +25,7 @@ from typing import Any
 
 from django.conf import settings
 
-from .base import AIMessage, AIProvider, AIResponse
+from .base import AIMessage, AIProvider, AIResponse, ProviderUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ class DeepSeekProvider(AIProvider):
     ) -> AIResponse:
         client = self._get_client()
         if client is None:
-            raise RuntimeError("DeepSeek client not initialised")
+            raise ProviderUnavailableError("DeepSeek client not initialised")
 
         oai_messages = [{"role": m.role, "content": m.content} for m in messages]
 
@@ -137,7 +137,7 @@ class DeepSeekProvider(AIProvider):
         """
         client = self._get_client()
         if client is None:
-            raise RuntimeError("DeepSeek client not initialised")
+            raise ProviderUnavailableError("DeepSeek client not initialised")
 
         oai_messages = [{"role": m.role, "content": m.content} for m in messages]
         request: dict[str, Any] = {

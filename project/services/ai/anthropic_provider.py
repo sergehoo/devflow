@@ -23,7 +23,7 @@ from typing import Any
 
 from django.conf import settings
 
-from .base import AIMessage, AIProvider, AIResponse
+from .base import AIMessage, AIProvider, AIResponse, ProviderUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ class AnthropicProvider(AIProvider):
     ) -> AIResponse:
         client = self._get_client()
         if client is None:
-            raise RuntimeError("Anthropic client not initialised")
+            raise ProviderUnavailableError("Anthropic client not initialised")
 
         # L'API Anthropic distingue system (top-level) du chat history.
         # On extrait le 1er message system s'il existe, sinon vide.
