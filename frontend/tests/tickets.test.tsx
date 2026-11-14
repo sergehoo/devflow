@@ -254,3 +254,125 @@ describe("Canal e-mail", () => {
     expect(await screen.findByText("Réservé aux administrateurs du support")).toBeInTheDocument();
   });
 });
+
+describe("Export Excel et assistant IA", () => {
+  const stubDownload = () => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:x"), revokeObjectURL: vi.fn() });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  };
+  const exportCall = (spy: ReturnType<typeof mockApi>) => spy.mock.calls.map(([u]) => String(u)).find((u) => u.includes("tickets/export/"));
+  const posts = (spy: ReturnType<typeof mockApi>, part: string) =>
+    spy.mock.calls.filter(([u, i]) => String(u).includes(part) && i?.method === "POST");
+  const field = (value: string, label: string, current: string) => ({ value, label, current, changed: value !== current });
+
+  it("exporte la liste avec les filtres actifs, sans pagination", async () => {
+    stubDownload();
+    const spy = mockApi({ "auth/me/": ME, "tickets/export/": {}, "tickets/": page([ROW]), "ticket-applications/": page([]) });
+    renderPage(<TicketsPage />, "/tickets/list?priority=P1&q=pay&page=2");
+    await screen.findByRole("link", { name: "Paiement bloqué" });
+    await userEvent.click(screen.getByRole("button", { name: /Exporter Excel/ }));
+    await waitFor(() => expect(exportCall(spy)).toBeDefined());
+    const url = new URL(exportCall(spy)!, "http://devflow.local");
+    expect([url.searchParams.get("priority"), url.searchParams.get("q"), url.searchParams.get("workspace")]).toEqual(["P1", "pay", "1"]);
+    expect(url.searchParams.has("page") || url.searchParams.has("page_size")).toBe(false);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("tickets/export/"), expect.objectContaining({ redirect: "manual" }));
+  });
+
+  it("exporte depuis le Ticket Center pour le workspace courant", async () => {
+    stubDownload();
+    const spy = mockApi({ "auth/me/": ME, "tickets/export/": {}, "tickets/dashboard/": DASHBOARD });
+    renderPage(<TicketCenterPage />, "/tickets");
+    await userEvent.click(await screen.findByRole("button", { name: /Exporter Excel/ }));
+    await waitFor(() => expect(exportCall(spy)).toContain("/api/v1/tickets/export/?workspace=1"));
+  });
+
+  it("suggère une qualification que l'agent applique lui-même", async () => {
+    const triage = { category: field("INCIDENT", "Incident", "BUG"), severity: field("MAJOR", "Majeure", "MAJOR"),
+      priority: field("P2", "P2 — Haute", "P1"), rationale: "Panne générale.", source: "ai", provider: "deepseek" };
+    const spy = mockApi({ "auth/me/": ME, "POST tickets/3/ai/triage/": triage, "POST tickets/3/qualify/": DETAIL, "tickets/3/": DETAIL });
+    renderPage(<TicketDetailPage />, "/tickets/3", "/tickets/:id");
+    await userEvent.click(await screen.findByRole("button", { name: /Suggérer la qualification/ }));
+    const box = await screen.findByRole("region", { name: "Qualification suggérée" });
+    expect(within(box).getByText("Incident")).toBeInTheDocument();
+    expect(within(box).getByText("Proposé par l'IA (deepseek)")).toBeInTheDocument();
+    expect(posts(spy, "qualify/")).toHaveLength(0);  // rien d'appliqué sans clic
+    await userEvent.click(within(box).getByRole("button", { name: /Appliquer/ }));
+    await waitFor(() => expect(posts(spy, "qualify/")).toHaveLength(1));
+    expect(JSON.parse(String(posts(spy, "qualify/")[0]![1]!.body))).toEqual({ category: "INCIDENT", priority: "P2" });
+  });
+
+  it("reprend une proposition de réponse sans l'envoyer et liste les doublons", async () => {
+    const spy = mockApi({
+      "auth/me/": ME, "POST tickets/3/ai/reply/": { reply: "Bonjour Awa, nous analysons.", source: "rules", provider: "" },
+      "tickets/3/duplicates/": { results: [{ id: 8, reference: "TCK-00008", title: "Paiement refusé", status: "NEW", status_label: "Nouveau",
+        application: "Portail client", created_at: "2026-11-08T08:00:00Z", score: 0.62, reasons: ["même application"] }] },
+      "tickets/3/": DETAIL,
+    });
+    renderPage(<TicketDetailPage />, "/tickets/3", "/tickets/:id");
+    await userEvent.click(await screen.findByRole("button", { name: /Proposer une réponse/ }));
+    const box = await screen.findByRole("region", { name: "Proposition de réponse" });
+    expect(within(box).getByText(/Règles DevFlow/)).toBeInTheDocument();
+    await userEvent.click(within(box).getByRole("button", { name: "Reprendre dans la réponse" }));
+    expect(screen.getByLabelText("Message")).toHaveValue("Bonjour Awa, nous analysons.");
+    expect(posts(spy, "comment/")).toHaveLength(0);  // aucune réponse envoyée automatiquement
+    await userEvent.click(screen.getByRole("button", { name: /Rechercher des doublons/ }));
+    expect(await screen.findByRole("link", { name: "TCK-00008 · Paiement refusé" })).toHaveAttribute("href", "/tickets/8");
+    expect(screen.getByText(/similarité 62 %/)).toBeInTheDocument();
+  });
+
+  it("n'affiche pas l'assistant à qui ne traite pas le ticket", async () => {
+    mockApi({ "auth/me/": ME, "tickets/3/": { ...DETAIL, rights: { manage: false, assign: false, work: false, reply: true } } });
+    renderPage(<TicketDetailPage />, "/tickets/3", "/tickets/:id");
+    expect(await screen.findByRole("heading", { name: "Paiement bloqué" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Suggérer la qualification/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("Modes de collecte et tâche sans projet", () => {
+  const APP = { id: 1, workspace: 1, name: "Boutique", code: "boutique", description: "", project: null, environment: "PRODUCTION", status: "ACTIVE",
+    teams: [], default_team: null, sla_policy: null, key_id: "app_x", secret_last4: "abcd", secret_rotated_at: null, webhook_url: "",
+    webhook_events: [], rate_limit_per_minute: 60, daily_ticket_quota: 500, max_attachment_mb: 10, retention_days: null, config: {},
+    created_at: "2026-11-09T08:00:00Z", open_tickets: 0 };
+  const channel = { enabled: false, label: "", count_30d: 0, last_ticket: null, last_error: null };
+  const COLLECTION = { modes: { api: true, form: false, widget: false, hosted: true }, public_key: "dfp_PUBLIC", public_slug: "boutique-1",
+    allowed_origins: ["https://app.boutique.test"], key_id: "app_x", hosted_path: "/support/app/boutique-1/",
+    channels: { api: channel, form: channel, widget: channel, hosted: { ...channel, last_error: { reason: "origine refusée : https://evil.test" } }, email: { ...channel, mailboxes: [] } } };
+
+  it("active un mode, affiche le code à copier sans secret et teste la configuration", async () => {
+    const spy = mockApi({
+      "auth/me/": ME, "PATCH ticket-applications/1/collection/": { ...COLLECTION, modes: { ...COLLECTION.modes, widget: true } },
+      "POST ticket-applications/1/collection/test/": { mode: "hosted", ok: true, checks: [{ label: "Mode activé", ok: true }] },
+      "ticket-applications/1/collection/": COLLECTION, "ticket-applications/": page([APP]), "ticket-routing-rules/": page([]), "ticket-sla-policies/": page([]),
+    });
+    renderPage(<ApplicationsPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Modes de collecte" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByLabelText("Code Formulaire public hébergé")).toHaveTextContent("/support/app/boutique-1/");
+    expect(within(dialog).getByText(/origine refusée/)).toBeInTheDocument();
+    expect(dialog).not.toHaveTextContent("abcd");
+    await userEvent.click(within(dialog).getByRole("switch", { name: "Activer : Widget intégré" }));
+    await waitFor(() => expect(spy.mock.calls.some(([u, i]) => String(u).includes("collection/") && i?.method === "PATCH")).toBe(true));
+    const patch = spy.mock.calls.find(([u, i]) => String(u).includes("collection/") && i?.method === "PATCH")![1]!;
+    expect(JSON.parse(String(patch.body))).toEqual({ modes: { widget: true } });
+    expect(await within(dialog).findByLabelText("Code Widget intégré")).toHaveTextContent('data-app="boutique-1"');
+    await userEvent.click(within(within(dialog).getByRole("region", { name: "Formulaire public hébergé" })).getByRole("button", { name: "Tester la configuration" }));
+    expect(await within(dialog).findByLabelText("Résultat du test Formulaire public hébergé")).toHaveTextContent("Mode activé");
+  });
+
+  it("demande le projet de la tâche quand le ticket n'en a pas", async () => {
+    const spy = mockApi({
+      "auth/me/": ME, "tickets/create-options/": { ...OPTIONS, projects: [{ id: 4, name: "Portail" }] },
+      "POST tickets/3/create-task/": { ...DETAIL, task: { id: 9, name: "[TCK-00003] Paiement bloqué" } }, "tickets/3/": DETAIL,
+    });
+    renderPage(<TicketDetailPage />, "/tickets/3", "/tickets/:id");
+    await userEvent.click(await screen.findByRole("button", { name: /Créer une tâche/ }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("option", { name: "Portail" });
+    await userEvent.selectOptions(within(dialog).getByLabelText("Projet"), "4");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Créer la tâche" }));
+    await waitFor(() => {
+      const call = spy.mock.calls.find(([u, i]) => String(u).includes("create-task") && i?.method === "POST");
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ project: 4 });
+    });
+  });
+});

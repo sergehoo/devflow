@@ -76,3 +76,8 @@ htmlcov/
 .cache/
 # Celery beat (état local)
 celerybeat-schedule*
+
+# Tests E2E Playwright (base, e-mails et secrets de test générés localement)
+frontend/e2e/.state/
+frontend/test-results/
+frontend/playwright-report/

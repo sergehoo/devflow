@@ -11,8 +11,9 @@ import { WidgetHeader } from "@/features/dashboard/widgets";
 import { ApiError } from "@/services/api";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { useAssignable, useTicket, useTicketAction, type TicketDetail, type TicketEmail } from "./api";
+import { useAssignable, useCreateOptions, useTicket, useTicketAction, type TicketDetail, type TicketEmail } from "./api";
 import { PriorityPill, SourceBadge, StatusPill } from "./components";
+import { TicketAssistPanel } from "./TicketAssistPanel";
 import { ATTACHMENT_ACCEPT, CATEGORIES, EVENT_LABELS, PRIORITIES, SEVERITIES, remaining } from "./constants";
 
 const NOTE_REQUIRED = new Set(["CANCELLED"]);
@@ -122,6 +123,29 @@ const DELIVERY: Record<string, { label: string; icon: typeof Mail; tone: string 
 };
 
 /** Statut de livraison d'un message sortant, ou mention « reçu par e-mail ». */
+/** Ticket sans projet : l'agent choisit le projet de la tâche (sinon celui de l'application, s'il existe). */
+function TaskProjectDialog({ t, open, onOpenChange }: { t: TicketDetail; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const [run, pending] = useRun(t.id);
+  const options = useCreateOptions(t.workspace, open);
+  const [project, setProject] = useState("");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} title="Créer une tâche DevFlow" description="Choisissez le projet dans lequel créer la tâche liée à ce ticket.">
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); run("create-task", project ? { project: Number(project) } : {}, "Tâche DevFlow créée.", () => onOpenChange(false)); }}>
+        <Field id="task-project" label="Projet">
+          <Select id="task-project" value={project} onChange={(e) => setProject(e.target.value)}>
+            <option value="">Projet de l'application (par défaut)</option>
+            {options.data?.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </Select>
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
+          <Button type="submit" disabled={pending}>Créer la tâche</Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
 function MailBadge({ email }: { email?: TicketEmail }) {
   if (!email) return null;
   if (email.direction === "IN") {
@@ -135,9 +159,9 @@ function MailBadge({ email }: { email?: TicketEmail }) {
   );
 }
 
-function Conversation({ t }: { t: TicketDetail }) {
+function Conversation({ t, initialBody = "" }: { t: TicketDetail; initialBody?: string }) {
   const [run, pending] = useRun(t.id);
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(initialBody);
   const [visibility, setVisibility] = useState<"PUBLIC" | "INTERNAL">("PUBLIC");
   const [files, setFiles] = useState<File[]>([]);
   const canWrite = t.rights.reply;
@@ -192,7 +216,7 @@ function Conversation({ t }: { t: TicketDetail }) {
             </p>
           )}
           <label htmlFor="ticket-comment" className="sr-only">Message</label>
-          <Textarea id="ticket-comment" value={body} onChange={(e) => setBody(e.target.value)} maxLength={10000} required
+          <Textarea id="ticket-comment" value={body} onChange={(e) => setBody(e.target.value)} maxLength={10000} required autoFocus={Boolean(initialBody)}
             placeholder={visibility === "INTERNAL" && canNote ? "Visible uniquement par l'équipe DevFlow…" : t.email_reply ? "Votre réponse sera envoyée par e-mail au déclarant…" : "Votre réponse sera visible dans l'application d'origine…"} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground">
@@ -242,6 +266,9 @@ export function TicketDetailPage() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [escalateOpen, setEscalateOpen] = useState(false);
   const [reason, setReason] = useState("");
+  // Proposition de réponse reprise depuis l'assistant : la zone de réponse est réinitialisée avec ce texte (non envoyé).
+  const [draft, setDraft] = useState({ text: "", n: 0 });
+  const [taskOpen, setTaskOpen] = useState(false);
   if (isPending) return <PageSkeleton />;
   if (isError) return <ErrorState message={error instanceof ApiError && error.status === 404 ? "Ticket introuvable." : error.message} onRetry={() => void refetch()} />;
   const sla = t.sla;
@@ -264,7 +291,8 @@ export function TicketDetailPage() {
           {open && (t.rights.assign || t.rights.work) && <Button variant="outline" size="sm" onClick={() => setAssignOpen(true)}><UserPlus />Affecter</Button>}
           {open && (t.rights.manage || t.rights.work) && <Button variant="outline" size="sm" onClick={() => setEscalateOpen(true)}><ArrowUpCircle />Escalader</Button>}
           {!t.task && (t.rights.manage || t.rights.work) && (
-            <Button variant="outline" size="sm" disabled={pending} onClick={() => run("create-task", {}, "Tâche DevFlow créée.")}><SquarePlus />Créer une tâche</Button>
+            <Button variant="outline" size="sm" disabled={pending}
+              onClick={() => (t.project ? run("create-task", {}, "Tâche DevFlow créée.") : setTaskOpen(true))}><SquarePlus />Créer une tâche</Button>
           )}
         </div>
       </header>
@@ -277,7 +305,7 @@ export function TicketDetailPage() {
             <WidgetHeader title="Qualification" />
             <div className="mt-3"><Qualification t={t} /></div>
           </Card>
-          <Conversation t={t} />
+          <Conversation key={draft.n} t={t} initialBody={draft.text} />
           <Card className="p-5 sm:p-6">
             <WidgetHeader title="Historique" />
             <ol className="mt-3 space-y-2.5 border-l pl-4">
@@ -293,6 +321,7 @@ export function TicketDetailPage() {
           </Card>
         </div>
         <div className="space-y-5">
+          {(t.rights.work || t.rights.manage) && <TicketAssistPanel t={t} onUseReply={(text) => setDraft((d) => ({ text, n: d.n + 1 }))} />}
           <Card className="p-5 sm:p-6">
             <WidgetHeader title="SLA" meta={sla.policy} />
             <dl className="mt-3 space-y-3 text-sm">
@@ -348,6 +377,7 @@ export function TicketDetailPage() {
       </div>
 
       {assignOpen && <AssignDialog t={t} open={assignOpen} onOpenChange={setAssignOpen} />}
+      {taskOpen && <TaskProjectDialog t={t} open={taskOpen} onOpenChange={setTaskOpen} />}
       <Dialog open={escalateOpen} onOpenChange={setEscalateOpen} title="Escalader le ticket" description="Les responsables d'équipe et le propriétaire du workspace sont notifiés.">
         <form className="space-y-4" onSubmit={(e) => {
           e.preventDefault();

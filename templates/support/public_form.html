@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Signaler un problème — {{ app_name }}</title>
+<style nonce="{{ nonce }}">
+  :root { --bg:#f5f0e6; --card:#fff; --ink:#1f1f1f; --muted:#6b6457; --line:#e7dfd0; --brand:#8a6a00; --accent:#ffd54a; --danger:#b42318; --ok:#1d7a3a; }
+  * { box-sizing:border-box; } html,body { margin:0; }
+  body { background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  body.embed { background:var(--card); }
+  main { max-width:640px; margin:0 auto; padding:24px 16px 40px; } body.embed main { padding:16px; }
+  .card { background:var(--card); border-radius:22px; padding:24px; box-shadow:0 1px 2px rgba(32,32,32,.06),0 8px 24px rgba(32,32,32,.06); }
+  body.embed .card { box-shadow:none; padding:4px; }
+  .eyebrow { font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--brand); margin:0; }
+  h1 { font-size:24px; margin:4px 0 4px; letter-spacing:-.01em; } body.embed h1 { font-size:19px; }
+  p.lead { color:var(--muted); margin:0 0 18px; }
+  .tabs { display:flex; gap:6px; background:var(--bg); border-radius:999px; padding:4px; margin-bottom:18px; }
+  .tabs button { flex:1; border:0; background:transparent; border-radius:999px; padding:8px 12px; font:inherit; font-weight:600; color:var(--muted); cursor:pointer; }
+  .tabs button[aria-selected="true"] { background:var(--card); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  label { display:block; font-weight:600; font-size:13px; margin:12px 0 4px; } .hint { font-weight:400; color:var(--muted); }
+  input,select,textarea { width:100%; border:1px solid var(--line); border-radius:12px; padding:10px 12px; font:inherit; background:#fff; color:var(--ink); }
+  input:focus,select:focus,textarea:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:#e6c13d; }
+  textarea { min-height:120px; resize:vertical; }
+  .row { display:grid; gap:0 12px; grid-template-columns:1fr 1fr; } @media (max-width:520px){ .row { grid-template-columns:1fr; } }
+  .actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:18px; }
+  .btn { border:0; border-radius:999px; padding:11px 20px; font:inherit; font-weight:700; cursor:pointer; background:var(--accent); color:#1f1f1f; }
+  .btn.secondary { background:var(--bg); font-weight:600; } .btn:disabled { opacity:.6; cursor:progress; }
+  .files { list-style:none; padding:0; margin:8px 0 0; font-size:13px; color:var(--muted); }
+  .files li { display:flex; justify-content:space-between; gap:8px; padding:4px 0; } .files button { border:0; background:none; color:var(--danger); cursor:pointer; font:inherit; }
+  .trap { position:absolute; left:-10000px; width:1px; height:1px; overflow:hidden; }
+  .alert { border-radius:14px; padding:12px 14px; margin-top:14px; font-size:14px; } .alert.error { background:#fdecea; color:var(--danger); }
+  .alert.ok { background:#eaf6ee; color:var(--ok); } .code { font:600 16px ui-monospace,Menlo,monospace; background:#fff; padding:2px 6px; border-radius:6px; }
+  .thread { list-style:none; padding:0; margin:12px 0 0; } .thread li { background:var(--bg); border-radius:14px; padding:10px 12px; margin-top:8px; white-space:pre-wrap; }
+  .thread small { display:block; color:var(--muted); } footer { text-align:center; color:var(--muted); font-size:12px; margin-top:16px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body class="{% if embed %}embed{% endif %}">
+<main>
+  <div class="card">
+    <p class="eyebrow">{{ app_name }}</p>
+    <h1>Signaler un problème</h1>
+    <p class="lead">Décrivez l'incident : l'équipe support le reçoit directement et vous donne une référence de suivi.</p>
+    <div class="tabs" role="tablist" aria-label="Signalement">
+      <button type="button" role="tab" id="tab-report" aria-selected="true" aria-controls="panel-report">Signaler</button>
+      <button type="button" role="tab" id="tab-track" aria-selected="false" aria-controls="panel-track">Suivre un signalement</button>
+    </div>
+
+    <section id="panel-report" role="tabpanel" aria-labelledby="tab-report">
+      <form id="report" novalidate>
+        <div class="row">
+          <div><label for="f-name">Nom <span class="hint">(facultatif)</span></label><input id="f-name" name="name" maxlength="150" autocomplete="name"></div>
+          <div><label for="f-email">E-mail{% if mode == "hosted" %} *{% else %} <span class="hint">(facultatif)</span>{% endif %}</label>
+            <input id="f-email" name="email" type="email" maxlength="254" autocomplete="email" {% if mode == "hosted" %}required{% endif %}></div>
+        </div>
+        <div class="row">
+          <div><label for="f-category">Catégorie</label><select id="f-category" name="category">{% for c in categories %}<option value="{{ c.value }}">{{ c.label }}</option>{% endfor %}</select></div>
+          <div><label for="f-impact">Impact</label><select id="f-impact" name="impact">{% for i in impacts %}<option value="{{ i.value }}"{% if i.value == "MINOR" %} selected{% endif %}>{{ i.label }}</option>{% endfor %}</select></div>
+        </div>
+        <label for="f-title">Objet *</label><input id="f-title" name="title" required minlength="5" maxlength="200">
+        <label for="f-description">Description</label>
+        <textarea id="f-description" name="description" maxlength="10000" placeholder="Étapes, message d'erreur, ce que vous attendiez…"></textarea>
+        <label for="f-files">Captures et fichiers <span class="hint">({{ max_files }} max., {{ max_mb }} Mo chacun : images, PDF, texte)</span></label>
+        <input id="f-files" type="file" multiple accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain">
+        <ul class="files" id="file-list"></ul>
+        <div class="trap" aria-hidden="true"><label for="f-website">Site web</label><input id="f-website" name="website" tabindex="-1" autocomplete="off"></div>
+        <div class="actions">
+          <button class="btn" type="submit" id="submit">Envoyer le signalement</button>
+          <button class="btn secondary" type="button" id="capture" hidden>Ajouter une capture d'écran</button>
+        </div>
+        <div id="report-error" class="alert error" role="alert" hidden></div>
+      </form>
+      <div id="report-ok" class="alert ok" role="status" hidden></div>
+    </section>
+
+    <section id="panel-track" role="tabpanel" aria-labelledby="tab-track" hidden>
+      <form id="track" novalidate>
+        <div class="row">
+          <div><label for="t-reference">Référence</label><input id="t-reference" name="reference" placeholder="TCK-00012" required></div>
+          <div><label for="t-code">Code de suivi</label><input id="t-code" name="code" required autocomplete="off"></div>
+        </div>
+        <div class="actions"><button class="btn" type="submit">Consulter</button></div>
+        <div id="track-error" class="alert error" role="alert" hidden></div>
+      </form>
+      <div id="track-result" hidden><p><strong id="tr-title"></strong> — <span id="tr-status"></span></p><ul class="thread" id="tr-thread"></ul></div>
+    </section>
+  </div>
+  <footer>Signalement transmis au support via DevFlow · seuls la langue, la taille d'écran et la page d'origine accompagnent votre message</footer>
+</main>
+<script nonce="{{ nonce }}">
+(function () {
+  var KEY = "{{ public_key|escapejs }}", MODE = "{{ mode|escapejs }}", PARENT = "{{ parent_origin|escapejs }}", PAGE = "{{ page_url|escapejs }}";
+  var token = "{{ form_token|escapejs }}", MAX = {{ max_files }}, files = [];
+  var base = "/api/v1/public/apps/" + encodeURIComponent(KEY) + "/";
+  function $(id) { return document.getElementById(id); }
+  function show(el, text) { el.textContent = text; el.hidden = !text; }
+  function tab(which) {
+    var report = which === "report";
+    $("tab-report").setAttribute("aria-selected", String(report)); $("tab-track").setAttribute("aria-selected", String(!report));
+    $("panel-report").hidden = !report; $("panel-track").hidden = report;
+  }
+  $("tab-report").addEventListener("click", function () { tab("report"); });
+  $("tab-track").addEventListener("click", function () { tab("track"); });
+  function renderFiles() {
+    var list = $("file-list"); list.textContent = "";
+    files.forEach(function (f, i) {
+      var li = document.createElement("li"), name = document.createElement("span"), rm = document.createElement("button");
+      name.textContent = f.name + " (" + Math.ceil(f.size / 1024) + " Ko)"; rm.type = "button"; rm.textContent = "Retirer";
+      rm.addEventListener("click", function () { files.splice(i, 1); renderFiles(); });
+      li.append(name, rm); list.append(li);
+    });
+  }
+  $("f-files").addEventListener("change", function (e) {
+    Array.prototype.slice.call(e.target.files).forEach(function (f) { if (files.length < MAX) files.push(f); });
+    e.target.value = ""; renderFiles();
+  });
+  if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+    var cap = $("capture"); cap.hidden = false;
+    cap.addEventListener("click", function () {  // uniquement sur clic ; l'utilisateur choisit l'écran
+      navigator.mediaDevices.getDisplayMedia({ video: true }).then(function (stream) {
+        var video = document.createElement("video"); video.srcObject = stream; video.muted = true;
+        return video.play().then(function () {
+          var canvas = document.createElement("canvas"); canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+          canvas.getContext("2d").drawImage(video, 0, 0); stream.getTracks().forEach(function (t) { t.stop(); });
+          canvas.toBlob(function (blob) { if (blob && files.length < MAX) { files.push(new File([blob], "capture.png", { type: "image/png" })); renderFiles(); } }, "image/png");
+        });
+      }).catch(function () {});
+    });
+  }
+  $("report").addEventListener("submit", function (e) {
+    e.preventDefault(); show($("report-error"), "");
+    var form = e.target; if (!form.reportValidity()) return;
+    var data = new FormData(form); data.append("mode", MODE); data.append("form_token", token);
+    data.append("page_url", PAGE); data.append("language", navigator.language || ""); data.append("viewport", window.innerWidth + "x" + window.innerHeight);
+    files.forEach(function (f) { data.append("attachments", f); });
+    var btn = $("submit"); btn.disabled = true; btn.textContent = "Envoi…";
+    fetch(base + "tickets/", { method: "POST", body: data, credentials: "omit" })
+      .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.body.detail || "Envoi impossible.");
+        var b = res.body, ok = $("report-ok");
+        ok.textContent = "";
+        var line = document.createElement("p"); line.textContent = b.created ? "Signalement enregistré. Référence : " : "Ce signalement a déjà été reçu. Référence : ";
+        var ref = document.createElement("strong"); ref.textContent = b.reference; line.append(ref); ok.append(line);
+        if (b.tracking_code) {
+          var c = document.createElement("p"); c.textContent = "Code de suivi (à conserver, il n'est affiché qu'une fois) : ";
+          var code = document.createElement("span"); code.className = "code"; code.textContent = b.tracking_code; c.append(code); ok.append(c);
+        }
+        ok.hidden = false; form.hidden = true;
+        if (PARENT && window.parent !== window) window.parent.postMessage({ type: "devflow:ticket", reference: b.reference }, PARENT);
+      })
+      .catch(function (err) { show($("report-error"), err.message); btn.disabled = false; btn.textContent = "Envoyer le signalement"; });
+  });
+  $("track").addEventListener("submit", function (e) {
+    e.preventDefault(); show($("track-error"), "");
+    var data = new FormData(e.target);
+    fetch(base + "track/", { method: "POST", body: data, credentials: "omit" })
+      .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.body.detail || "Consultation impossible.");
+        var b = res.body; $("tr-title").textContent = b.reference + " · " + b.title; $("tr-status").textContent = b.status_label;
+        var list = $("tr-thread"); list.textContent = "";
+        b.messages.forEach(function (m) {
+          var li = document.createElement("li"), meta = document.createElement("small");
+          meta.textContent = m.from + " · " + new Date(m.created_at).toLocaleString("fr-FR"); li.append(meta, document.createTextNode(m.body)); list.append(li);
+        });
+        $("track-result").hidden = false;
+      })
+      .catch(function (err) { show($("track-error"), err.message); });
+  });
+})();
+</script>
+</body>
+</html>

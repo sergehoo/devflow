@@ -1,4 +1,4 @@
-import { AlarmClock, Mail, PauseCircle, PenLine, PlugZap } from "lucide-react";
+import { AlarmClock, FormInput, Globe, Mail, MessageSquareWarning, PauseCircle, PenLine, PlugZap } from "lucide-react";
 import { Link } from "react-router";
 import { cn } from "@/lib/utils";
 import type { TicketRow } from "./api";
@@ -56,9 +56,12 @@ const SOURCES = {
   API: { label: "API", icon: PlugZap },
   MANUAL: { label: "Manuel", icon: PenLine },
   EMAIL: { label: "E-mail", icon: Mail },
+  FORM: { label: "Formulaire", icon: FormInput },
+  WIDGET: { label: "Widget", icon: MessageSquareWarning },
+  PORTAL: { label: "Formulaire public", icon: Globe },
 } as const;
 
-/** Canal d'origine du ticket : API / Manuel / E-mail. */
+/** Canal d'origine : API, saisie DevFlow, e-mail, formulaire existant, widget ou formulaire public. */
 export function SourceBadge({ source, className }: { source?: string; className?: string }) {
   const m = SOURCES[(source ?? "API") as keyof typeof SOURCES] ?? SOURCES.API;
   return (

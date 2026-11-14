@@ -299,3 +299,30 @@ Sur un ticket e-mail, « Répondre par e-mail » envoie la réponse publique (et
 | `TICKETING_ENCRYPTION_KEY` | `SECRET_KEY` | Chiffrement des secrets et jetons de conversation |
 | `TICKET_MAIL_MAX_MB` | 25 | Taille maximale d'un e-mail entrant |
 | `TICKET_MAIL_ALLOW_PRIVATE_HOSTS` | False | Autoriser un serveur IMAP / SMTP sur le réseau privé |
+
+## 10. Collecte sans API (formulaire existant, widget, formulaire public)
+
+Une application n'a **pas besoin d'API ni de backend** pour envoyer des tickets. Dans Support › Applications › **Modes de collecte** (droit `ticket.admin`) :
+
+| Mode | Pour qui | Intégration |
+|---|---|---|
+| API REST | application avec backend | HMAC serveur à serveur (§2) |
+| Formulaire existant | formulaire déjà présent dans l'application | SDK `static/support/devflow-intake.js` + clé **publique** |
+| Widget intégré | toute page web (HTML, React, Django, PHP…) | une balise `<script src="…/static/support/devflow-widget.js" data-app="<slug>">` |
+| Formulaire public | aucune intégration | lien `/support/app/<slug>/` à partager |
+| E-mail | boîtes de support (§9) | Support › Canaux e-mail |
+
+Pour chaque mode : activation, code à copier, domaines autorisés, « Tester la configuration » (aucun ticket créé), dernier ticket reçu, dernière erreur.
+
+**Sécurité** — aucun secret dans le navigateur :
+- clé publique `dfp_…` limitée à la soumission (aucune lecture), renouvelable ;
+- jeton de formulaire signé : âge minimal 3 s (anti-robot), maximal 2 h, **usage unique** ;
+- formulaire existant : en-tête `Origin` contrôlé **par le serveur** contre les domaines autorisés (CORS seul ne protège pas) ; widget : `Content-Security-Policy: frame-ancestors` limité à ces domaines ;
+- champ piège, 5 envois / 10 min par IP et par application, 30 / 24 h par IP, quota journalier de l'application ;
+- doublon (même déclarant, même objet, ticket ouvert depuis moins de 30 min) → même référence, pas de nouveau ticket ;
+- pièces jointes : 3 maximum, mêmes contrôles MIME / signature / taille que l'API ;
+- suivi : référence + **code de suivi** affiché une seule fois (seule son empreinte est conservée) ; seul le fil public est consultable ; 10 tentatives / 10 min par IP.
+
+**Endpoints publics** (sans session) : `GET /api/v1/public/apps/<clé>/?mode=` (jeton), `POST /api/v1/public/apps/<clé>/tickets/` (multipart : `mode`, `form_token`, `title`, `description`, `email`, `name`, `category`, `impact`, `attachments`), `POST /api/v1/public/apps/<clé>/track/` (`reference`, `code`).
+
+Sources de ticket correspondantes : `FORM`, `WIDGET`, `PORTAL` (migration `0057_ticketing_public_intake`).

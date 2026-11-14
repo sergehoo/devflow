@@ -1,4 +1,4 @@
-import { AlarmClock, Inbox, LayoutGrid, List, ShieldCheck, Timer, UserCheck, UserX } from "lucide-react";
+import { AlarmClock, FileSpreadsheet, Inbox, LayoutGrid, List, ShieldCheck, Timer, UserCheck, UserX } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -9,11 +9,12 @@ import { Card } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { useMe } from "@/features/auth/api";
 import { StatCard, WidgetHeader } from "@/features/dashboard/widgets";
+import { DownloadButton } from "@/features/meetings/DownloadButton";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { api } from "@/services/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { TICKETS_KEY, useCanCreateTicket, useConfigList, useTicketDashboard, useTickets, type ExternalApp, type TicketRow } from "./api";
+import { TICKETS_KEY, ticketsExportUrl, useCanCreateTicket, useConfigList, useTicketDashboard, useTickets, type ExternalApp, type TicketRow } from "./api";
 import { PriorityPill, SlaBadge, SourceBadge, StatusPill, TicketCard } from "./components";
 import { NewTicketButton } from "./NewTicketDialog";
 import { BOARD_STATUSES, CATEGORIES, PRIORITIES, STATUSES, statusMeta } from "./constants";
@@ -41,7 +42,13 @@ export function TicketCenterPage() {
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Support" title="Ticket Center" description="Tickets reçus par API, e-mail ou saisis dans DevFlow : file, SLA et charge des équipes."
-        actions={<div className="flex flex-wrap items-center gap-2"><NewTicketButton /><SupportNav /></div>} />
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            <NewTicketButton />
+            <DownloadButton href={ticketsExportUrl({ workspace: me.workspace.id })} filename="Tickets.xlsx"><FileSpreadsheet aria-hidden="true" />Exporter Excel</DownloadButton>
+            <SupportNav />
+          </div>
+        )} />
       <section aria-label="Indicateurs" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={Inbox} value={data.open} unit="ouverts" label="Tickets ouverts" hint={`${data.created_7d} sur 7 j`} to="/tickets/list?open=1" />
         <StatCard icon={UserX} value={data.unassigned} unit="tickets" label="Non assignés" hint="File" to="/tickets/list?open=1&assignee=none" />
@@ -159,6 +166,7 @@ export function TicketsPage() {
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             <NewTicketButton projectId={params.get("project") ? Number(params.get("project")) : undefined} />
+            <DownloadButton href={ticketsExportUrl(filters)} filename="Tickets.xlsx"><FileSpreadsheet aria-hidden="true" />Exporter Excel</DownloadButton>
             <div className="flex rounded-full bg-card p-1 shadow-card dark:border dark:border-border" role="group" aria-label="Affichage">
               <Button size="sm" variant={board ? "ghost" : "default"} onClick={() => set("view", "")} aria-pressed={!board}><List />Liste</Button>
               <Button size="sm" variant={board ? "default" : "ghost"} onClick={() => set("view", "board")} aria-pressed={board}><LayoutGrid />Kanban</Button>

@@ -48,6 +48,16 @@ class ExternalApplication(TimeStampedModel):
     secret_rotated_at = models.DateTimeField(null=True, blank=True)
     # Webhooks sortants
     webhook_url = models.URLField(blank=True)
+    # Collecte sans API (formulaire existant, widget, formulaire public hébergé) : clé PUBLIQUE
+    # limitée à la soumission (jamais un secret), domaines autorisés, adresse publique.
+    public_key = models.CharField(max_length=48, unique=True, null=True, blank=True, editable=False,
+                                  help_text="Clé publique de soumission (dfp_…), utilisable dans un navigateur.")
+    public_slug = models.SlugField(max_length=80, unique=True, null=True, blank=True,
+                                   help_text="Adresse du formulaire public : /support/app/<slug>/.")
+    allowed_origins = models.JSONField(default=list, blank=True,
+                                       help_text="Origines autorisées (https://app.exemple.com) pour le formulaire existant et le widget.")
+    collection_modes = models.JSONField(default=dict, blank=True,
+                                        help_text="Modes de collecte activés : api, form, widget, hosted.")
     webhook_events = models.JSONField(default=list, blank=True, help_text="Événements envoyés (vide = tous).")
     # Garde-fous
     rate_limit_per_minute = models.PositiveIntegerField(default=60)
@@ -150,6 +160,9 @@ class Ticket(TimeStampedModel):
         API = "API", "API"
         MANUAL = "MANUAL", "Manuel"
         EMAIL = "EMAIL", "E-mail"
+        FORM = "FORM", "Formulaire existant"
+        WIDGET = "WIDGET", "Widget"
+        PORTAL = "PORTAL", "Formulaire public"
 
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="tickets")
     application = models.ForeignKey(ExternalApplication, on_delete=models.PROTECT, related_name="tickets")
@@ -199,6 +212,8 @@ class Ticket(TimeStampedModel):
                                    related_name="created_tickets", help_text="Auteur d'une création manuelle.")
     mailbox = models.ForeignKey("TicketMailbox", on_delete=models.SET_NULL, null=True, blank=True, related_name="tickets",
                                 help_text="Boîte de support utilisée pour les échanges par e-mail.")
+    public_token_hash = models.CharField(max_length=64, blank=True, editable=False,
+                                         help_text="Empreinte SHA-256 du code de suivi remis au déclarant (formulaires publics).")
 
     OPEN_STATUSES = (Status.NEW, Status.QUALIFIED, Status.ASSIGNED, Status.IN_PROGRESS, Status.WAITING)
 
@@ -274,6 +289,7 @@ class TicketEvent(models.Model):
         UI = "UI", "DevFlow"
         EMAIL = "EMAIL", "E-mail"
         SYSTEM = "SYSTEM", "Système"
+        PUBLIC = "PUBLIC", "Formulaire public"
 
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="events")
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")

@@ -116,6 +116,28 @@ class IntegrationApiTests(TicketingFixture):
         self.app.save()
         self.assertEqual(self.client.get(URL, **cred).status_code, 401)
 
+    @override_settings(TICKETING_AUTH_FAILURE_LIMIT=3, TICKETING_AUTH_FAILURE_WINDOW=600, TICKETING_TRUSTED_PROXIES=1)
+    def test_authentication_failures_are_rate_limited_per_client_ip(self):
+        body = json.dumps({"external_id": "EXT-3", "title": "Autre"}).encode()
+        attacker = {"HTTP_X_FORWARDED_FOR": "6.6.6.6, 203.0.113.9"}  # 1re entrée écrite par le client, dernière par le proxy
+        for _ in range(3):
+            self.assertEqual(self.signed("POST", URL, body, secret="dfs_faux", **attacker).status_code, 401)
+        blocked = self.signed("POST", URL, body, **attacker)  # même une signature valide attend la fin de la fenêtre
+        self.assertEqual(blocked.status_code, 429)
+        self.assertEqual(blocked["Retry-After"], "600")
+        self.assertNotIn(self.secret, blocked.content.decode())
+        spoofed = self.signed("POST", URL, body, HTTP_X_FORWARDED_FOR="1.2.3.4, 203.0.113.9")
+        self.assertEqual(spoofed.status_code, 429)  # changer l'entrée falsifiable ne contourne pas la limite
+        other = self.signed("POST", URL, body, HTTP_X_FORWARDED_FOR="198.51.100.7")
+        self.assertEqual(other.status_code, 201)  # l'application légitime, depuis son IP, n'est pas verrouillée
+        for _ in range(3):  # clé inconnue et webhook e-mail inconnu comptent aussi
+            self.client.get(URL, HTTP_AUTHORIZATION="DevFlowApp inconnue:x", HTTP_X_FORWARDED_FOR="203.0.113.10")
+        self.assertEqual(self.client.get(URL, HTTP_AUTHORIZATION="DevFlowApp inconnue:x", HTTP_X_FORWARDED_FOR="203.0.113.10").status_code, 429)
+        mail = {"content_type": "message/rfc822", "HTTP_X_FORWARDED_FOR": "203.0.113.11"}
+        for _ in range(3):
+            self.assertEqual(self.client.post("/api/v1/integrations/mail/inconnue/", b"x", **mail).status_code, 404)
+        self.assertEqual(self.client.post("/api/v1/integrations/mail/inconnue/", b"x", **mail).status_code, 429)
+
     def test_idempotency_key_and_duplicate_protection(self):
         payload = json.dumps({"external_id": "EXT-9", "title": "Écran blanc"}).encode()
         now = int(time.time())
@@ -365,6 +387,53 @@ class InternalApiAndPermissionTests(TicketingFixture):
         foreign = dict(payload, code="x", teams=[], project=None, workspace=self.other_ws.pk)
         self.assertIn(self.api(self.owner).post("/api/v1/ticket-applications/", foreign, content_type="application/json").status_code, (400, 403))
 
+    def test_excel_export_follows_rights_filters_and_workspace(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        self.create("A", title="Paiement bloqué")
+        self.create("B", title="Écran blanc", severity="CRITICAL")
+        self.create("Z", app=self.other_app, secret=self.other_secret, title="Secret Beta")
+        a, b = self.ticket("A"), self.ticket("B")
+        svc.assign(a, actor=self.pm, team_id=self.support.pk)
+        dm.Ticket.objects.filter(pk=b.pk).update(resolution_breached=True)
+
+        def export(user, **params):
+            res = self.api(user).get("/api/v1/tickets/export/", params)
+            self.assertEqual(res.status_code, 200, res.content[:200])
+            self.assertEqual(res["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            wb = load_workbook(BytesIO(res.content))
+            self.assertEqual(wb.sheetnames, ["Tickets", "Synthèse", "Informations"])
+            rows = [tuple(r) for r in wb["Tickets"].iter_rows(values_only=True)]
+            info = {r[0]: r[1] for r in wb["Informations"].iter_rows(values_only=True)}
+            return rows[3], rows[4:], info, str(rows) + str(list(wb["Synthèse"].iter_rows(values_only=True)))
+
+        header, rows, info, everything = export(self.pm)
+        self.assertEqual(header[:4], ("Référence", "Titre", "Application", "Projet"))
+        self.assertIn("SLA", header)
+        self.assertEqual(sorted(r[1] for r in rows), ["Paiement bloqué", "Écran blanc"])
+        self.assertNotIn("Secret Beta", everything)  # autre workspace jamais exporté
+        by_title = {r[1]: dict(zip(header, r)) for r in rows}
+        self.assertEqual((by_title["Écran blanc"]["Gravité"], by_title["Écran blanc"]["SLA"]), ("Critique", "Dépassé"))
+        self.assertEqual(by_title["Paiement bloqué"]["Équipe"], "Support N1")
+        self.assertIsNotNone(by_title["Paiement bloqué"]["Créé le"])
+        self.assertEqual((info["Exporté par"], info["Filtres appliqués"]), ("Pm", "aucun"))
+
+        _, rows, info, _ = export(self.pm, severity="CRITICAL", q="blanc")
+        self.assertEqual([r[1] for r in rows], ["Écran blanc"])
+        self.assertIn("Gravité : Critique", info["Filtres appliqués"])
+        self.assertIn("Recherche : blanc", info["Filtres appliqués"])
+
+        _, rows, _, _ = export(self.agent1)  # membre : tickets de son équipe seulement
+        self.assertEqual([r[1] for r in rows], ["Paiement bloqué"])
+        _, rows, _, everything = export(self.outsider)
+        self.assertEqual(rows[0][0], "Aucun ticket pour le périmètre et les filtres appliqués.")
+        _, _, _, everything = export(self.bob, workspace=self.ws.pk)  # workspace d'un autre tenant
+        self.assertNotIn("Paiement bloqué", everything)
+        self.client.logout()
+        self.assertIn(self.client.get("/api/v1/tickets/export/").status_code, (401, 403))
+
     def test_assignment_notifies_in_realtime_and_dashboard_counts(self):
         self.create()
         t = self.ticket()
@@ -409,3 +478,103 @@ class InternalApiAndPermissionTests(TicketingFixture):
         self.assertTrue(user_can_access_media(self.agent1, att.file.name))
         self.assertFalse(user_can_access_media(self.outsider, att.file.name))
         self.assertNotIn("ERROR 500", json.dumps(self.signed("GET", f"{URL}EXT-1/").json()))
+
+
+class TicketAssistTests(TicketingFixture):
+    """Assistance IA : suggestions seulement, masquage des données, repli sur règles, droits."""
+
+    def setUp(self):
+        super().setUp()
+        self.create("A", title="Paiement bloqué par la carte bancaire",
+                    description="Erreur 500 pour tous les utilisateurs en production. Contact : awa@client.test, +225 07 08 09 10 11")
+        self.t = self.ticket("A")
+        svc.assign(self.t, actor=self.pm, team_id=self.support.pk)
+        svc.add_comment(self.t, body="Note interne secrète : relancer le prestataire", user=self.pm, visibility="INTERNAL")
+        svc.add_comment(self.t, body="Nous analysons le problème.", user=self.pm, visibility="PUBLIC")
+        self.t.refresh_from_db()
+
+    def url(self, name, ticket=None):
+        return f"/api/v1/tickets/{(ticket or self.t).pk}/{name}/"
+
+    def fake_provider(self, text):
+        from project.services.ai.base import AIProvider, AIResponse
+
+        sent = []
+
+        class Fake(AIProvider):
+            name = "fake"
+
+            def generate(self, messages, **kwargs):
+                sent.append(messages[-1].content)
+                return AIResponse(text=text, tokens_used=120, provider="fake")
+
+            def supports_json_mode(self):
+                return True
+
+        return Fake(), sent
+
+    def test_triage_suggests_without_applying_and_falls_back_to_rules(self):
+        before = (self.t.category, self.t.severity, self.t.priority)
+        data = self.api(self.agent1).post(self.url("ai/triage")).json()
+        self.assertEqual(data["source"], "rules")  # AI_BACKEND=none en test : aucun appel payant
+        self.assertEqual((data["severity"]["value"], data["priority"]["value"]), ("CRITICAL", "P1"))
+        self.assertTrue(data["severity"]["changed"])
+        self.t.refresh_from_db()
+        self.assertEqual((self.t.category, self.t.severity, self.t.priority), before)  # rien n'est appliqué
+
+        provider, sent = self.fake_provider('{"category": "INCIDENT", "severity": "INVENTÉ", "priority": "P2", "rationale": "Panne générale."}')
+        with mock.patch("project.services.ai.factory.get_ai_provider", return_value=provider):
+            data = self.api(self.agent1).post(self.url("ai/triage")).json()
+        self.assertEqual((data["source"], data["provider"]), ("ai", "fake"))
+        self.assertEqual((data["category"]["value"], data["severity"]["value"], data["priority"]["value"]), ("INCIDENT", "CRITICAL", "P2"))
+        self.assertNotIn("awa@client.test", sent[0])  # données personnelles masquées avant envoi
+        self.assertNotIn("07 08 09 10 11", sent[0])
+        self.assertIn("[email]", sent[0])
+        self.assertTrue(dm.AIUsageQuota.objects.filter(workspace=self.ws).exists())
+
+    def test_summary_and_reply_never_send_or_leak_internal_notes(self):
+        summary = self.api(self.agent1).post(self.url("ai/summary")).json()
+        self.assertEqual(summary["source"], "rules")
+        self.assertIn(self.t.reference, summary["summary"])
+        reply = self.api(self.agent1).post(self.url("ai/reply")).json()
+        self.assertIn(self.t.reference, reply["reply"])
+        self.assertNotIn("secrète", reply["reply"])
+        self.assertEqual(self.t.comments.count(), 2)  # aucune réponse envoyée ni enregistrée
+
+        provider, sent = self.fake_provider("Bonjour, nous analysons votre demande.")
+        with mock.patch("project.services.ai.factory.get_ai_provider", return_value=provider):
+            self.assertEqual(self.api(self.agent1).post(self.url("ai/reply")).json()["source"], "ai")
+            self.api(self.agent1).post(self.url("ai/summary"))
+        self.assertNotIn("Note interne secrète", sent[0])  # proposition de réponse : fil public seulement
+        self.assertIn("Note interne secrète", sent[1])  # résumé pour l'agent : notes internes incluses
+        self.assertEqual(self.t.comments.count(), 2)
+
+    def test_provider_failure_returns_rules_not_an_error(self):
+        provider, _ = self.fake_provider("")
+        provider.generate = mock.Mock(side_effect=RuntimeError("timeout"))
+        with mock.patch("project.services.ai.factory.get_ai_provider", return_value=provider):
+            res = self.api(self.agent1).post(self.url("ai/triage"))
+        self.assertEqual((res.status_code, res.json()["source"]), (200, "rules"))
+
+    def test_duplicates_are_scoped_and_explained(self):
+        self.create("B", title="Paiement bloqué carte bancaire refusée", description="Erreur au paiement")
+        self.create("C", title="Export PDF lent", description="Lenteur")
+        self.create("Z", app=self.other_app, secret=self.other_secret, title="Paiement bloqué par la carte bancaire")
+        for ref in ("B", "C"):
+            svc.assign(self.ticket(ref), actor=self.pm, team_id=self.support.pk)
+        found = self.api(self.agent1).get(self.url("duplicates")).json()["results"]
+        self.assertEqual([d["title"] for d in found], ["Paiement bloqué carte bancaire refusée"])
+        self.assertIn("même application", found[0]["reasons"])
+        self.assertNotIn("Secret", str(found))
+
+    def test_assistance_is_reserved_to_agents_of_the_ticket(self):
+        self.assertEqual(self.api(self.outsider).post(self.url("ai/triage")).status_code, 404)
+        self.assertEqual(self.api(self.bob).post(self.url("ai/reply")).status_code, 404)
+        self.assertEqual(self.api(self.bob).get(self.url("duplicates")).status_code, 404)
+        self.client.logout()
+        self.assertIn(self.client.post(self.url("ai/summary")).status_code, (401, 403))
+
+    @override_settings(DEVFLOW_AI_RATE_LIMIT="2/min")
+    def test_ai_actions_are_rate_limited(self):
+        client = self.api(self.agent1)
+        self.assertEqual([client.post(self.url("ai/summary")).status_code for _ in range(3)], [200, 200, 429])

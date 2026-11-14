@@ -17,6 +17,7 @@ import time
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
+from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
 from django.db.models import Avg, Count, F, Q
@@ -25,7 +26,7 @@ from django.utils import timezone
 from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.decorators import action
-from rest_framework.exceptions import AuthenticationFailed, PermissionDenied, ValidationError
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied, Throttled, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -34,6 +35,7 @@ from rest_framework.views import APIView
 from project import models as dm
 from project.api.pagination import FlexiblePagination
 from project.api.permissions import IsWorkspaceMember, WorkspaceScopedViewSetMixin
+from project.api.throttles import AIActionRateThrottle
 from project.services import ticketing as svc
 from project.services import ticketing_webhooks as hooks
 from project.utils.workspaces import user_can_access_workspace
@@ -77,6 +79,48 @@ def _int_param(request, name: str) -> int | None:
     return int(raw)
 
 
+# ═══ Limitation des échecs d'authentification ════════════════════════════════
+# Par adresse IP cliente (et non par clé : un tiers pourrait sinon bloquer une
+# intégration légitime en envoyant de fausses signatures avec sa clé publique).
+
+def client_ip(request) -> str:
+    """
+    IP du client : l'entrée de ``X-Forwarded-For`` ajoutée par le dernier proxy de
+    confiance (``TICKETING_TRUSTED_PROXIES``, 1 = Traefik / Dokploy), jamais la
+    première, qu'un client peut écrire lui-même. Sans proxy : ``REMOTE_ADDR``.
+    """
+    meta = getattr(request, "META", {})
+    proxies = int(getattr(settings, "TICKETING_TRUSTED_PROXIES", 1))
+    hops = [h.strip() for h in meta.get("HTTP_X_FORWARDED_FOR", "").split(",") if h.strip()]
+    if proxies > 0 and hops:
+        return hops[-min(proxies, len(hops))][:64]
+    return (meta.get("REMOTE_ADDR") or "unknown")[:64]
+
+
+def _auth_failure_key(request) -> str:
+    return f"ticketing:authfail:{client_ip(request)}"
+
+
+def auth_blocked_for(request) -> int:
+    """Secondes avant nouvel essai si l'IP a dépassé le seuil d'échecs, sinon 0."""
+    limit = int(getattr(settings, "TICKETING_AUTH_FAILURE_LIMIT", 10))
+    window = int(getattr(settings, "TICKETING_AUTH_FAILURE_WINDOW", 900))
+    return window if (cache.get(_auth_failure_key(request)) or 0) >= limit else 0
+
+
+def record_auth_failure(request, reason: str) -> None:
+    window = int(getattr(settings, "TICKETING_AUTH_FAILURE_WINDOW", 900))
+    key = _auth_failure_key(request)
+    cache.add(key, 0, window)
+    try:
+        count = cache.incr(key)
+    except ValueError:  # clé expirée entre add et incr
+        cache.set(key, 1, window)
+        count = 1
+    if count == int(getattr(settings, "TICKETING_AUTH_FAILURE_LIMIT", 10)):
+        logger.warning("integration auth: %s blocked after %s failures (%s)", client_ip(request), count, reason)
+
+
 # ═══ Authentification des applications ═══════════════════════════════════════
 
 class ApplicationAuthentication(BaseAuthentication):
@@ -94,6 +138,16 @@ class ApplicationAuthentication(BaseAuthentication):
             key_id, _, secret_given = auth[len("DevFlowApp "):].partition(":")
         if not key_id:
             return None
+        wait = auth_blocked_for(request)
+        if wait:
+            raise Throttled(wait=wait, detail="Trop d'échecs d'authentification : réessayez plus tard.")
+        try:
+            return self._authenticate(request, key_id, secret_given)
+        except AuthenticationFailed as exc:
+            record_auth_failure(request, str(exc.detail))
+            raise
+
+    def _authenticate(self, request, key_id, secret_given):
         app = dm.ExternalApplication.objects.select_related("workspace").filter(key_id=key_id.strip()).first()
         if app is None:
             logger.warning("integration auth: unknown key %s", key_id[:20])
@@ -390,6 +444,88 @@ class ExternalApplicationViewSet(WorkspaceScopedViewSetMixin, viewsets.ModelView
         _require_admin(request.user, app.workspace_id)
         secret = svc.rotate_secret(app)
         return Response({"key_id": app.key_id, "secret": secret, "secret_last4": app.secret_last4})
+
+    # ── Modes de collecte (API, formulaire existant, widget, formulaire public, e-mail) ──
+    def _collection_payload(self, app):
+        from project.services import ticketing_public as tp
+
+        return {
+            "modes": tp.modes(app), "public_key": app.public_key or "", "public_slug": app.public_slug or "",
+            "allowed_origins": app.allowed_origins or [], "key_id": app.key_id, "channels": tp.channel_status(app),
+            "hosted_path": f"/support/app/{app.public_slug}/" if app.public_slug else "",
+        }
+
+    @action(detail=True, methods=["get", "patch"])
+    def collection(self, request, pk=None):
+        from project.services import ticketing_public as tp
+
+        app = self.get_object()
+        _require_admin(request.user, app.workspace_id)
+        if request.method == "PATCH":
+            data = request.data
+            if "modes" in data:
+                given = data.get("modes") or {}
+                if not isinstance(given, dict) or set(given) - set(tp.MODES):
+                    raise ValidationError({"modes": "Modes attendus : api, form, widget, hosted."})
+                app.collection_modes = {**tp.modes(app), **{k: bool(v) for k, v in given.items()}}
+            if "allowed_origins" in data:
+                raw = data.get("allowed_origins") or []
+                if not isinstance(raw, list) or len(raw) > 20:
+                    raise ValidationError({"allowed_origins": "Liste de 20 origines maximum."})
+                cleaned = [tp.normalize_origin(str(o)) for o in raw if str(o).strip()]
+                if None in cleaned:
+                    raise ValidationError({"allowed_origins": "Origine invalide : schéma et domaine seulement (ex. https://app.exemple.com)."})
+                app.allowed_origins = sorted(set(cleaned))
+            if data.get("public_slug"):
+                from django.utils.text import slugify
+
+                slug = slugify(str(data["public_slug"]))[:80]
+                if len(slug) < 3 or dm.ExternalApplication.objects.filter(public_slug=slug).exclude(pk=app.pk).exists():
+                    raise ValidationError({"public_slug": "Adresse déjà utilisée ou trop courte."})
+                app.public_slug = slug
+            if any(tp.modes(app)[m] for m in tp.BROWSER_MODES):
+                tp.ensure_public_identity(app)
+            app.save(update_fields=["collection_modes", "allowed_origins", "public_slug", "public_key", "updated_at"])
+            logger.info("collection modes updated for app %s by user %s", app.pk, request.user.pk)
+        return Response(self._collection_payload(app))
+
+    @action(detail=True, methods=["post"], url_path="collection/rotate-key")
+    def rotate_public_key(self, request, pk=None):
+        from project.services import ticketing_public as tp
+
+        app = self.get_object()
+        _require_admin(request.user, app.workspace_id)
+        app.public_key = tp.new_public_key()
+        app.save(update_fields=["public_key", "updated_at"])
+        return Response(self._collection_payload(app))
+
+    @action(detail=True, methods=["post"], url_path="collection/test")
+    def test_collection(self, request, pk=None):
+        """Contrôle de configuration d'un mode, sans créer de ticket."""
+        from project.services import ticketing_public as tp
+
+        app = self.get_object()
+        _require_admin(request.user, app.workspace_id)
+        mode = str(request.data.get("mode") or "")
+        if mode not in tp.MODES:
+            raise ValidationError({"mode": "Mode inconnu."})
+        on = tp.modes(app)[mode]
+        checks = [{"label": "Mode activé", "ok": on}, {"label": "Application active", "ok": app.is_active}]
+        if mode == "api":
+            checks.append({"label": "Identifiants HMAC configurés", "ok": bool(app.key_id and app.secret_encrypted)})
+        else:
+            checks.append({"label": "Clé publique attribuée", "ok": bool(app.public_key)})
+            if mode in ("form", "widget"):
+                checks.append({"label": "Domaines autorisés renseignés", "ok": bool(app.allowed_origins)})
+            if mode in ("widget", "hosted"):
+                checks.append({"label": "Adresse publique attribuée", "ok": bool(app.public_slug)})
+            try:
+                token = tp.issue_form_token(app, mode)
+                signing_ok = token.count(":") >= 4
+            except Exception:  # clé de signature indisponible
+                signing_ok = False
+            checks.append({"label": "Jeton de formulaire signé", "ok": signing_ok})
+        return Response({"mode": mode, "ok": all(c["ok"] for c in checks), "checks": checks})
 
     @action(detail=True, methods=["get"])
     def deliveries(self, request, pk=None):
@@ -737,6 +873,47 @@ class TicketViewSet(WorkspaceScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
         members = dm.TeamMembership.objects.filter(team=team).select_related("user")
         return Response([{"id": m.user_id, "name": _name(m.user)} for m in members if svc.is_eligible_agent(m.user, team)])
 
+    @action(detail=False, methods=["get"])
+    def export(self, request):
+        """Export Excel : mêmes droits, même workspace et mêmes filtres que la liste (``get_queryset``)."""
+        from project.services import ticket_export as tex
+        from project.services import xlsx_export as xl
+        from project.utils.workspaces import get_user_workspace_ids
+
+        qs = self.filter_queryset(self.get_queryset())
+        if qs.count() > tex.MAX_ROWS:
+            return Response({"detail": f"Export limité à {tex.MAX_ROWS} tickets : affinez les filtres."}, status=400)
+        ws_ids = get_user_workspace_ids(request.user)
+        p = request.query_params
+        lines = []
+        labels = {"status": dict(T.Status.choices), "priority": dict(T.Priority.choices),
+                  "severity": dict(T.Severity.choices), "category": dict(T.Category.choices)}
+        for param, title in (("status", "Statut"), ("priority", "Priorité"), ("severity", "Gravité"), ("category", "Catégorie")):
+            if p.get(param):
+                lines.append(f"{title} : {', '.join(labels[param].get(v, v) for v in p[param].split(','))}")
+        for param, model, title in (("application", dm.ExternalApplication, "Application"), ("team", dm.Team, "Équipe"),
+                                    ("project", dm.Project, "Projet")):
+            if _digits(p.get(param, "")):
+                obj = model.objects.filter(pk=int(p[param]), workspace_id__in=ws_ids).first()
+                lines.append(f"{title} : {obj.name if obj else p[param]}")
+        assignee = p.get("assignee", "")
+        if assignee:
+            lines.append("Responsable : " + {"me": "moi", "none": "non assigné"}.get(assignee, assignee))
+        if p.get("open") == "1":
+            lines.append("Tickets ouverts uniquement")
+        if p.get("breached") == "1":
+            lines.append("SLA dépassé")
+        if p.get("q", "").strip():
+            lines.append(f"Recherche : {p['q'].strip()}")
+        workspace_id = _int_param(request, "workspace")
+        names = sorted(dm.Workspace.objects.filter(pk__in=ws_ids if workspace_id is None else [workspace_id])
+                       .filter(pk__in=ws_ids).values_list("name", flat=True))
+        content = tex.tickets_workbook(
+            qs.select_related("application", "team", "assignee", "project"), exporter=request.user,
+            workspace_label=", ".join(names), filter_lines=lines,
+        )
+        return xl.response(content, xl.filename("Tickets", timezone.localdate().isoformat()))
+
     def retrieve(self, request, *args, **kwargs):
         return Response(ticket_detail(self.get_object(), request.user))
 
@@ -774,6 +951,39 @@ class TicketViewSet(WorkspaceScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             return Response({"detail": f"{MAX_FILES} fichiers maximum."}, status=400)
         return self._do(lambda t: svc.add_comment(t, body=request.data.get("body", ""), user=request.user,
                                                   visibility=request.data.get("visibility", "PUBLIC"), files=files))
+
+    # ── Assistance IA : suggestions seulement, appliquées par l'agent via qualify / comment ──
+    def _assisted(self):
+        ticket = self.get_object()  # 404 hors périmètre (workspace, équipes, affectations)
+        if not svc.can_work(self.request.user, ticket):
+            raise PermissionDenied("Assistance réservée aux agents qui traitent ce ticket.")
+        return ticket
+
+    @action(detail=True, methods=["post"], url_path="ai/triage", throttle_classes=[AIActionRateThrottle])
+    def ai_triage(self, request, pk=None):
+        from project.services.ai.services import ticket_assist as assist
+
+        return Response(assist.triage(self._assisted()))
+
+    @action(detail=True, methods=["post"], url_path="ai/summary", throttle_classes=[AIActionRateThrottle])
+    def ai_summary(self, request, pk=None):
+        from project.services.ai.services import ticket_assist as assist
+
+        ticket = self._assisted()
+        return Response(assist.summary(ticket, internal=svc.can_see_internal(request.user, ticket)))
+
+    @action(detail=True, methods=["post"], url_path="ai/reply", throttle_classes=[AIActionRateThrottle])
+    def ai_reply(self, request, pk=None):
+        from project.services.ai.services import ticket_assist as assist
+
+        return Response(assist.reply(self._assisted()))
+
+    @action(detail=True, methods=["get"])
+    def duplicates(self, request, pk=None):
+        from project.services.ai.services import ticket_assist as assist
+
+        ticket = self._assisted()
+        return Response({"results": assist.duplicates(ticket, svc.visible_tickets(request.user, dm.Ticket.objects.all()))})
 
     @action(detail=True, methods=["post"], url_path="create-task")
     def create_task(self, request, pk=None):
@@ -1104,9 +1314,15 @@ def inbound_mail_webhook(request, inbound_key):
 
     if request.method != "POST":
         return JsonResponse({"detail": "Méthode non autorisée."}, status=405)
+    wait = auth_blocked_for(request)
+    if wait:
+        response = JsonResponse({"detail": "Trop d'échecs d'authentification : réessayez plus tard."}, status=429)
+        response["Retry-After"] = str(wait)
+        return response
     mailbox = dm.TicketMailbox.objects.select_related("workspace", "application").filter(
         inbound_key=inbound_key, inbound=dm.TicketMailbox.Inbound.WEBHOOK, is_active=True).first()
     if mailbox is None:
+        record_auth_failure(request, "unknown inbound key")
         return JsonResponse({"detail": "Introuvable."}, status=404)
     window = f"ticketing:mailhook:{mailbox.pk}:{int(time.time() // 60)}"
     cache.add(window, 0, 120)
@@ -1127,11 +1343,14 @@ def inbound_mail_webhook(request, inbound_key):
         logger.error("inbound mail webhook: unreadable secret for mailbox %s (TICKETING_ENCRYPTION_KEY ?)", mailbox.pk)
         secret = ""
     if not _fresh(ts):
+        record_auth_failure(request, "stale timestamp")
         return JsonResponse({"detail": "Horodatage absent ou hors fenêtre."}, status=401)
     if not secret or not _same(sig, hooks.sign(secret, ts, body)):
         logger.warning("inbound mail webhook: bad signature for mailbox %s", mailbox.pk)
+        record_auth_failure(request, "bad mail signature")
         return JsonResponse({"detail": "Signature invalide."}, status=401)
     if not cache.add(f"ticketing:mailhook:sig:{sig}", 1, MAX_SKEW_SECONDS * 2):
+        record_auth_failure(request, "replayed mail signature")
         return JsonResponse({"detail": "Requête rejouée."}, status=401)
     raw = body
     content_type = request.content_type or ""

@@ -610,6 +610,13 @@ TICKETING_ENCRYPTION_KEYS_OLD = [
 ]
 TICKET_MAX_ATTACHMENT_MB = int(os.getenv("TICKET_MAX_ATTACHMENT_MB", "20"))
 TICKET_MAIL_MAX_MB = int(os.getenv("TICKET_MAIL_MAX_MB", "25"))
+# Échecs d'authentification (API d'intégration, webhook e-mail) : au-delà de
+# LIMIT échecs par IP sur WINDOW secondes → 429. L'IP est lue dans
+# X-Forwarded-For après TRUSTED_PROXIES proxys de confiance (1 = Traefik/Dokploy ;
+# 0 = ignorer l'en-tête, accès direct sans proxy).
+TICKETING_AUTH_FAILURE_LIMIT = int(os.getenv("TICKETING_AUTH_FAILURE_LIMIT", "10"))
+TICKETING_AUTH_FAILURE_WINDOW = int(os.getenv("TICKETING_AUTH_FAILURE_WINDOW", "900"))
+TICKETING_TRUSTED_PROXIES = int(os.getenv("TICKETING_TRUSTED_PROXIES", "1"))
 # =========================
 # EMAIL CONFIG
 # =========================

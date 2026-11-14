@@ -229,3 +229,47 @@ Redéployer ensuite le commit correspondant au schéma restauré.
 - Pas de limitation spécifique des échecs d'authentification de l'API
   d'intégration (secrets aléatoires de 256 bits) ; à ajouter au niveau du proxy
   si nécessaire.
+
+## 11. Mise à jour « pilotage, timesheets, collecte sans API » (novembre 2026)
+
+Migrations additives à appliquer (sauvegarde PostgreSQL d'abord, §4) : `0056_tracking_sheet`, `0057_ticketing_public_intake`.
+Le conteneur `devflowweb` **ne lance pas `migrate`** au démarrage : à exécuter explicitement, avec autorisation.
+
+```bash
+docker exec devflowweb python manage.py showmigrations project | tail -4      # lecture seule
+docker exec devflowweb python manage.py migrate project                         # après sauvegarde
+docker restart devflowcelery devflowbeat                                        # nouvelle tâche tracking-alert-sweep
+```
+
+Le `collectstatic` du démarrage publie `static/support/devflow-widget.js` et `devflow-intake.js`.
+Nouvelles variables facultatives : `TICKETING_AUTH_FAILURE_LIMIT` (10), `TICKETING_AUTH_FAILURE_WINDOW` (900 s),
+`TICKETING_TRUSTED_PROXIES` (1 = Traefik ; l'IP client est lue dans `X-Forwarded-For` après ce nombre de proxys).
+
+### Vérifications en lecture seule
+
+```bash
+docker exec devflowweb python manage.py shell -c "from django.conf import settings as s; print(s.CACHES['default']['BACKEND'])"   # RedisCache attendu
+docker exec devflowcelery celery -A ProjectFlow.celery:app inspect ping                                                           # worker vivant
+docker logs --tail 20 devflowbeat | grep -i "scheduler\|sending"                                                                  # beat actif
+docker exec devflowweb sh -c 'for v in TICKETING_ENCRYPTION_KEY REDIS_URL DEEPSEEK_API_KEY; do [ -n "$(printenv $v)" ] && echo "$v: défini" || echo "$v: ABSENT"; done'
+ss -tlnp | grep 5438                                                                                                              # exposition PostgreSQL
+```
+
+### Fermer l'exposition publique de PostgreSQL (port 5438)
+
+Constat (14/11/2026) : le port 5438 accepte les connexions depuis Internet. L'application, Celery et beat utilisent le réseau
+Docker interne (`devflowdb:5432`) et ne dépendent pas de ce port. Avant de le fermer, vérifier qui s'y connecte :
+
+```bash
+docker exec devflowdb psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select client_addr, usename, application_name from pg_stat_activity where client_addr is not null;"
+```
+
+Si seuls des accès d'administration ponctuels l'utilisent, restreindre la publication à l'hôte (accès conservé via tunnel SSH) :
+
+```yaml
+    ports:
+      - "127.0.0.1:5438:5432"   # au lieu de "5438:5432"
+```
+
+puis `ssh -L 5438:127.0.0.1:5438 <serveur>` pour un client local. Alternative sans redéploiement : règle de pare-feu (ufw/iptables
+`DOCKER-USER`) n'autorisant 5438 qu'aux IP d'administration.

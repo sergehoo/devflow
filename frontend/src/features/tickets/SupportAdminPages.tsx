@@ -1,4 +1,4 @@
-import { Copy, KeyRound, Pencil, Plus, RefreshCw, Trash2, Webhook } from "lucide-react";
+import { Copy, KeyRound, Pencil, Plus, Radio, RefreshCw, Trash2, Webhook } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import { api } from "@/services/api";
 import {
   useConfigDelete, useConfigList, useConfigSave, useDeliveries, useWorkspaceOptions, type ExternalApp, type RoutingRule, type SlaPolicy,
 } from "./api";
+import { CollectionModesDialog } from "./CollectionModesDialog";
 import { CATEGORIES, PRIORITIES, SEVERITIES, WEBHOOK_EVENTS } from "./constants";
 
 type Option = { id: number; name: string };
@@ -182,6 +183,22 @@ export function ApplicationsPage() {
   const [secret, setSecret] = useState<{ key_id: string; secret: string } | null>(null);
   const [rotate, setRotate] = useState<ExternalApp | null>(null);
   const [logs, setLogs] = useState<number | null>(null);
+  const [modes, setModes] = useState<ExternalApp | null>(null);
+  const [removing, setRemoving] = useState<ExternalApp | null>(null);
+  const [removePending, setRemovePending] = useState(false);
+  const remove = async () => {
+    if (!removing) return;
+    setRemovePending(true);
+    try {
+      await api(`ticket-applications/${removing.id}/`, { method: "DELETE" });
+      toast.success("Application supprimée.");
+      setRemoving(null); void refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Suppression impossible.");
+    } finally {
+      setRemovePending(false);
+    }
+  };
   if (!workspace) return <EmptyState title="Aucun workspace" />;
   const doRotate = async () => {
     if (!rotate) return;
@@ -215,8 +232,10 @@ export function ApplicationsPage() {
               </dl>
               <div className="mt-4 flex flex-wrap gap-2">
                 {admin && <Button size="sm" variant="outline" onClick={() => setEditing(a)}><Pencil />Modifier</Button>}
+                {admin && <Button size="sm" variant="outline" onClick={() => setModes(a)}><Radio />Modes de collecte</Button>}
                 {admin && <Button size="sm" variant="outline" onClick={() => setRotate(a)}><KeyRound />Renouveler le secret</Button>}
                 <Button size="sm" variant="ghost" onClick={() => setLogs(logs === a.id ? null : a.id)} aria-expanded={logs === a.id}><Webhook />Livraisons</Button>
+                {admin && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRemoving(a)} aria-label={`Supprimer ${a.name}`}><Trash2 />Supprimer</Button>}
               </div>
               {logs === a.id && <div className="mt-4 border-t pt-3"><Deliveries appId={a.id} /></div>}
             </Card>
@@ -230,6 +249,10 @@ export function ApplicationsPage() {
         }} />}
       </Dialog>
       <SecretDialog value={secret} onClose={() => setSecret(null)} />
+      <CollectionModesDialog app={modes} onClose={() => { setModes(null); void refetch(); }} />
+      <ConfirmDialog open={removing != null} onOpenChange={(o) => !o && setRemoving(null)} destructive pending={removePending}
+        title="Supprimer l'application ?" confirmLabel="Supprimer" onConfirm={() => void remove()}
+        description="Impossible si des tickets y sont rattachés : archivez-la alors (Modifier → statut). Ses identifiants cessent de fonctionner." />
       <ConfirmDialog open={rotate != null} onOpenChange={(o) => !o && setRotate(null)} destructive title="Renouveler le secret ?"
         description="L'ancien secret cesse immédiatement de fonctionner : mettez à jour le backend de l'application juste après."
         confirmLabel="Renouveler" onConfirm={() => void doRotate()} />

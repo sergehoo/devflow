@@ -20,6 +20,7 @@ export default defineConfig(({ command }) => ({
       "/accounts": DJANGO,
       "/media": DJANGO,
       "/static": DJANGO,
+      "/support": DJANGO,  // formulaire public de signalement (Django)
       "/ws": { target: DJANGO.replace(/^http/, "ws"), ws: true },
     },
   },

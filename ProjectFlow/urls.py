@@ -1,3 +1,4 @@
+from project.api.views_ticketing_public import support_public_form
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -92,6 +93,8 @@ _MESSENGER_REDIRECT = _RedirectView.as_view(url="/chat/", query_string=False)
 urlpatterns = [
     path('devflo/admin/back', admin.site.urls),
     path('accounts/', include('allauth.urls')),
+    # Formulaire public de signalement (ticketing, sans connexion) : /support/app/<slug>/
+    path("support/app/<slug:slug>/", support_public_form, name="support_public_form"),
     # path("", HomeView.as_view(), name="home"),
     path("", root_entry, name="dashboard"),  # React (/app/) ou tableau de bord historique
     path("dashboard/classic/", DashboardView.as_view(), name="dashboard_classic"),

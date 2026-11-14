@@ -164,10 +164,9 @@ def _filter_lines(request, scope) -> list[str]:
 
 
 def _xlsx_response(content: bytes, filename: str) -> HttpResponse:
-    response = HttpResponse(content, content_type=tx.XLSX_MIME)
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
-    response["Cache-Control"] = "no-store"
-    return response
+    from project.services.xlsx_export import response
+
+    return response(content, filename)
 
 
 class TimesheetWeekView(APIView):

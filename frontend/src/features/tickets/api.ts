@@ -125,6 +125,65 @@ export const useAssignable = (id: number, team: number | null | undefined, enabl
   });
 
 /** Action sur un ticket (transition, assign, qualify, escalate, comment, create-task) : renvoie la fiche à jour. */
+// ─── Modes de collecte d'une application (API, formulaire existant, widget, formulaire public, e-mail) ───
+export type CollectionMode = "api" | "form" | "widget" | "hosted";
+export interface ChannelStatus {
+  enabled: boolean; label: string; count_30d?: number;
+  last_ticket: { id: number; reference: string; created_at: string } | null;
+  last_error: { at?: string; reason: string } | null;
+  mailboxes?: { id: number; address: string; is_active: boolean; last_success_at: string | null; last_error: string }[];
+}
+export interface Collection {
+  modes: Record<CollectionMode, boolean>; public_key: string; public_slug: string; allowed_origins: string[]; key_id: string;
+  hosted_path: string; channels: Record<CollectionMode | "email", ChannelStatus>;
+}
+export interface CollectionTest { mode: string; ok: boolean; checks: { label: string; ok: boolean }[] }
+
+export const useCollection = (appId: number) =>
+  useQuery({ queryKey: [...TICKETS_KEY, "collection", appId], queryFn: ({ signal }) => api<Collection>(`ticket-applications/${appId}/collection/`, { signal }) });
+
+export function useCollectionAction(appId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ path = "", method = "POST", body = {} }: { path?: string; method?: "POST" | "PATCH"; body?: Record<string, unknown> }) =>
+      api<Collection & CollectionTest>(`ticket-applications/${appId}/collection/${path}`, { method, body }),
+    onSuccess: (data, vars) => { if (vars.path !== "test/") qc.setQueryData([...TICKETS_KEY, "collection", appId], data); },
+  });
+}
+
+// ─── Export Excel (mêmes filtres et mêmes droits que la liste, contrôlés par Django) ───
+export function ticketsExportUrl(filters: Record<string, string | number | undefined | null>) {
+  const q = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "" && k !== "page" && k !== "page_size" && k !== "view") q.set(k, String(v));
+  });
+  const query = q.toString();
+  return `/api/v1/tickets/export/${query ? `?${query}` : ""}`;
+}
+
+// ─── Assistance IA : suggestions à valider par l'agent, jamais appliquées ni envoyées seules ───
+export interface SuggestedField { value: string; label: string; current: string; changed: boolean }
+interface AssistSource { source: "ai" | "rules"; provider: string }
+export interface TriageSuggestion extends AssistSource {
+  category: SuggestedField; severity: SuggestedField; priority: SuggestedField; rationale: string;
+}
+export interface SummarySuggestion extends AssistSource { summary: string }
+export interface ReplySuggestion extends AssistSource { reply: string }
+export interface DuplicateTicket {
+  id: number; reference: string; title: string; status: string; status_label: string; application: string;
+  created_at: string; score: number; reasons: string[];
+}
+
+export const useTicketAssist = <T,>(id: number, kind: "triage" | "summary" | "reply") =>
+  useMutation({ mutationFn: () => api<T>(`tickets/${id}/ai/${kind}/`, { method: "POST", body: {} }) });
+
+export const useTicketDuplicates = (id: number, enabled: boolean) =>
+  useQuery({
+    queryKey: [...TICKETS_KEY, id, "duplicates"],
+    queryFn: ({ signal }) => api<{ results: DuplicateTicket[] }>(`tickets/${id}/duplicates/`, { signal }),
+    enabled,
+  });
+
 export function useTicketAction(id: number) {
   const qc = useQueryClient();
   return useMutation({
