@@ -19,7 +19,9 @@ from project.api.resources import (  # noqa: E402
 from project.api.form_bridge import LegacyActionView, LegacyFormView
 from project.api.views_dashboard import DashboardInsightsView, DashboardSummaryView
 from project.api.views_teams import TeamMembersView
-from project.api.views_timesheets import TimesheetEntriesView, TimesheetWeeksView, TimesheetWeekView
+from project.api.views_timesheets import (
+    TimesheetEntriesView, TimesheetExportView, TimesheetWeekExportView, TimesheetWeeksView, TimesheetWeekView,
+)
 from project.api.views_auth import (
     CsrfView,
     LoginView,
@@ -164,6 +166,8 @@ urlpatterns = [
     path("forms/<slug:name>/<int:pk>/", LegacyFormView.as_view(), name="api-form-instance"),
     path("team-members/", TeamMembersView.as_view(), name="api-team-members"),
     path("timesheet/week/", TimesheetWeekView.as_view(), name="api-timesheet-week"),
+    path("timesheet/week/export/", TimesheetWeekExportView.as_view(), name="api-timesheet-week-export"),
+    path("timesheet/export/", TimesheetExportView.as_view(), name="api-timesheet-export"),
     path("timesheet/weeks/", TimesheetWeeksView.as_view(), name="api-timesheet-weeks"),
     path("timesheet/entries/", TimesheetEntriesView.as_view(), name="api-timesheet-entries"),
     path("actions/<slug:name>/", LegacyActionView.as_view(), name="api-action"),

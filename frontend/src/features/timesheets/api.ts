@@ -69,7 +69,28 @@ export interface WeekGroup {
   total_hours: number; entry_count: number; status: string; status_label: string; can_review: boolean; is_mine: boolean;
 }
 
+export interface WeeksPage extends Paginated<WeekGroup> { collaborators?: { id: number; name: string }[] }
+
 export const TS_KEY = ["timesheet"] as const;
+
+type Params = Record<string, string | number | undefined | null>;
+const query = (params: Params) => {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") q.set(k, String(v)); });
+  return q.toString();
+};
+
+/** Export Excel de l'historique : mêmes filtres et même périmètre que `timesheet/entries/` (contrôle Django). */
+export const timesheetExportUrl = (params: Params) => {
+  const q = query({ ...params, page: undefined, page_size: undefined });
+  return `/api/v1/timesheet/export/${q ? `?${q}` : ""}`;
+};
+
+/** Feuille de temps d'une semaine en Excel (soi ou un collaborateur visible ; 404 sinon). */
+export const weekExportUrl = (date: string, user?: number | string | null) => `/api/v1/timesheet/week/export/?${query({ date, user })}`;
+
+/** Ouvre la semaine d'un collaborateur (ou la sienne : Django la rend modifiable si c'est l'utilisateur courant). */
+export const weekPath = (date: string, user?: number | null) => `/timesheets?${query({ user, date })}`;
 
 export const useWeek = (date: string, user?: string | null) =>
   useQuery({
@@ -89,7 +110,7 @@ export const useEntries = (params: Record<string, string | number | undefined>, 
 export const useWeeks = (params: Record<string, string | number | undefined>) =>
   useQuery({
     queryKey: [...TS_KEY, "weeks", params],
-    queryFn: ({ signal }) => api<Paginated<WeekGroup>>("timesheet/weeks/", { signal, params }),
+    queryFn: ({ signal }) => api<WeeksPage>("timesheet/weeks/", { signal, params }),
     placeholderData: keepPreviousData,
   });
 

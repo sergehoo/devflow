@@ -70,6 +70,7 @@ export const NAVIGATION: NavGroup[] = [
       { label: "Équipes", to: "/teams" },
       { label: "Membres", to: "/members" },
       { label: "Mes timesheets", to: "/timesheets" },
+      { label: "Feuilles de temps des collaborateurs", to: "/timesheets/sheets" },
       { label: "Validation des timesheets", to: "/timesheets/validation" },
     ],
   },

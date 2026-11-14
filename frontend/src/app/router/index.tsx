@@ -52,6 +52,7 @@ export const router = createBrowserRouter(
             { index: true, lazy: async () => ({ Component: (await import("@/features/timesheets/WeekPage")).WeekPage }) },
             { path: "month", handle: { crumb: "Mois" }, lazy: async () => ({ Component: (await import("@/features/timesheets/MonthPage")).MonthPage }) },
             { path: "history", handle: { crumb: "Historique" }, lazy: async () => ({ Component: (await import("@/features/timesheets/HistoryPage")).HistoryPage }) },
+            { path: "sheets", handle: { crumb: "Feuilles de temps" }, lazy: async () => ({ Component: (await import("@/features/timesheets/SheetsPage")).SheetsPage }) },
             { path: "validation", handle: { crumb: "Validation" }, lazy: async () => ({ Component: (await import("@/features/timesheets/ValidationPage")).ValidationPage }) },
           ],
         },

@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HistoryPage } from "@/features/timesheets/HistoryPage";
+import { SheetsPage } from "@/features/timesheets/SheetsPage";
 import { ValidationPage } from "@/features/timesheets/ValidationPage";
 import { WeekPage } from "@/features/timesheets/WeekPage";
 import { ME, mockApi, renderPage } from "./utils";
@@ -49,6 +50,7 @@ describe("Timesheets", () => {
     const group = { user: { id: 2, name: "Dan" }, monday: "2026-10-05", sunday: "2026-10-11", iso_week: 41, year: 2026, total_hours: 38, entry_count: 9, status: "SUBMITTED", status_label: "Soumis", can_review: true, is_mine: false };
     const spy = mockApi({ "timesheet/weeks/": { count: 1, next: null, previous: null, results: [group] }, "POST actions/timesheet-week/": { messages: [] } });
     renderPage(<ValidationPage />, "/timesheets/validation", "/timesheets/validation");
+    expect(await screen.findByRole("link", { name: /Semaines validées/ })).toHaveAttribute("href", "/timesheets/sheets?status=APPROVED");
     await userEvent.click(await screen.findByRole("button", { name: /Rejeter/ }));
     expect(screen.getByRole("button", { name: "Rejeter" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
@@ -69,5 +71,72 @@ describe("Timesheets", () => {
     expect(await screen.findAllByRole("button", { name: "Modifier la saisie" })).toHaveLength(1);
     expect(screen.getByRole("option", { name: "Dan" })).toBeInTheDocument();
     expect(screen.getAllByText("4 h").length).toBeGreaterThan(0);
+  });
+});
+
+describe("Feuilles de temps des collaborateurs", () => {
+  const APPROVED = { user: { id: 2, name: "Dan" }, monday: "2026-10-05", sunday: "2026-10-11", iso_week: 41, year: 2026, total_hours: 38, entry_count: 9,
+    status: "APPROVED", status_label: "Approuvé", can_review: true, is_mine: false };
+  const exports = (spy: ReturnType<typeof mockApi>) => spy.mock.calls.map(([u]) => String(u)).filter((u) => u.includes("/export/"));
+  const stubDownload = () => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:x"), revokeObjectURL: vi.fn() });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  };
+
+  it("keeps validated weeks reachable and exports them to Excel", async () => {
+    stubDownload();
+    const spy = mockApi({ "timesheet/week/export/": {}, "timesheet/export/": {},
+      "timesheet/weeks/": { count: 1, next: null, previous: null, results: [APPROVED], collaborators: [{ id: 2, name: "Dan" }] } });
+    renderPage(<SheetsPage />, "/timesheets/sheets?status=APPROVED", "/timesheets/sheets");
+    expect(await screen.findByRole("link", { name: "Voir la semaine 41 de Dan" })).toHaveAttribute("href", "/timesheets?user=2&date=2026-10-05");
+    expect(screen.getByRole("table", { name: "Feuilles de temps hebdomadaires" })).toHaveTextContent("Validée");
+    expect(spy.mock.calls.map(([u]) => String(u)).find((u) => u.includes("timesheet/weeks/"))).toMatch(/status=APPROVED/);
+    expect(screen.getByRole("option", { name: "Dan" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Exporter la semaine 41 de Dan en Excel" }));
+    await waitFor(() => expect(exports(spy)).toHaveLength(1));
+    expect(exports(spy)[0]).toContain("/api/v1/timesheet/week/export/?date=2026-10-05&user=2");
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("timesheet/week/export/"), expect.objectContaining({ redirect: "manual" }));
+
+    await userEvent.click(screen.getByRole("button", { name: /^Exporter en Excel$/ }));
+    await waitFor(() => expect(exports(spy)).toHaveLength(2));
+    const url = new URL(exports(spy)[1]!, "http://devflow.local");
+    expect(url.pathname).toBe("/api/v1/timesheet/export/");
+    expect(url.searchParams.get("approval_status")).toBe("APPROVED");
+    expect(url.searchParams.has("page")).toBe(false);
+  });
+
+  it("opens a collaborator's validated week read-only with its Excel export", async () => {
+    stubDownload();
+    const spy = mockApi({ "timesheet/week/export/": {}, "timesheet/week/": {
+      ...WEEK, user: { id: 2, name: "Dan" }, is_self: false, is_locked: true, can_submit: false, can_review: true,
+      week_status: "APPROVED", week_status_label: "Approuvé",
+      history: [{ action: "APPROVED", action_label: "Validée", actor: "Alice", comment: "", created_at: "2026-10-12T09:00:00Z" }],
+    } });
+    renderPage(<WeekPage />, "/timesheets?user=2&date=2026-10-05", "/timesheets");
+    expect(await screen.findByRole("heading", { name: "Semaine de Dan" })).toBeInTheDocument();
+    expect(screen.getByText("Validée — verrouillée")).toBeInTheDocument();
+    expect(screen.queryByLabelText("API — Mar : heures")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Feuilles de Dan/ })).toHaveAttribute("href", "/timesheets/sheets?user=2");
+    await userEvent.click(screen.getByRole("button", { name: /Exporter en Excel/ }));
+    await waitFor(() => expect(exports(spy)).toEqual([expect.stringContaining("/api/v1/timesheet/week/export/?date=2026-10-05&user=2")]));
+  });
+
+  it("exports the history with its active filters and links each entry to the week", async () => {
+    stubDownload();
+    const entry = { id: 1, entry_date: "2026-10-06", user: { id: 2, name: "Dan" }, project: { id: 7, name: "Portail" }, task: null, hours: 2, planned_hours: null,
+      description: "Réunion", is_billable: true, approval_status: "APPROVED", approval_status_label: "Approuvé", can_edit: false };
+    const spy = mockApi({ "timesheet/export/": {}, "timesheet/entries/": {
+      count: 1, next: null, previous: null, results: [entry], collaborators: [{ id: 2, name: "Dan" }], projects: [{ id: 7, name: "Portail" }],
+      totals: { hours: 2, billable_hours: 2, non_billable_hours: 0, by_user: [], by_project: [] },
+    } });
+    renderPage(<HistoryPage />, "/timesheets/history", "/timesheets/history");
+    expect(await screen.findByRole("link", { name: "Dan" })).toHaveAttribute("href", "/timesheets?user=2&date=2026-10-06");
+    fireEvent.change(screen.getByLabelText("Collaborateur"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Statut"), { target: { value: "APPROVED" } });
+    await userEvent.click(screen.getByRole("button", { name: /Exporter en Excel/ }));
+    await waitFor(() => expect(exports(spy)).toHaveLength(1));
+    const url = new URL(exports(spy)[0]!, "http://devflow.local");
+    expect([url.searchParams.get("user"), url.searchParams.get("approval_status"), url.searchParams.has("page")]).toEqual(["2", "APPROVED", false]);
   });
 });

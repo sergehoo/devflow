@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Search, Trash2 } from "lucide-react";
+import { FileSpreadsheet, Pencil, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
@@ -11,9 +11,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Input, Select } from "@/components/ui/input";
 import { Badge, Skeleton } from "@/components/ui/misc";
+import { DownloadButton } from "@/features/meetings/DownloadButton";
 import { formatDate, formatHours } from "@/lib/format";
 import { useDebouncedValue } from "@/lib/hooks";
-import { TS_KEY, useDeleteEntry, useEntries, type Breakdown } from "./api";
+import { TS_KEY, timesheetExportUrl, useDeleteEntry, useEntries, weekPath, type Breakdown } from "./api";
 import { APPROVAL_STATUSES, STATUS_TONE, statusLabel } from "./constants";
 import { TimesheetTabs } from "./TimesheetNav";
 
@@ -56,7 +57,8 @@ export function HistoryPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Timesheets" title="Historique des saisies" description="Vos saisies et celles de vos collaborateurs (N-1, N-2…)." />
+      <PageHeader eyebrow="Timesheets" title="Historique des saisies" description="Vos saisies et celles de vos collaborateurs (N-1, N-2…)."
+        actions={<DownloadButton href={timesheetExportUrl({ ...f, search })} filename="Timesheets.xlsx"><FileSpreadsheet aria-hidden="true" />Exporter en Excel</DownloadButton>} />
       <TimesheetTabs />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -103,7 +105,9 @@ export function HistoryPage() {
                   {data.results.map((e) => (
                     <tr key={e.id} className="hover:bg-muted/40">
                       <td className="px-4 py-2.5 whitespace-nowrap">{formatDate(e.entry_date)}</td>
-                      <td className="px-4 py-2.5">{e.user.name}</td>
+                      <td className="px-4 py-2.5">
+                        <Link to={weekPath(e.entry_date, e.user.id)} className="hover:text-brand" title="Ouvrir la feuille de temps de la semaine">{e.user.name}</Link>
+                      </td>
                       <td className="px-4 py-2.5">{e.project?.name ?? "—"}</td>
                       <td className="max-w-72 px-4 py-2.5">{e.task ? <Link to={`/tasks/${e.task.id}`} className="hover:text-brand">{e.task.title}</Link> : <span className="line-clamp-2">{e.description || "—"}</span>}</td>
                       <td className="px-4 py-2.5 font-semibold tabular-nums">{e.hours}</td>

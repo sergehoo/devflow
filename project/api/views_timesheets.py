@@ -6,6 +6,8 @@ Enveloppes fines des vues et services existants — aucune règle nouvelle :
   avec ``user`` (subordonné visible) : résumé ``week_summary`` + lignes, en lecture seule ;
 * ``GET timesheet/weeks/`` → semaines groupées de ``TimesheetEntryListView`` (visibilité N+1, ``can_review``) ;
 * ``GET timesheet/entries/`` → historique (périmètre ``TimesheetEntryListView``) + filtres + totaux ;
+* ``GET timesheet/export/`` → mêmes saisies et mêmes filtres, en classeur Excel ;
+* ``GET timesheet/week/export/?date=&user=`` → feuille de temps d'une semaine (soi ou subordonné visible) en Excel ;
 * écritures : ponts ``actions/timesheet-cell``, ``actions/timesheet-week``,
   ``actions/timesheet-entry-delete`` et ``forms/timesheet-entry/<pk>/`` (vues Django).
 """
@@ -18,6 +20,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum
+from django.http import HttpResponse
 from rest_framework import permissions
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.pagination import PageNumberPagination
@@ -27,10 +30,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from project import models as dm
+from project.services import timesheet_export as tx
 
 User = get_user_model()
 Status = dm.TimesheetEntry.ApprovalStatus
 EDITABLE = {Status.DRAFT, Status.REJECTED}
+EXPORT_MAX_ROWS = 50_000
 
 
 def _f(value) -> float:
@@ -80,6 +85,89 @@ def _history(workspace, employee, monday) -> list[dict]:
          "comment": getattr(l, "comment", "") or "", "created_at": l.created_at.isoformat()}
         for l in logs
     ]
+
+
+def _date_param(params, key):
+    try:
+        return date.fromisoformat(params[key]) if params.get(key) else None
+    except ValueError:
+        raise ValidationError({"detail": "Date invalide (AAAA-MM-JJ)."})
+
+
+def _int_param(params, key):
+    value = (params.get(key) or "").strip()
+    if not value:
+        return None
+    if not value.isdigit():
+        raise ValidationError({key: "Identifiant invalide."})
+    return int(value)
+
+
+def _filtered_entries(request):
+    """Saisies visibles (soi + subordonnés, workspace courant) filtrées comme l'historique."""
+    from project.views import TimesheetEntryListView
+
+    view, _ = _django_view(TimesheetEntryListView, request)
+    scope = view.get_queryset()
+    qs = scope.select_related("user", "project", "task")
+    p = request.query_params
+    date_from, date_to = _date_param(p, "date_from"), _date_param(p, "date_to")
+    if date_from:
+        qs = qs.filter(entry_date__gte=date_from)
+    if date_to:
+        qs = qs.filter(entry_date__lte=date_to)
+    for param, lookup in (("user", "user_id"), ("project", "project_id")):
+        value = _int_param(p, param)
+        if value is not None:
+            qs = qs.filter(**{lookup: value})
+    if p.get("approval_status"):
+        qs = qs.filter(approval_status=p["approval_status"])
+    if p.get("is_billable") in ("true", "false"):
+        qs = qs.filter(is_billable=p["is_billable"] == "true")
+    team = _int_param(p, "team")
+    if team is not None:
+        qs = qs.filter(user__devflow_memberships__team_id=team).distinct()
+    if p.get("search"):
+        term = p["search"].strip()
+        qs = qs.filter(
+            Q(description__icontains=term) | Q(project__name__icontains=term) | Q(task__title__icontains=term)
+            | Q(user__first_name__icontains=term) | Q(user__last_name__icontains=term) | Q(user__username__icontains=term)
+        )
+    return view, scope, qs
+
+
+def _filter_lines(request, scope) -> list[str]:
+    """Filtres appliqués, en clair, pour l'onglet « Informations » de l'export."""
+    p = request.query_params
+    lines = []
+    date_from, date_to = _date_param(p, "date_from"), _date_param(p, "date_to")
+    if date_from or date_to:
+        lines.append(f"Période : {f'{date_from:%d/%m/%Y}' if date_from else '…'} → {f'{date_to:%d/%m/%Y}' if date_to else '…'}")
+    user_id = _int_param(p, "user")
+    if user_id is not None:
+        user = User.objects.filter(pk=user_id, pk__in=scope.values("user_id")).first()
+        lines.append(f"Collaborateur : {_name(user) if user else user_id}")
+    project_id = _int_param(p, "project")
+    if project_id is not None:
+        project = dm.Project.objects.filter(pk=project_id, pk__in=scope.values("project_id")).first()
+        lines.append(f"Projet : {project.name if project else project_id}")
+    if p.get("approval_status"):
+        lines.append(f"Statut : {tx.STATUS_LABELS.get(p['approval_status'], p['approval_status'])}")
+    if p.get("is_billable") in ("true", "false"):
+        lines.append("Facturable : oui" if p["is_billable"] == "true" else "Facturable : non")
+    team_id = _int_param(p, "team")
+    if team_id is not None:
+        lines.append(f"Équipe : {team_id}")
+    if p.get("search", "").strip():
+        lines.append(f"Recherche : {p['search'].strip()}")
+    return lines
+
+
+def _xlsx_response(content: bytes, filename: str) -> HttpResponse:
+    response = HttpResponse(content, content_type=tx.XLSX_MIME)
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 class TimesheetWeekView(APIView):
@@ -201,6 +289,8 @@ class TimesheetWeeksView(APIView):
         status_filter = request.query_params.get("status")
         user_filter = request.query_params.get("user")
         scope = request.query_params.get("scope")  # "review" = semaines de mes N-1 à traiter
+        date_from = _date_param(request.query_params, "date_from")
+        date_to = _date_param(request.query_params, "date_to")
         rows = []
         for g in groups:
             if status_filter and g["status"] != status_filter:
@@ -208,6 +298,8 @@ class TimesheetWeeksView(APIView):
             if user_filter and str(g["user"].pk) != user_filter:
                 continue
             if scope == "review" and not g["can_review"]:
+                continue
+            if (date_from and g["sunday"] < date_from) or (date_to and g["monday"] > date_to):
                 continue
             rows.append({
                 "user": {"id": g["user"].pk, "name": _name(g["user"])},
@@ -219,7 +311,10 @@ class TimesheetWeeksView(APIView):
             })
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset(rows, request, view=self)
-        return paginator.get_paginated_response(page)
+        response = paginator.get_paginated_response(page)
+        collaborators = User.objects.filter(pk__in=view.object_list.values("user_id")).order_by("first_name", "last_name", "username")
+        response.data["collaborators"] = [{"id": u.pk, "name": _name(u)} for u in collaborators]
+        return response
 
 
 class TimesheetEntriesView(APIView):
@@ -228,31 +323,7 @@ class TimesheetEntriesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        from project.views import TimesheetEntryListView
-
-        view, _ = _django_view(TimesheetEntryListView, request)
-        qs = view.get_queryset().select_related("user", "project", "task")
-        p = request.query_params
-        try:
-            if p.get("date_from"):
-                qs = qs.filter(entry_date__gte=date.fromisoformat(p["date_from"]))
-            if p.get("date_to"):
-                qs = qs.filter(entry_date__lte=date.fromisoformat(p["date_to"]))
-        except ValueError:
-            raise ValidationError({"detail": "Date invalide (AAAA-MM-JJ)."})
-        for param, lookup in (("user", "user_id"), ("project", "project_id"), ("approval_status", "approval_status")):
-            if p.get(param):
-                qs = qs.filter(**{lookup: p[param]})
-        if p.get("is_billable") in ("true", "false"):
-            qs = qs.filter(is_billable=p["is_billable"] == "true")
-        if p.get("team"):
-            qs = qs.filter(user__devflow_memberships__team_id=p["team"]).distinct()
-        if p.get("search"):
-            term = p["search"].strip()
-            qs = qs.filter(
-                Q(description__icontains=term) | Q(project__name__icontains=term) | Q(task__title__icontains=term)
-                | Q(user__first_name__icontains=term) | Q(user__last_name__icontains=term) | Q(user__username__icontains=term)
-            )
+        _, scope, qs = _filtered_entries(request)
 
         totals = qs.aggregate(total=Sum("hours"), billable=Sum("hours", filter=Q(is_billable=True)))
         by_user, by_project = defaultdict(lambda: [Decimal(0), Decimal(0), ""]), defaultdict(lambda: [Decimal(0), Decimal(0), ""])
@@ -270,7 +341,6 @@ class TimesheetEntriesView(APIView):
             items = [{"id": k, "name": v[2], "hours": _f(v[0]), "billable_hours": _f(v[1])} for k, v in bucket.items()]
             return sorted(items, key=lambda i: -i["hours"])[:10]
 
-        scope = view.get_queryset()
         collaborators = User.objects.filter(pk__in=scope.values("user_id")).order_by("first_name", "last_name", "username")
         projects = dm.Project.objects.filter(pk__in=scope.values("project_id")).order_by("name")
         paginator = FlexiblePagination()
@@ -298,3 +368,55 @@ class TimesheetEntriesView(APIView):
             "by_user": breakdown(by_user), "by_project": breakdown(by_project),
         }
         return response
+
+
+class TimesheetExportView(APIView):
+    """Export Excel de l'historique : mêmes filtres et même périmètre que ``timesheet/entries/``."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        view, scope, qs = _filtered_entries(request)
+        if qs.count() > EXPORT_MAX_ROWS:
+            raise ValidationError({"detail": f"Export limité à {EXPORT_MAX_ROWS} saisies : affinez la période ou les filtres."})
+        workspace = view.get_current_workspace()
+        content = tx.entries_workbook(
+            qs.order_by("-entry_date", "user__last_name", "user__first_name", "-id"),
+            exporter=request.user, workspace=workspace, filter_lines=_filter_lines(request, scope),
+        )
+        p = request.query_params
+        return _xlsx_response(content, tx.filename("Timesheets", p.get("date_from", ""), p.get("date_to", "")))
+
+
+class TimesheetWeekExportView(APIView):
+    """Feuille de temps d'une semaine en Excel — soi-même ou un subordonné visible (sinon 404)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.utils import timezone
+
+        from project.services import timesheet_workflow as tw
+        from project.views import TimesheetCalendarView
+
+        view, _ = _django_view(TimesheetCalendarView, request)
+        ws = view.get_current_workspace()
+        target = request.query_params.get("user") or str(request.user.pk)
+        if not ws or not target.isdigit() or int(target) not in tw.visible_user_ids(request.user, ws):
+            raise NotFound()
+        employee = User.objects.get(pk=target)
+        try:
+            day = date.fromisoformat(request.query_params.get("date") or "")
+        except ValueError:
+            day = timezone.localdate()
+        monday, _ = tw.week_bounds(day)
+        history = list(
+            dm.TimesheetApprovalLog.objects.filter(workspace=ws, employee=employee, week_start=monday)
+            .select_related("actor").order_by("-created_at")[:20]
+        )
+        content = tx.week_workbook(
+            employee=employee, workspace=ws, monday=monday,
+            entries=tw.week_entries(employee, ws, monday).select_related("user", "task", "project"),
+            summary=tw.week_summary(employee, ws, monday), history=history, exporter=request.user,
+        )
+        return _xlsx_response(content, tx.filename("Timesheet", _name(employee), tx.week_label(monday)))

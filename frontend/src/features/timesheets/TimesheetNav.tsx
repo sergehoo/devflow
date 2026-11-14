@@ -12,6 +12,7 @@ const TABS = [
   { to: "/timesheets", label: "Semaine", end: true },
   { to: "/timesheets/month", label: "Mois" },
   { to: "/timesheets/history", label: "Historique" },
+  { to: "/timesheets/sheets", label: "Feuilles de temps" },
   { to: "/timesheets/validation", label: "Validation" },
 ];
 

@@ -1,4 +1,4 @@
-import { Check, Lock, Plus, RotateCcw, Send, X } from "lucide-react";
+import { ArrowLeft, Check, FileSpreadsheet, Lock, Plus, RotateCcw, Send, X } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -9,9 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
+import { DownloadButton } from "@/features/meetings/DownloadButton";
 import { formatDateTime, formatHours, parseISODate, toISODate } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { useSaveCell, useWeek, useWeekAction, type Week, type WeekRow } from "./api";
+import { useSaveCell, useWeek, useWeekAction, weekExportUrl, type Week, type WeekRow } from "./api";
 import { STATUS_TONE, WEEK_BANNER } from "./constants";
 import { PeriodNav, TimesheetTabs } from "./TimesheetNav";
 
@@ -88,7 +89,10 @@ export function WeekPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Timesheets" title={week && !week.is_self ? `Semaine de ${week.user.name}` : "Mes heures"} />
+      <PageHeader eyebrow="Timesheets" title={week && !week.is_self ? `Semaine de ${week.user.name}` : "Mes heures"}
+        actions={week && !week.is_self ? (
+          <Button variant="outline" asChild><Link to={`/timesheets/sheets?user=${week.user.id}`}><ArrowLeft />Feuilles de {week.user.name}</Link></Button>
+        ) : undefined} />
       <TimesheetTabs />
       {isPending ? <PageSkeleton /> : isError ? <ErrorState message={error.message} onRetry={() => void refetch()} /> : (
         <>
@@ -105,6 +109,9 @@ export function WeekPage() {
                 </>
               )}
               {week.can_review && ["SUBMITTED", "APPROVED"].includes(week.week_status) && <Button variant="outline" onClick={() => setDialog("reopen")}><RotateCcw />Rouvrir</Button>}
+              <DownloadButton href={weekExportUrl(week.monday, week.is_self ? null : week.user.id)} filename={`Timesheet_S${week.iso_week}.xlsx`}>
+                <FileSpreadsheet aria-hidden="true" />Exporter en Excel
+              </DownloadButton>
             </div>
           </div>
 

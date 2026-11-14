@@ -43,6 +43,9 @@ export function ValidationPage() {
         <Select aria-label="Statut" className="w-56" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
           <option value="">Statut : tous</option>{APPROVAL_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </Select>
+        <Button variant="link" className="ml-auto" asChild>
+          <Link to="/timesheets/sheets?status=APPROVED">Semaines validées : consulter et exporter</Link>
+        </Button>
       </div>
 
       {isPending ? <Skeleton className="h-72" /> : isError ? <ErrorState message={error.message} onRetry={() => void refetch()} /> : data.results.length === 0 ? (
