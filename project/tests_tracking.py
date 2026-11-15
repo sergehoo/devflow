@@ -209,6 +209,32 @@ class TrackingParserTests(SimpleTestCase):
 # Base commune
 # ---------------------------------------------------------------------------
 @override_settings(AI_BACKEND="none", MEDIA_ROOT=MEDIA_ROOT)
+class PostgresLockGuardTests(SimpleTestCase):
+    """
+    SQLite ignore ``select_for_update`` : un verrou joint à une relation facultative
+    (LEFT OUTER JOIN) passe les tests mais échoue en production sous PostgreSQL
+    (« FOR UPDATE cannot be applied to the nullable side of an outer join »).
+    Toute requête verrouillée avec ``select_related`` doit préciser ``of=("self",)``.
+    """
+
+    def test_locked_queries_with_joins_lock_only_their_own_rows(self):
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent
+        offenders = []
+        for path in root.rglob("*.py"):
+            if "migrations" in path.parts or path.name.startswith("tests"):
+                continue
+            text = path.read_text(encoding="utf-8")
+            for match in re.finditer(r"select_for_update\(\s*\)", text):
+                statement = text[match.start():text.find(")", text.find("\n", match.end()) + 1) + 200]
+                tail = statement.split("\n\n")[0]
+                if "select_related" in tail[:300]:
+                    offenders.append(f"{path.relative_to(root)}:{text.count(chr(10), 0, match.start()) + 1}")
+        self.assertEqual(offenders, [])
+
+
 class SimilarProjectNameTests(SimpleTestCase):
     """Rapprochement des noms proches : suggestion seulement (jamais d'office)."""
 

@@ -299,7 +299,9 @@ class TrackingImportActionView(APIView):
         _get_import(request, pk)
         try:
             with transaction.atomic():
-                obj = (dm.ProjectDocumentImport.objects.select_for_update()
+                # PostgreSQL refuse FOR UPDATE sur le côté facultatif d'une jointure externe
+                # (uploaded_by est nullable) : seul l'import lui-même est verrouillé.
+                obj = (dm.ProjectDocumentImport.objects.select_for_update(of=("self",))
                        .select_related("workspace", "uploaded_by").get(pk=pk))
                 payload = obj.ai_payload or {}
                 if self.action == "analyze":

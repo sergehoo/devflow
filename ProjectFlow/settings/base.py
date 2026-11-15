@@ -546,13 +546,32 @@ _in_docker = os.path.exists("/.dockerenv")
 _default_redis_host = "redis" if _in_docker else "127.0.0.1"
 CHANNELS_REDIS_HOST = os.getenv("CHANNELS_REDIS_HOST") or os.getenv("REDIS_HOST", _default_redis_host)
 CHANNELS_REDIS_PORT = int(os.getenv("CHANNELS_REDIS_PORT") or os.getenv("REDIS_PORT", 6379))
+# Priorité : CHANNELS_REDIS_HOST explicite, sinon REDIS_URL (même Redis que Celery et le
+# cache, ex. redis://redis:6379/0 dans docker-compose), sinon REDIS_HOST / REDIS_PORT.
+# Évite un REDIS_HOST=localhost hérité qui, dans un conteneur, coupe le temps réel.
+_channels_redis_url = "" if os.getenv("CHANNELS_REDIS_HOST") else os.getenv("REDIS_URL", "").strip()
 
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [(CHANNELS_REDIS_HOST, CHANNELS_REDIS_PORT)],
+            "hosts": [_channels_redis_url] if _channels_redis_url.startswith(("redis://", "rediss://"))
+            else [(CHANNELS_REDIS_HOST, CHANNELS_REDIS_PORT)],
         },
+    },
+}
+
+# ─────────────────────────────────────────────────────────────────────────
+# Journalisation : les erreurs 500 (django.request) partent sur la sortie standard,
+# y compris avec DEBUG=False (sinon Django ne les écrit nulle part sans ADMINS/e-mail)
+# → visibles avec `docker logs devflowweb`.
+# ─────────────────────────────────────────────────────────────────────────
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
     },
 }
 
