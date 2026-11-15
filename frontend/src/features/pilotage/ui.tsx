@@ -33,7 +33,12 @@ export function RowDetail({ row }: { row: TrackingRow }) {
         {row.done.map((d, i) => (
           <li key={`${d.source}-${d.id ?? i}`} className="flex gap-2">
             <span className="mt-2 size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
-            <span className="min-w-0 break-words">{d.text}{d.date && <span className="ml-1.5 text-xs text-muted-foreground">{formatDate(d.date)}</span>}</span>
+            <span className="min-w-0 break-words">
+              {d.text}
+              {d.source === "timesheet"
+                ? <span className="ml-1.5 text-xs text-muted-foreground">· temps saisi</span>
+                : d.date && <span className="ml-1.5 text-xs text-muted-foreground">{formatDate(d.date)}</span>}
+            </span>
           </li>
         ))}
         {row.done_count > row.done.length && <li className="text-xs text-muted-foreground">… et {row.done_count - row.done.length} plus ancienne(s).</li>}

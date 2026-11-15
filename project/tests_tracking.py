@@ -912,6 +912,34 @@ class TrackingExportTests(TrackingFixture):
         self.assertEqual(info["Exporté par"], "Serge OGAH")
         self.assertEqual((info["Projets"], info["Tâches / activités"]), (4, 3))
 
+    def test_logged_time_becomes_actions_done_for_the_period(self):
+        """Saisies de temps → « Actions menées » (libellé, personne, heures), bornées à la période."""
+        afflux = dm.Project.objects.get(workspace=self.ws, name="AFFLUX")
+        task = dm.Task.objects.create(workspace=self.ws, project=afflux, title="Câblage capteurs")
+        today = timezone.localdate()
+        for when, hours, kwargs in ((today, "2", {"task": task}), (today - timedelta(days=1), "1.5", {"task": task}),
+                                    (today, "3", {"description": "Atelier client"}),
+                                    (today - timedelta(days=60), "8", {"description": "Ancienne mission"})):
+            dm.TimesheetEntry.objects.create(user=self.dev, workspace=self.ws, project=afflux, entry_date=when,
+                                             hours=Decimal(hours), **kwargs)
+        row = next(r for r in self.board().json()["rows"] if r["title"] == "AFFLUX")
+        worked = [i["text"] for i in row["done"] if i["source"] == "timesheet"]
+        stamp = f"{today:%d/%m}"
+        # Ordre chronologique puis alphabétique ; 30 derniers jours par défaut.
+        self.assertEqual(worked, [f"Atelier client — Awa Diallo, 3 h ({stamp})",
+                                  f"Câblage capteurs — Awa Diallo, 3,5 h ({stamp})"])
+        wb = load_workbook(io.BytesIO(self.export().content))
+        ws = wb["PROJET"]
+        cell = ws.cell(self.find(ws, "AFFLUX", column=2), 5).value
+        self.assertIn("Atelier client — Awa Diallo, 3 h", cell)
+        self.assertNotIn("Ancienne mission", cell)
+        self.assertIn("Actions menées : saisies de temps du", ws["A1"].value)
+        # Période explicite (filtres Du / Au) : seules ses saisies remontent.
+        old_day = (today - timedelta(days=60)).isoformat()
+        row = next(r for r in self.board(**{"from": old_day, "to": old_day}).json()["rows"] if r["title"] == "AFFLUX")
+        self.assertEqual([i["text"] for i in row["done"] if i["source"] == "timesheet"],
+                         [f"Ancienne mission — Awa Diallo, 8 h ({today - timedelta(days=60):%d/%m})"])
+
     def test_values_come_from_devflow(self):
         ws = self.sheet()["PROJET"]
         line = self.find(ws, "AFFLUX", column=2)

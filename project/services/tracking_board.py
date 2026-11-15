@@ -108,9 +108,32 @@ def visible_project(scope, user, pk):
 # ---------------------------------------------------------------------------
 # Lignes
 # ---------------------------------------------------------------------------
-def build_rows(scope, user=None, *, project_id=None, today=None) -> list[dict]:
-    """Lignes « projet » puis « tâche / activité » visibles dans ``scope``."""
+TIMESHEET_DAYS = 30
+
+
+def time_period(filters=None, today=None) -> tuple[date, date]:
+    """Période des saisies de temps reprises en « actions menées » : filtres Du / Au, sinon 30 derniers jours."""
     today = today or timezone.localdate()
+    filters = filters or {}
+    end = filters.get("to") or today
+    start = filters.get("from") or (end - timedelta(days=TIMESHEET_DAYS - 1))
+    return start, end
+
+
+def _hours(value) -> str:
+    text = f"{Decimal(value or 0).normalize():f}".replace(".", ",")
+    return f"{text} h"
+
+
+def build_rows(scope, user=None, *, project_id=None, today=None, period=None) -> list[dict]:
+    """
+    Lignes « projet » puis « tâche / activité » visibles dans ``scope``.
+
+    ``period`` (``(début, fin)``, défaut : 30 derniers jours) borne les saisies de temps
+    reprises dans les actions menées ; les heures totales (``logged_hours``) couvrent tout.
+    """
+    today = today or timezone.localdate()
+    period = period or time_period(today=today)
     if not scope["full"] and not scope["assigned"]:
         return []
     p_filter, t_filter = _scope_filters(scope, user)
@@ -212,6 +235,40 @@ def build_rows(scope, user=None, *, project_id=None, today=None) -> list[dict]:
     for tid, hours, last in (entries.filter(task__parent_id__in=tids).values("task__parent_id")
                              .annotate(h=Sum("hours"), last=Max("updated_at")).values_list("task__parent_id", "h", "last")):
         add_logged(("T", tid), hours, last)
+
+    # Saisies de temps de la période → actions menées, regroupées par libellé et personne
+    # (« Correction DQE — Loïc D., 2 h (13/11) »). Projet : ses tâches et ses activités
+    # hors tâche ; activité du suivi : la tâche et ses sous-tâches.
+    worked: dict[tuple, dict] = {}
+    period_entries = (dm.TimesheetEntry.objects.order_by()
+                      .filter(entry_date__gte=period[0], entry_date__lte=period[1], hours__gt=0)
+                      .filter(Q(project_id__in=pids) | Q(task_id__in=tids) | Q(task__parent_id__in=tids)))
+    for pid, tid, parent_id, task_title, description, uid, first, last, hours, last_day in (
+            period_entries
+            .values("project_id", "task_id", "task__parent_id", "task__title", "description", "user_id",
+                    "user__first_name", "user__last_name")
+            .annotate(h=Sum("hours"), d=Max("entry_date"))
+            .values_list("project_id", "task_id", "task__parent_id", "task__title", "description", "user_id",
+                         "user__first_name", "user__last_name", "h", "d")):
+        if tid in tids:
+            ref = ("T", tid)
+        elif parent_id in tids:
+            ref = ("T", parent_id)
+        elif pid in pids:
+            ref = ("P", pid)
+        else:
+            continue
+        label = (task_title or description or "Activité").strip()
+        item = worked.setdefault((ref, key(label), uid), {
+            "ref": ref, "label": label, "person": f"{first or ''} {last or ''}".strip() or "Collaborateur",
+            "hours": ZERO_HOURS, "last": last_day})
+        item["hours"] += hours or ZERO_HOURS
+        item["last"] = max(item["last"], last_day)
+    # Ordre chronologique (comme l'historique) : l'écran affiche les plus récentes en dernier.
+    for item in sorted(worked.values(), key=lambda i: (i["last"], key(i["label"]), i["person"])):
+        done[item["ref"]].append({
+            "text": f"{item['label']} — {item['person']}, {_hours(item['hours'])} ({item['last']:%d/%m})",
+            "date": item["last"].isoformat(), "source": "timesheet"})
 
     def people_of(ref, users):
         owners, seen = [], set()
@@ -658,7 +715,7 @@ def _row_height(values) -> float:
     return float(min(409, max(32, 15 * lines + 6)))
 
 
-def export_xlsx(rows, *, user, scope_text, filter_lines, now=None) -> bytes:
+def export_xlsx(rows, *, user, scope_text, filter_lines, period=None, now=None) -> bytes:
     """
     Classeur de suivi au format utilisé par la Direction : feuille ``PROJET``
     avec le bloc projets puis le bloc tâches, mêmes colonnes et intitulés.
@@ -689,8 +746,10 @@ def export_xlsx(rows, *, user, scope_text, filter_lines, now=None) -> bytes:
     filters_text = " · ".join(filter_lines) if filter_lines else "aucun"
     exporter = _name(user) or "DevFlow"
     ws.merge_cells(f"A1:{last_col}1")
+    period_text = f"saisies de temps du {period[0]:%d/%m/%Y} au {period[1]:%d/%m/%Y}" if period else ""
     ws["A1"] = (f"{GENERATED_MENTION} — le {now:%d/%m/%Y} à {now:%H:%M} — exporté par {exporter}\n"
-                f"Périmètre : {scope_text}\nFiltres : {filters_text}")
+                f"Périmètre : {scope_text}\nFiltres : {filters_text}"
+                + (f" · Actions menées : {period_text}" if period_text else ""))
     ws["A1"].font = Font(name=font, size=10, italic=True, color="595959")
     ws["A1"].alignment = wrap_left
     ws.row_dimensions[1].height = 56.5
@@ -783,6 +842,7 @@ def export_xlsx(rows, *, user, scope_text, filter_lines, now=None) -> bytes:
             ("Exporté par", exporter),
             ("Périmètre appliqué", scope_text),
             ("Filtres appliqués", "\n".join(filter_lines) if filter_lines else "aucun"),
+            ("Actions menées", f"Historique, tâches terminées et {period_text}" if period_text else "Historique et tâches terminées"),
             ("Projets", sum(1 for r in rows if r["kind"] == "project")),
             ("Tâches / activités", sum(1 for r in rows if r["kind"] == "task")),
     ), start=1):

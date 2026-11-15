@@ -81,7 +81,7 @@ class TrackingBoardView(APIView):
     def get(self, request):
         scope = _scope(request)
         filters = _filters(request)
-        rows = board.build_rows(scope, request.user)
+        rows = board.build_rows(scope, request.user, period=board.time_period(filters))
         visible = board.apply_filters(rows, filters)
         return Response({
             "rows": [_row(r) for r in visible],
@@ -107,7 +107,8 @@ class TrackingExportView(APIView):
         variant = request.query_params.get("variant") or "direction"
         if fmt not in ("xlsx", "pdf") or variant not in board.REPORTS:
             raise ValidationError({"detail": "Format d'export inconnu."})
-        rows = board.build_rows(scope, request.user)
+        period = board.time_period(filters)
+        rows = board.build_rows(scope, request.user, period=period)
         context = {
             "user": request.user, "scope_text": board.scope_label(scope),
             "filter_lines": board.describe_filters(filters, rows),
@@ -115,7 +116,7 @@ class TrackingExportView(APIView):
         rows = board.apply_filters(rows, filters)
         stamp = timezone.localdate().isoformat()
         if fmt == "xlsx":
-            content = board.export_xlsx(rows, **context)
+            content = board.export_xlsx(rows, period=period, **context)
             name = f"Suivi_Pole_Developpement_{stamp}.xlsx"
             mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         else:
@@ -138,7 +139,9 @@ class TrackingBriefView(APIView):
 
     def _brief(self, request):
         scope = _scope(request)
-        rows = board.apply_filters(board.build_rows(scope, request.user), _filters(request))
+        filters = _filters(request)
+        rows = board.build_rows(scope, request.user, period=board.time_period(filters))
+        rows = board.apply_filters(rows, filters)
         return board.build_brief(rows)
 
     def get(self, request):
