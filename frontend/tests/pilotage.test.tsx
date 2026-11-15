@@ -265,7 +265,11 @@ describe("Assistant d'import du suivi", () => {
 
   it("signale un projet existant au nom proche sans le rattacher d'office", async () => {
     const near = { id: 12, name: "Portail fournisseur V2", archived: false, score: 0.9 };
-    const analysis: ImportAnalysis = { ...ANALYSIS, rows: [{ ...ANALYSIS.rows[0]!, candidates: [near] }, ANALYSIS.rows[1]!] };
+    // Noms de blocs tels que Django les renvoie (« PROJECTS » / « TASKS ») : l'interface les normalise.
+    const serverCase = (a: ImportAnalysis): ImportAnalysis => JSON.parse(JSON.stringify(a)
+      .replace(/"section":"projects"/g, '"section":"PROJECTS"').replace(/"section":"tasks"/g, '"section":"TASKS"')
+      .replace(/"kind":"projects"/g, '"kind":"PROJECTS"').replace(/"kind":"tasks"/g, '"kind":"TASKS"'));
+    const analysis = serverCase({ ...ANALYSIS, rows: [{ ...ANALYSIS.rows[0]!, candidates: [near] }, ANALYSIS.rows[1]!] });
     const detail: ImportDetail = {
       ...DETAIL, analysis,
       options: { ...DETAIL.options, projects: [...DETAIL.options.projects, { id: 12, name: "Portail fournisseur V2", container: false }] },
@@ -281,6 +285,8 @@ describe("Assistant d'import du suivi", () => {
     expect(screen.getByLabelText("Décision pour la ligne 4")).toHaveValue("link");
     expect(screen.getByLabelText("Projet cible de la ligne 4")).toHaveValue("12");
     fireEvent.click(screen.getByRole("button", { name: /^5\s*Import$/ }));
+    // Le récapitulatif compte la ligne projet rattachée (il plantait avec « PROJECTS »).
+    expect(screen.getByRole("button", { name: /Lancer l'import/ })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: /Lancer l'import/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Importer" }));
     await waitFor(() => expect(spy.mock.calls.some(([input]) => String(input).includes("/apply/"))).toBe(true));

@@ -342,10 +342,29 @@ export function useTrackingImports(enabled = true) {
   });
 }
 
+/**
+ * Le service Django nomme les blocs « PROJECTS » / « TASKS » (analyse stockée telle quelle) ;
+ * l'interface raisonne en « projects » / « tasks ». Sans cette normalisation, les lignes projet
+ * étaient traitées comme des tâches (rattachement impossible) et le récapitulatif plantait.
+ */
+export function normalizeImport(detail: ImportDetail): ImportDetail {
+  const analysis = detail.analysis;
+  if (!analysis) return detail;
+  const lower = <T extends string>(v: string) => v.toLowerCase() as T;
+  return {
+    ...detail,
+    analysis: {
+      ...analysis,
+      sections: analysis.sections.map((s) => ({ ...s, kind: lower<"projects" | "tasks">(s.kind) })),
+      rows: analysis.rows.map((r) => ({ ...r, section: lower<"projects" | "tasks">(r.section) })),
+    },
+  };
+}
+
 export function useTrackingImport(id: number) {
   return useQuery({
     queryKey: [...IMPORTS, id],
-    queryFn: ({ signal }) => api<ImportDetail>(`tracking/imports/${id}/`, { signal }),
+    queryFn: ({ signal }) => api<ImportDetail>(`tracking/imports/${id}/`, { signal }).then(normalizeImport),
     retry: false,
   });
 }
@@ -357,7 +376,7 @@ export function useUploadTracking() {
       const body = new FormData();
       body.set("workspace", String(workspace));
       body.set("file", file);
-      return api<ImportDetail>("tracking/imports/", { method: "POST", body });
+      return api<ImportDetail>("tracking/imports/", { method: "POST", body }).then(normalizeImport);
     },
     onSuccess: (detail) => {
       client.setQueryData([...IMPORTS, detail.id], detail);
@@ -371,7 +390,8 @@ export function useImportAction(id: number, action: "analyze" | "apply" | "rollb
   const client = useQueryClient();
   return useMutation({
     mutationFn: (decisions?: ImportDecisions) =>
-      api<ImportDetail>(`tracking/imports/${id}/${action}/`, { method: "POST", body: action === "apply" ? { decisions: decisions ?? {} } : {} }),
+      api<ImportDetail>(`tracking/imports/${id}/${action}/`, { method: "POST", body: action === "apply" ? { decisions: decisions ?? {} } : {} })
+        .then(normalizeImport),
     onSuccess: (detail) => {
       client.setQueryData([...IMPORTS, id], detail);
       // Les données du suivi (et le journal d'audit) ont changé.
