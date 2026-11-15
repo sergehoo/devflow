@@ -465,6 +465,14 @@ class Project(TimeStampedModel, SoftDeleteModel):
         help_text="Détermine les vues et générations IA disponibles pour ce projet.",
     )
 
+    @classmethod
+    def normalize_methodology(cls, value):
+        """« agile » / « Scrum » → code valide (« AGILE », « SCRUM ») ; valeur inconnue inchangée."""
+        if not value:
+            return value
+        upper = str(value).strip().upper()
+        return upper if upper in cls.Methodology.values else value
+
     category = models.ForeignKey(
         ProjectCategory,
         on_delete=models.SET_NULL,
@@ -572,6 +580,10 @@ class Project(TimeStampedModel, SoftDeleteModel):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = unique_slug(self, self.name, fallback="project")
+
+        # Codes de méthodologie historiques en minuscules (« agile ») : ramenés au choix
+        # valide (« AGILE »), sinon le formulaire projet refuse tout enregistrement.
+        self.methodology = self.normalize_methodology(self.methodology)
 
         if not self.code:
             self.code = next_sequential_code(

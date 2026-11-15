@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMemo, useState, type ReactNode } from "react";
-import { useForm, type FieldValues, type Path } from "react-hook-form";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useForm, type FieldErrors, type FieldValues, type Path } from "react-hook-form";
+import { toast } from "sonner";
 import { z } from "zod";
 import { ErrorState, PageSkeleton } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
@@ -120,6 +121,21 @@ function LegacyFormBody({ name, id, query, fields, submitLabel, onSuccess, onCan
     return [...map.entries()];
   }, [fields]);
 
+  const alertRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (globalErrors.length) alertRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [globalErrors]);
+
+  // Le bouton d'enregistrement est en bas d'un long formulaire : une erreur affichée plus haut
+  // passait inaperçue (« la modification ne s'enregistre pas »). On la signale et on y amène.
+  const reportFieldErrors = (names: string[]) => {
+    if (!names.length) return;
+    const labels = names.map((n) => fields.find((f) => f.name === n)?.label ?? n);
+    toast.error(`Enregistrement impossible : à corriger — ${labels.join(", ")}.`);
+  };
+
+  const onInvalid = (errors: FieldErrors<FieldValues>) => reportFieldErrors(Object.keys(errors));
+
   const onSubmit = form.handleSubmit(async (values) => {
     setGlobalErrors([]);
     try {
@@ -130,22 +146,26 @@ function LegacyFormBody({ name, id, query, fields, submitLabel, onSuccess, onCan
     } catch (e) {
       if (e instanceof ApiError && e.status === 400 && e.data && typeof e.data === "object") {
         const others: string[] = [];
+        const invalid: string[] = [];
         Object.entries(e.data as Record<string, string[] | string>).forEach(([k, v]) => {
           const msg = [v].flat().join(" ");
-          if (fields.some((f) => f.name === k && f.type !== "hidden")) form.setError(k as Path<FieldValues>, { message: msg });
-          else others.push(msg);
+          if (fields.some((f) => f.name === k && f.type !== "hidden")) {
+            form.setError(k as Path<FieldValues>, { message: msg }, { shouldFocus: invalid.length === 0 });
+            invalid.push(k);
+          } else others.push(msg);
         });
         setGlobalErrors(others);
+        reportFieldErrors(invalid);
       } else {
         setGlobalErrors([(e as Error).message]);
       }
     }
-  });
+  }, onInvalid);
 
   return (
     <form onSubmit={onSubmit} noValidate className={compact ? "space-y-3" : "space-y-6"}>
       {globalErrors.length > 0 && (
-        <div role="alert" className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+        <div ref={alertRef} role="alert" className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           {globalErrors.map((m) => <p key={m}>{m}</p>)}
         </div>
       )}

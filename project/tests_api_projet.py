@@ -361,6 +361,30 @@ class NonCurrentWorkspaceTests(ProjectDetailTabsFixture):
         self.assertEqual(self.api(self.pm).get(f"{edit}?workspace={self.other.pk}").status_code, 200)
 
 
+class LegacyMethodologyTests(ProjectDetailTabsFixture):
+    """Projets enregistrés avec « agile » (minuscules) : modifiables depuis l'écran, normalisés."""
+
+    def test_project_with_lowercase_methodology_can_be_saved(self):
+        dm.Project.objects.filter(pk=self.project.pk).update(methodology="agile")
+        schema = self.api(self.owner).get(f"/api/v1/forms/project/{self.project.pk}/").json()
+        self.assertEqual(next(f for f in schema["fields"] if f["name"] == "methodology")["value"], "AGILE")
+        res = self.bridge(self.owner, "project", pk=self.project.pk, tech_stack="Laravel PHP")
+        self.assertEqual(res.status_code, 200, res.content)
+        self.project.refresh_from_db()
+        self.assertEqual((self.project.methodology, self.project.tech_stack), ("AGILE", "Laravel PHP"))
+
+    def test_migration_normalizes_known_codes_only(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        dm.Project.objects.filter(pk=self.project.pk).update(methodology="scrum")
+        dm.Project.objects.filter(pk=self.foreign_project.pk).update(methodology="inconnu")
+        importlib.import_module("project.migrations.0059_normalize_project_methodology").normalize(django_apps, None)
+        self.assertEqual(dm.Project.objects.get(pk=self.project.pk).methodology, "SCRUM")
+        self.assertEqual(dm.Project.objects.get(pk=self.foreign_project.pk).methodology, "inconnu")
+
+
 class DetailTabsParityTests(ProjectDetailTabsFixture):
     def test_header_team_and_stack(self):
         self.project.tech_stack = "Django / React"

@@ -1,5 +1,6 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectFormPage } from "@/features/projects/ProjectFormPage";
 import { ProjectsPage } from "@/features/projects/ProjectsPage";
@@ -42,11 +43,16 @@ describe("Projects", () => {
       }
       return new Response(JSON.stringify(url.includes("forms/project/") ? SCHEMA : {}), { status: 200, headers: { "content-type": "application/json" } });
     });
+    const toastError = vi.spyOn(toast, "error");
     renderPage(<ProjectFormPage />, "/projects/new", "/projects/new");
     await userEvent.click(await screen.findByRole("button", { name: "Créer le projet" }));
     expect(await screen.findByText("Champ obligatoire.")).toBeInTheDocument();
+    expect(toastError).toHaveBeenLastCalledWith("Enregistrement impossible : à corriger — Nom.");
     await userEvent.type(screen.getByLabelText("Nom *"), "Portail");
     await userEvent.click(screen.getByRole("button", { name: "Créer le projet" }));
     expect(await screen.findByText("Un projet avec ce nom existe déjà.")).toBeInTheDocument();
+    // Erreur renvoyée par Django : signalée et champ mis au premier plan (souvent hors écran).
+    expect(toastError).toHaveBeenLastCalledWith("Enregistrement impossible : à corriger — Nom.");
+    expect(screen.getByLabelText("Nom *")).toHaveFocus();
   });
 });

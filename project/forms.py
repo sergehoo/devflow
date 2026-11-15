@@ -704,6 +704,9 @@ class ProjectForm(BaseStyledModelForm):
 
         # PR4-METHODO : méthodologie OBLIGATOIRE à la création
         if "methodology" in self.fields:
+            if self.instance and self.instance.pk:
+                # Ancien code en minuscules (« agile ») : proposé sous sa forme valide.
+                self.initial["methodology"] = Project.normalize_methodology(self.instance.methodology)
             self.fields["methodology"].required = True
             self.fields["methodology"].label = "Méthodologie de gestion"
             self.fields["methodology"].help_text = (
