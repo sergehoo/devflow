@@ -25,6 +25,7 @@ import re
 import unicodedata
 from collections import Counter
 from datetime import date, datetime
+from difflib import SequenceMatcher
 
 from django.db import transaction
 from django.utils import timezone
@@ -507,6 +508,84 @@ def match_people(names, users) -> dict:
     return out
 
 
+# Mots vides et termes génériques de nommage de projets, ignorés pour rapprocher deux noms.
+_NAME_STOPWORDS = {
+    "de", "du", "des", "la", "le", "les", "et", "d", "l", "a", "en", "pour", "the", "of", "and",
+    "projet", "gestion", "plateforme", "application", "applications", "app", "apps", "site", "systeme",
+    "refonte", "implementation", "mise", "place", "portail", "module", "outil", "digitalisation",
+    "suivi", "nouveau", "nouvelle", "v1", "v2", "v3",
+}
+
+
+def _name_tokens(name) -> list[str]:
+    return [t for t in key(name).split() if t not in _NAME_STOPWORDS]
+
+
+def _edit_distance(a: str, b: str) -> int:
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        current = [i]
+        for j, cb in enumerate(b, 1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (ca != cb)))
+        previous = current
+    return previous[-1]
+
+
+def _token_close(a: str, b: str) -> bool:
+    """Même mot à une coquille près (« analitys » ≈ « analytics »), ou préfixe d'au moins 4 lettres."""
+    if a == b:
+        return True
+    shortest = min(len(a), len(b))
+    if shortest >= 4 and (a.startswith(b) or b.startswith(a)):
+        return True
+    allowed = 2 if shortest >= 7 else 1 if shortest >= 5 else 0
+    if allowed and abs(len(a) - len(b)) <= allowed and _edit_distance(a, b) <= allowed:
+        return True
+    # Mots longs aux lettres inversées (« analitys » / « analytics ») : similarité globale.
+    return shortest >= 7 and SequenceMatcher(None, a, b).ratio() >= 0.7
+
+
+def common_name_tokens(names) -> frozenset:
+    """Mots présents dans au moins 3 noms (ex. le nom de l'entreprise) : trop banals pour rapprocher."""
+    counts = Counter(t for name in names for t in set(_name_tokens(name)))
+    return frozenset(t for t, n in counts.items() if n >= 3)
+
+
+def similar_projects(name, projects, *, common=frozenset(), limit=3) -> list[dict]:
+    """
+    Projets existants au nom PROCHE (jamais identique : l'identique est un rapprochement sûr).
+    ``projects`` : ``[(id, nom, archivé)]`` ; ``common`` : mots ignorés (cf. ``common_name_tokens``).
+    Retenus : tous les mots du nom le plus court retrouvés dans l'autre (coquilles tolérées),
+    ou un mot distinctif (5 lettres ou plus) couvrant la moitié des deux noms, ou une forte
+    similarité globale ; score départagé par la similarité globale.
+    """
+    def significant(text):
+        all_tokens = _name_tokens(text)
+        return [t for t in all_tokens if t not in common] or all_tokens
+
+    tokens = significant(name)
+    if not tokens:
+        return []
+    out = []
+    for pk, other, archived in projects:
+        other_tokens = significant(other)
+        if not other_tokens or key(other) == key(name):
+            continue
+        short, long_ = (tokens, other_tokens) if len(tokens) <= len(other_tokens) else (other_tokens, tokens)
+        matched = [t for t in short if any(_token_close(t, o) for o in long_)]
+        coverage = len(matched) / len(short)
+        overall = SequenceMatcher(None, " ".join(tokens), " ".join(other_tokens)).ratio()
+        complete = coverage >= 0.99 and max(len(t) for t in short) >= 4
+        # Un mot distinctif commun ne suffit que s'il couvre au moins la moitié des deux noms
+        # (évite « KAYDAN ANALYTICS HUB » ≈ « CRM Kaydan » par le seul nom de l'entreprise).
+        distinctive = any(len(t) >= 5 for t in matched) and len(matched) * 2 >= len(long_)
+        if complete or distinctive or overall >= 0.8:
+            out.append({"id": pk, "name": other, "archived": archived,
+                        "score": round(max(coverage * 0.9 + overall * 0.1, overall), 2)})
+    out.sort(key=lambda c: (-c["score"], c["name"]))
+    return out[:limit]
+
+
 def container_project(workspace):
     return (dm.Project.objects.filter(workspace=workspace, category__code=CONTAINER_CATEGORY)
             .order_by("is_archived", "id").first())
@@ -546,6 +625,8 @@ def analyze(document_import) -> dict:
     projects = {key(name): (pk, name, archived) for pk, name, archived in
                 dm.Project.objects.filter(workspace=workspace).values_list("id", "name", "is_archived")}
     container = container_project(workspace)
+    existing_projects = [v for v in projects.values() if not container or v[0] != container.pk]
+    common_tokens = common_name_tokens(v[1] for v in existing_projects)
     task_indexes: dict[int, dict] = {}
 
     def tasks_of(project_id):
@@ -563,6 +644,16 @@ def analyze(document_import) -> dict:
             if hit:
                 row["match"] = {"id": hit[0], "name": hit[1], "archived": hit[2]}
                 parent_project = hit[0]
+            else:
+                # Nom proche d'un projet existant : signalé, jamais rattaché d'office.
+                row["candidates"] = similar_projects(row["title"], existing_projects, common=common_tokens)
+                if row["candidates"]:
+                    best = row["candidates"][0]["name"]
+                    row["warnings"].append({
+                        "row": row["id"], "line": row["row"], "field": "title", "code": "similar_project",
+                        "message": f"Projet proche déjà présent dans DevFlow : « {best} ». "
+                                   "Rattachez la ligne si c'est le même projet (sinon il sera créé en double).",
+                    })
             row["default"] = {"action": ("update" if hit[2] else "link") if hit else "create",
                               "target_id": hit[0] if hit else None}
         else:

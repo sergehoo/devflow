@@ -77,12 +77,16 @@ export function TasksTab({ projectId, data }: { projectId: number; data: Data })
         <Stat label="Total" value={s.total} />
         <Stat label="En retard" value={<span className={s.overdue ? "text-destructive" : undefined}>{s.overdue}</span>} />
         <Stat label="Charge estimée" value={formatHours(s.total_estimate_hours)} />
-        <Stat label="Temps passé" value={formatHours(s.total_spent_hours)} />
+        <Stat label="Temps passé (tâches)" value={formatHours(s.total_spent_hours)} />
         <Stat label="À faire" value={s.todo} />
         <Stat label="En cours" value={s.in_progress} />
         <Stat label="Review" value={s.review} />
         <Stat label="Bloquées" value={s.blocked} />
       </StatGrid>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Stat label="Heures saisies (timesheets)" value={formatHours(s.logged_hours)} />
+        <Stat label="dont activités hors tâche" value={formatHours(s.activity_hours)} />
+      </div>
 
       {data.has_board && data.board.length > 0 && <ProjectBoard data={data} />}
 

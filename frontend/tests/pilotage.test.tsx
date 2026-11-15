@@ -22,7 +22,7 @@ const ROW: TrackingRow = {
   done: [{ text: "Cadrage validé", date: "2026-01-20", source: "log" }], done_count: 1,
   next: [{ id: 31, text: "Recette des écrans", due: "2026-04-10", status: "TODO", late: false }], next_count: 1,
   alerts: [{ id: 9, type: "risk", kind: "BLOCKER", kind_label: "Blocage", severity: "HIGH", severity_label: "Élevé", text: "En attente du capteur" }],
-  blocked: true, pending_decisions: 0, updated_at: "2026-04-01T10:00:00Z", url: "/projects/7",
+  blocked: true, pending_decisions: 0, updated_at: "2026-04-01T10:00:00Z", logged_hours: 12.5, last_logged_at: "2026-04-02T09:00:00Z", url: "/projects/7",
 };
 
 const BOARD: TrackingBoard = {
@@ -261,6 +261,31 @@ describe("Assistant d'import du suivi", () => {
     expect(screen.getByLabelText("Choix pour : Avancement « 1 » : 1 % ou 100 % ?")).toHaveValue("1");
     expect(screen.getByText("Non résolu")).toBeInTheDocument();
     expect(screen.getByLabelText("Utilisateur DevFlow pour Inconnu Test")).toHaveValue("");
+  });
+
+  it("signale un projet existant au nom proche sans le rattacher d'office", async () => {
+    const near = { id: 12, name: "Portail fournisseur V2", archived: false, score: 0.9 };
+    const analysis: ImportAnalysis = { ...ANALYSIS, rows: [{ ...ANALYSIS.rows[0]!, candidates: [near] }, ANALYSIS.rows[1]!] };
+    const detail: ImportDetail = {
+      ...DETAIL, analysis,
+      options: { ...DETAIL.options, projects: [...DETAIL.options.projects, { id: 12, name: "Portail fournisseur V2", container: false }] },
+    };
+    const spy = mockApi({ "POST tracking/imports/5/apply/": APPLIED, "tracking/imports/5/records/": RECORDS, "tracking/imports/5/": detail });
+    wizard();
+    await screen.findByText("Blocs détectés");
+    fireEvent.click(screen.getByRole("button", { name: /Mapping/ }));
+    // Proposé, pas appliqué : la décision reste « Créer ».
+    expect(screen.getByText("À vérifier")).toBeInTheDocument();
+    expect(screen.getByLabelText("Décision pour la ligne 4")).toHaveValue("create");
+    fireEvent.click(screen.getByRole("button", { name: "Rattacher à « Portail fournisseur V2 »" }));
+    expect(screen.getByLabelText("Décision pour la ligne 4")).toHaveValue("link");
+    expect(screen.getByLabelText("Projet cible de la ligne 4")).toHaveValue("12");
+    fireEvent.click(screen.getByRole("button", { name: /^5\s*Import$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Lancer l'import/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Importer" }));
+    await waitFor(() => expect(spy.mock.calls.some(([input]) => String(input).includes("/apply/"))).toBe(true));
+    const sent = body(spy.mock.calls.find(([input]) => String(input).includes("/apply/"))![1]);
+    expect(sent.decisions?.rows).toEqual({ "projects:4": { action: "link", target_id: 12 } });
   });
 
   it("n'envoie que les décisions prises, puis affiche le rapport", async () => {

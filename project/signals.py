@@ -130,11 +130,17 @@ def create_or_update_timesheet_snapshot(sender, instance, created, **kwargs):
     de temps. Le coût est figé au moment de la création ou de la
     validation, en utilisant le BillingRate actif du jour de l'entrée.
     """
-    if not instance.user_id or not instance.hours:
+    if not instance.user_id:
+        return
+    if not instance.hours:
+        # Saisie ramenée à 0 h (ligne conservée pour ses heures prévues) : plus aucun coût.
+        dm.TimesheetCostSnapshot.objects.filter(timesheet_entry=instance).update(computed_cost=Decimal("0"))
         return
 
     today = instance.entry_date or timezone.localdate()
-    rate = (
+    # TJM coût valide au jour de la saisie : tarif négocié sur le projet en priorité,
+    # puis tarif générique (jamais le tarif propre à un AUTRE projet).
+    rates = (
         dm.BillingRate.objects.filter(
             user_id=instance.user_id,
             is_internal_cost=True,
@@ -142,8 +148,9 @@ def create_or_update_timesheet_snapshot(sender, instance, created, **kwargs):
         )
         .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
         .order_by("-valid_from", "-id")
-        .first()
     )
+    rate = rates.filter(project_id=instance.project_id).first() if instance.project_id else None
+    rate = rate or rates.filter(project__isnull=True).first()
 
     profile = getattr(instance.user, "profile", None)
     hours_per_day = Decimal("8")
@@ -188,6 +195,41 @@ def create_or_update_timesheet_snapshot(sender, instance, created, **kwargs):
             "currency": (rate.currency if rate else (profile.currency if profile else "XOF")),
         },
     )
+
+
+# =========================================================================
+# TEMPS PASSÉ DES TÂCHES = SOMME DES SAISIES DE TEMPS
+# =========================================================================
+@receiver(pre_save, sender=dm.TimesheetEntry)
+def remember_timesheet_entry_task(sender, instance, update_fields=None, **kwargs):
+    """Mémorise la tâche d'origine : une saisie déplacée doit aussi recalculer l'ancienne tâche.
+
+    Une saisie sur une tâche appartient toujours au projet de cette tâche (sinon ses
+    heures et son coût iraient à un autre projet que celui de la tâche).
+    """
+    if instance.task_id and (update_fields is None or "project" in update_fields):
+        task_project_id = dm.Task.objects.filter(pk=instance.task_id).values_list("project_id", flat=True).first()
+        if task_project_id and instance.project_id != task_project_id:
+            instance.project_id = task_project_id
+    if not instance.pk or (update_fields is not None and "task" not in update_fields):
+        instance._previous_task_id = instance.task_id
+        return
+    instance._previous_task_id = sender.objects.filter(pk=instance.pk).values_list("task_id", flat=True).first()
+
+
+@receiver(post_save, sender=dm.TimesheetEntry)
+def sync_task_spent_on_entry_save(sender, instance, **kwargs):
+    """Grille hebdomadaire, saisie rapide, API ou reversement : ``Task.spent_hours`` suit les saisies."""
+    from project.services.task_time import sync_spent_hours
+
+    sync_spent_hours({instance.task_id, getattr(instance, "_previous_task_id", None)})
+
+
+@receiver(post_delete, sender=dm.TimesheetEntry)
+def sync_task_spent_on_entry_delete(sender, instance, **kwargs):
+    from project.services.task_time import sync_spent_hours
+
+    sync_spent_hours({instance.task_id})
 
 
 # =========================================================================

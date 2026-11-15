@@ -50,6 +50,9 @@ export interface TrackingRow {
   blocked: boolean;
   pending_decisions: number;
   updated_at: string | null;
+  /** Heures saisies dans les timesheets (projet : tâches et activités ; activité : sous-tâches comprises). */
+  logged_hours: number;
+  last_logged_at: string | null;
   url: string;
 }
 
@@ -247,6 +250,8 @@ export interface AnalysisRow {
   raw: Record<string, string>;
   warnings: ImportWarning[];
   match: { id: number; name: string; archived: boolean } | null;
+  /** Projets existants au nom proche (lignes projet sans correspondance exacte) : suggestion, jamais appliquée d'office. */
+  candidates?: { id: number; name: string; archived: boolean; score: number }[];
   default: { action: RowAction; target_id: number | null; project_id?: number | null };
 }
 

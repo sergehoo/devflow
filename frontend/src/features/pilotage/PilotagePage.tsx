@@ -16,7 +16,7 @@ import { Input, Select } from "@/components/ui/input";
 import { useMe } from "@/features/auth/api";
 import { DownloadButton } from "@/features/meetings/DownloadButton";
 import { ActionBar, Pill } from "@/features/projet/ui";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatHours } from "@/lib/format";
 import { useDebouncedValue } from "@/lib/hooks";
 import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -226,6 +226,10 @@ function BoardTable({ rows }: { rows: TrackingRow[] }) {
                         <Button variant="outline" size="sm" asChild><Link to={r.url}>Ouvrir la fiche</Link></Button>
                         {r.stale && <span>Aucune mise à jour récente.</span>}
                         {r.updated_at && <span>Mis à jour le {formatDateTime(r.updated_at)}</span>}
+                        <span>
+                          Temps saisi : {formatHours(r.logged_hours)}
+                          {r.last_logged_at && <> · dernière saisie le {formatDateTime(r.last_logged_at)}</>}
+                        </span>
                       </p>
                     </td>
                   </tr>

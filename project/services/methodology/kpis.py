@@ -313,14 +313,16 @@ def schedule_adherence(project, days_window: int = 30) -> dict:
 
 @register("budget_consumption")
 def budget_consumption(project, days_window: int = 30) -> dict:
-    """% du budget consommé."""
+    """% du budget consommé : coût réel (dépenses + temps saisi au TJM) / budget approuvé."""
     try:
-        budget = getattr(project, "budget", None) or 0
+        from project.services.budget import ProjectBudgetService
+
+        overview = ProjectBudgetService.build_budget_overview(project)
+        budget = overview["approved_budget"] or getattr(project, "budget", None) or 0
         if not budget:
             return _empty(label="Pas de budget défini")
-        # Approx : si Project a une property computed_eac
-        spent = float(getattr(project, "actual_cost", None) or 0)
-        ratio = (spent / float(budget)) * 100 if budget else 0
+        spent = float(overview["actual_cost"] or 0)
+        ratio = (spent / float(budget)) * 100
         return {
             "value": round(ratio, 1), "label": "Budget consommé",
             "unit": "%", "trend": "down" if ratio > 80 else "up",

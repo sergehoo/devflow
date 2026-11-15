@@ -265,6 +265,8 @@ export function ImportMapping({ detail, analysis, decisions, setDecisions, locke
             const isProject = row.section === "projects";
             const expanded = open === row.id;
             const title = row.title || "(sans intitulé)";
+            const nearList = (isProject && !row.match && row.candidates) || [];
+            const near = nearList[0];
             return (
               <Fragment key={row.id}>
                 <tr>
@@ -276,10 +278,28 @@ export function ImportMapping({ detail, analysis, decisions, setDecisions, locke
                   </Td>
                   <Td className="whitespace-nowrap tabular-nums">{row.row} · {isProject ? "Projet" : "Activité"}</Td>
                   <Td className="max-w-[20rem] break-words font-medium">{title}</Td>
-                  <Td>{row.match ? <>{row.match.name}{row.match.archived && <Pill tone="warning" className="ml-2">Archivé</Pill>}</> : <span className="text-muted-foreground">Aucun</span>}</Td>
+                  <Td>
+                    {row.match ? <>{row.match.name}{row.match.archived && <Pill tone="warning" className="ml-2">Archivé</Pill>}</>
+                      : near ? (
+                        <div className="space-y-1">
+                          <p><span className="text-muted-foreground">Proche : </span>{near.name} <Pill tone="warning" className="ml-1">À vérifier</Pill></p>
+                          {choice.action === "create" && (
+                            <Button type="button" variant="outline" size="sm" className="h-7"
+                              onClick={() => patch("rows", row.id, { action: "link", target_id: near.id })}>
+                              Rattacher à « {near.name} »
+                            </Button>
+                          )}
+                        </div>
+                      ) : <span className="text-muted-foreground">Aucun</span>}
+                  </Td>
                   <Td>
                     <Select aria-label={`Décision pour la ligne ${row.row}`} value={choice.action} disabled={!row.title}
-                      onChange={(e) => patch("rows", row.id, { action: e.target.value as RowAction })}>
+                      onChange={(e) => {
+                        const action = e.target.value as RowAction;
+                        // Rattacher / mettre à jour sans cible : la correspondance proche est proposée d'emblée.
+                        const prefill = isProject && near && !choice.target_id && (action === "link" || action === "update");
+                        patch("rows", row.id, prefill ? { action, target_id: near.id } : { action });
+                      }}>
                       <option value="create">Créer</option>
                       <option value="link">Rattacher</option>
                       <option value="update">Mettre à jour</option>
@@ -297,7 +317,12 @@ export function ImportMapping({ detail, analysis, decisions, setDecisions, locke
                         <Select aria-label={`Projet cible de la ligne ${row.row}`} value={choice.target_id ?? ""} onChange={(e) => patch("rows", row.id, { target_id: number(e.target.value) })}>
                           <option value="">Choisir un projet</option>
                           {row.match?.archived && <option value={row.match.id}>{row.match.name} (archivé)</option>}
-                          {options.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          {nearList.length > 0 && (
+                            <optgroup label="Noms proches">
+                              {nearList.map((c) => <option key={c.id} value={c.id}>{c.name}{c.archived ? " (archivé)" : ""}</option>)}
+                            </optgroup>
+                          )}
+                          {options.projects.filter((p) => !nearList.some((c) => c.id === p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </Select>
                       ) : <TaskPicker importId={detail.id} label={title} value={choice.target_id} onPick={(id) => patch("rows", row.id, { target_id: id })} />}
                   </Td>

@@ -232,8 +232,13 @@ Redéployer ensuite le commit correspondant au schéma restauré.
 
 ## 11. Mise à jour « pilotage, timesheets, collecte sans API » (novembre 2026)
 
-Migrations additives à appliquer (sauvegarde PostgreSQL d'abord, §4) : `0056_tracking_sheet`, `0057_ticketing_public_intake`.
+Migrations à appliquer (sauvegarde PostgreSQL d'abord, §4) : `0056_tracking_sheet`, `0057_ticketing_public_intake`
+(additives) et `0058_sync_task_spent_hours` (données uniquement : rattache chaque saisie de temps portant sur une tâche
+au projet de cette tâche, puis relève `Task.spent_hours` jusqu'à la somme des saisies — jamais à la baisse).
 Le conteneur `devflowweb` **ne lance pas `migrate`** au démarrage : à exécuter explicitement, avec autorisation.
+
+Effet attendu après `0058` : les heures saisies dans les timesheets (tâches et activités hors tâche) apparaissent dans
+les fiches projet (temps passé, heures saisies, coût réel valorisé au TJM, reste à faire), le tableau de bord et le Pilotage.
 
 ```bash
 docker exec devflowweb python manage.py showmigrations project | tail -4      # lecture seule

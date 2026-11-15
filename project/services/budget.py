@@ -190,58 +190,51 @@ class ProjectBudgetService:
     @classmethod
     def summarize_timesheets(cls, project) -> dict:
         """
-        Synthèse temps réellement consommé.
-        - logged_cost / approved_logged_cost : depuis snapshot si présent, sinon
-          calculé à la volée à partir du TJM courant.
-        - logged_sale / approved_logged_sale : même logique pour le CA.
+        Synthèse du temps réellement consommé (toutes les saisies du projet, tâches
+        ET activités hors tâche ; ``approved_*`` = validées).
+
+        Heures : toutes les saisies. Coût et vente : saisies non refusées. Coût d'une
+        saisie : son instantané ``TimesheetCostSnapshot`` (TJM figé au jour de la saisie)
+        s'il existe, sinon le TJM courant du collaborateur (tarif du projet en priorité).
+        Les taux sont lus une fois par collaborateur.
         """
-        qs = project.timesheet_entries.select_related("user")
+        qs = project.timesheet_entries.select_related("user", "cost_snapshot")
+        approved = dm.TimesheetEntry.ApprovalStatus.APPROVED
+        rejected = dm.TimesheetEntry.ApprovalStatus.REJECTED
 
-        approved_qs = qs.filter(approval_status=dm.TimesheetEntry.ApprovalStatus.APPROVED)
-
-        total_hours = cls._safe_decimal(qs.aggregate(total=Sum("hours"))["total"])
-        approved_hours = cls._safe_decimal(approved_qs.aggregate(total=Sum("hours"))["total"])
-
-        # Coût / vente snapshot si disponible
-        snapshot_cost = cls._safe_decimal(
-            qs.aggregate(total=Sum("cost_snapshot__computed_cost"))["total"]
-        )
-        approved_snapshot_cost = cls._safe_decimal(
-            approved_qs.aggregate(total=Sum("cost_snapshot__computed_cost"))["total"]
-        )
-
-        # Calcul du CA & complément des entries sans snapshot
-        logged_cost = ZERO
-        approved_logged_cost = ZERO
-        logged_sale = ZERO
-        approved_logged_sale = ZERO
+        total_hours = approved_hours = ZERO
+        logged_cost = approved_logged_cost = ZERO
+        logged_sale = approved_logged_sale = ZERO
+        rates: dict[int, tuple[Decimal, Decimal, Decimal]] = {}
 
         for entry in qs:
             hours = cls._safe_decimal(entry.hours)
-            if hours <= 0 or not entry.user_id:
+            total_hours += hours
+            is_approved = entry.approval_status == approved
+            if is_approved:
+                approved_hours += hours
+            # Heures refusées par le valideur : comptées en heures, jamais valorisées.
+            if hours <= 0 or not entry.user_id or entry.approval_status == rejected:
                 continue
 
-            hours_per_day = cls._get_hours_per_day(entry.user) or cls.DEFAULT_HOURS_PER_DAY
+            if entry.user_id not in rates:
+                rates[entry.user_id] = (
+                    cls._get_hours_per_day(entry.user) or cls.DEFAULT_HOURS_PER_DAY,
+                    cls.get_member_daily_cost(entry.user, project=project),
+                    cls.get_member_daily_sale_rate(entry.user, project=project),
+                )
+            hours_per_day, daily_cost, daily_sale = rates[entry.user_id]
             days = hours / hours_per_day
 
-            daily_cost = cls.get_member_daily_cost(entry.user)
-            daily_sale = cls.get_member_daily_sale_rate(entry.user)
-
-            entry_cost = days * daily_cost
+            snapshot = getattr(entry, "cost_snapshot", None)
+            entry_cost = cls._safe_decimal(snapshot.computed_cost) if snapshot is not None else days * daily_cost
             entry_sale = days * daily_sale
 
             logged_cost += entry_cost
             logged_sale += entry_sale
-
-            if entry.approval_status == dm.TimesheetEntry.ApprovalStatus.APPROVED:
+            if is_approved:
                 approved_logged_cost += entry_cost
                 approved_logged_sale += entry_sale
-
-        # Snapshot prend la priorité s'il a été calculé
-        if snapshot_cost > 0:
-            logged_cost = snapshot_cost
-        if approved_snapshot_cost > 0:
-            approved_logged_cost = approved_snapshot_cost
 
         return {
             "total_hours": total_hours,
@@ -250,6 +243,23 @@ class ProjectBudgetService:
             "approved_logged_cost": approved_logged_cost,
             "logged_sale": logged_sale,
             "approved_logged_sale": approved_logged_sale,
+        }
+
+    @staticmethod
+    def actual_cost_with_labor(actual_expenses, labor_actual_expenses, timesheet_cost) -> dict:
+        """
+        Coût réel = dépenses décaissées/validées, dont la part RH est remplacée par
+        max(dépenses RH comptabilisées, coût TJM des heures saisies).
+
+        Anti double-comptage : une même charge de personnel est soit comptabilisée
+        en dépense RH, soit valorisée par les timesheets ; on retient la plus élevée.
+        """
+        labor_actual = max(labor_actual_expenses, timesheet_cost)
+        return {
+            "actual_cost": actual_expenses - labor_actual_expenses + labor_actual,
+            "actual_expense_cost": actual_expenses,
+            "actual_labor_cost": labor_actual,
+            "timesheet_labor_cost": timesheet_cost,
         }
 
     # =========================================================================
@@ -288,10 +298,12 @@ class ProjectBudgetService:
         # RAF (reste à faire) : pour chaque ligne TASK active, on calcule la
         # part restante de la tâche. On sélectionne uniquement les lignes
         # ayant une tâche non terminée — peu de lignes en pratique.
+        # Les lignes de stade RAF (instantanés) ne sont pas recomptées : le RAF est
+        # recalculé ici en direct depuis le temps passé (synchronisé sur les timesheets).
         raf_cost = ZERO
         active_lines = qs.filter(task__isnull=False).exclude(
             task__status__in=[dm.Task.Status.DONE, dm.Task.Status.CANCELLED]
-        )
+        ).exclude(budget_stage=dm.ProjectEstimateLine.BudgetStage.RAF)
         for line in active_lines:
             estimate_hours = cls._safe_decimal(line.task.estimate_hours)
             spent_hours = cls._safe_decimal(line.task.spent_hours)
@@ -379,6 +391,10 @@ class ProjectBudgetService:
             not_rejected.aggregate(total=Sum("amount"))["total"]
         )
         other_cost = max(non_rejected_total - labor_cost - direct_cost, ZERO)
+        labor_actual = cls._safe_decimal(
+            qs.filter(category__category_type=dm.CostCategory.CategoryType.HUMAN, status__in=[st.PAID, st.VALIDATED])
+            .aggregate(total=Sum("amount"))["total"]
+        )
 
         return {
             "total": cls._safe_decimal(agg["total"]),
@@ -391,6 +407,8 @@ class ProjectBudgetService:
             "validated": cls._safe_decimal(agg["validated"]),
             "rejected": cls._safe_decimal(agg["rejected"]),
             "labor_cost": labor_cost,
+            # Dépenses RH déjà décaissées / validées (part RH du coût réel).
+            "labor_actual": labor_actual,
             "direct_cost": direct_cost,
             "other_cost": other_cost,
         }
@@ -707,8 +725,11 @@ class ProjectBudgetService:
 
         # Coûts engagés réels = COMMITTED + ACCRUED
         committed_cost = expenses["committed"] + expenses["accrued"]
-        # Coûts décaissés / actuels
-        actual_cost = expenses["paid"] + expenses["validated"]
+        # Coûts décaissés / actuels, temps saisi des collaborateurs inclus (TJM).
+        actual = cls.actual_cost_with_labor(
+            expenses["paid"] + expenses["validated"], expenses["labor_actual"], timesheets["logged_cost"],
+        )
+        actual_cost = actual["actual_cost"]
         # RAF (reste à faire) basé sur les tâches actives.
         raf_cost = estimates["raf_cost"] or ZERO
 
@@ -759,6 +780,8 @@ class ProjectBudgetService:
             "committed_cost": committed_cost,
             "accrued_cost": expenses["accrued"],
             "actual_cost": actual_cost,
+            "actual_expense_cost": actual["actual_expense_cost"],
+            "actual_labor_cost": actual["actual_labor_cost"],
             "raf_cost": raf_cost,
             "forecast_final_cost": forecast_final_cost,
 

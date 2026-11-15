@@ -52,6 +52,9 @@ export interface EstimateTab {
 export interface ForecastTab {
   key: "budget_previsionnel"; currency: string; budget_id: number | null;
   approved_budget: Money; planned_revenue: Money; actual_cost: Money; forecast_margin: Money;
+  /** Coût réel = dépenses décaissées/validées (part RH remplacée par max(dépenses RH, temps saisi × TJM)). */
+  /** Détail RH : null sans le droit `billing.view` (TJM individuels). */
+  actual_expense_cost: Money | null; actual_labor_cost: Money | null; timesheet_labor_cost: Money | null; timesheet_hours: Money; timesheet_approved_hours: Money;
   target_margin_percent: number; profit_margin_percent: number; expense_ratio_percent: number;
   invoiced_revenue: Money; received_revenue: Money; remaining_to_invoice: Money; remaining_to_collect: Money;
   revenues: { id: number; title: string; revenue_type_label: string; amount: Money; invoiced_amount: Money; received_amount: Money; currency: string; expected_date: string | null; is_received: boolean }[];
@@ -102,7 +105,7 @@ export interface EvolutionTab {
 
 export interface TasksTab {
   key: "taches";
-  stats: { total: number; todo: number; in_progress: number; review: number; done: number; blocked: number; cancelled: number; overdue: number; flagged: number; total_estimate_hours: Money; total_spent_hours: Money };
+  stats: { total: number; todo: number; in_progress: number; review: number; done: number; blocked: number; cancelled: number; overdue: number; flagged: number; total_estimate_hours: Money; total_spent_hours: Money; activity_hours: Money; logged_hours: Money };
   has_board: boolean;
   /** Board Kanban du projet (colonnes BoardColumn, tâches regroupées par Django selon `mapped_status`). */
   board: { id: number; name: string; mapped_status: string; color: string; wip_limit: number | null; is_done_column: boolean; count: number; over_wip: boolean; task_ids: number[] }[];

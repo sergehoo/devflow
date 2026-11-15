@@ -274,12 +274,21 @@ def _tab_budget_estimatif(ctx, fin, request):
 
 def _tab_budget_previsionnel(ctx, fin, request):
     budget, ov, rev = ctx["budget_obj"], ctx["financial_overview"], ctx["revenue_stats"]
+    # Valorisation du temps saisi (TJM individuels) : ``billing.view``, comme la section TJM
+    # de l'onglet Équipes — sinon on déduirait le TJM d'un contributeur seul.
+    can_view_rates = bool(fin and _rbac(request, "billing.view", ctx["project_obj"]))
     return {
         "currency": ov["currency"],
         "budget_id": budget.pk if budget else None,
         "approved_budget": _m(ov["approved_budget"]),
         "planned_revenue": _m(ov["planned_revenue"]),
         "actual_cost": _m(ov["actual_cost"]),
+        # Détail du coût réel : dépenses décaissées/validées et temps saisi valorisé au TJM.
+        "actual_expense_cost": _m(ov.get("actual_expense_cost", ov["actual_cost"])) if can_view_rates else None,
+        "actual_labor_cost": _m(ov.get("actual_labor_cost", 0)) if can_view_rates else None,
+        "timesheet_labor_cost": _m(ov.get("timesheet_labor_cost", 0)) if can_view_rates else None,
+        "timesheet_hours": _m(ov.get("timesheet_hours", 0)),
+        "timesheet_approved_hours": _m(ov.get("timesheet_approved_hours", 0)),
         "forecast_margin": _m(ov["forecast_margin"]),
         "target_margin_percent": budget.target_margin_percent if budget else 0,
         "profit_margin_percent": ov["profit_margin_percent"],

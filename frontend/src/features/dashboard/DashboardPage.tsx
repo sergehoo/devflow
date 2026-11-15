@@ -69,7 +69,7 @@ function Finance({ f }: { f: DashboardSummary["finance"] }) {
   const margin = Number(f.actual_margin ?? 0);
   const rows: [string, ReactNode][] = [
     ["Budget approuvé", formatMoney(f.approved_budget_total as number, currency)],
-    ["Dépenses réelles", formatMoney(f.actual_expenses_total as number, currency)],
+    ["Coût réel (dépenses + temps saisi)", formatMoney((f.actual_cost_total ?? f.actual_expenses_total) as number, currency)],
     ["Revenus attendus", formatMoney(f.expected_revenue_total as number, currency)],
     ["Revenus encaissés", formatMoney(f.received_revenue_total as number, currency)],
     ["Heures saisies", formatHours(f.logged_hours_total as number)],

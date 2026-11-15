@@ -11,7 +11,8 @@ from __future__ import annotations
 import io
 import shutil
 import tempfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -20,6 +21,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test import SimpleTestCase, override_settings
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 
 from project import models as dm
@@ -207,6 +209,28 @@ class TrackingParserTests(SimpleTestCase):
 # Base commune
 # ---------------------------------------------------------------------------
 @override_settings(AI_BACKEND="none", MEDIA_ROOT=MEDIA_ROOT)
+class SimilarProjectNameTests(SimpleTestCase):
+    """Rapprochement des noms proches : suggestion seulement (jamais d'office)."""
+
+    EXISTING = [(1, "ANALYTICS HUB", False), (2, "MyKaydan V2", False), (3, "CRM Kaydan", False),
+                (4, "Site Internet Kaydan", False), (5, "Gestion des stocks", False), (6, "SIGRH", False)]
+
+    def names(self, title):
+        common = importer.common_name_tokens(name for _, name, _ in self.EXISTING)
+        return [c["name"] for c in importer.similar_projects(title, self.EXISTING, common=common)]
+
+    def test_typos_prefixes_and_distinctive_words(self):
+        self.assertEqual(self.names("KAYDAN ANALITYS HUB"), ["ANALYTICS HUB"])  # coquille + mot de l'entreprise
+        self.assertEqual(self.names("MyKAYDAN"), ["MyKaydan V2"])
+        self.assertEqual(self.names("Implementation SIGRH"), ["SIGRH"])
+        self.assertEqual(self.names("Refonte Site Internet"), ["Site Internet Kaydan"])
+
+    def test_generic_or_unrelated_names_are_not_suggested(self):
+        self.assertEqual(self.names("GESTION LOCATIVE"), [])  # « gestion » est générique
+        self.assertEqual(self.names("SENTINELLE VISION"), [])
+        self.assertEqual(self.names("ANALYTICS HUB"), [])  # identique : rapprochement sûr, pas une suggestion
+
+
 class TrackingFixture(RawApiFixture):
     @classmethod
     def setUpTestData(cls):
@@ -273,6 +297,15 @@ class TrackingFixture(RawApiFixture):
 # Assistant d'import
 # ---------------------------------------------------------------------------
 class TrackingImportTests(TrackingFixture):
+    def test_similar_existing_project_is_flagged_not_linked(self):
+        near = dm.Project.objects.create(workspace=self.ws, name="AFFLUX Camions")
+        analysis = self.upload().json()["analysis"]
+        row = next(r for r in analysis["rows"] if r["title"] == "AFFLUX")
+        self.assertIsNone(row["match"])
+        self.assertEqual([c["id"] for c in row["candidates"]], [near.pk])
+        self.assertEqual(row["default"], {"action": "create", "target_id": None})
+        self.assertIn("similar_project", [w["code"] for w in analysis["warnings"] if w["row"] == row["id"]])
+
     def test_upload_analyses_without_writing(self):
         before = self.counts()
         response = self.upload()
@@ -688,6 +721,28 @@ class TrackingBoardTests(TrackingFixture):
         afflux = next(r for r in self.board().json()["rows"] if r["title"] == "AFFLUX")
         self.assertIn("Acheter le capteur MileSight", [i["text"] for i in afflux["done"]])
         self.assertEqual([i["text"] for i in afflux["next"]], ["Installer le pilote"])
+
+    def test_logged_time_shows_on_rows_and_counts_as_an_update(self):
+        """Timesheets : heures saisies par ligne ; une saisie récente lève l'alerte « sans mise à jour »."""
+        afflux = dm.Project.objects.get(workspace=self.ws, name="AFFLUX")
+        activity = dm.Task.objects.get(title="Maintenance serveurs · Sauvegardes")
+        sub = dm.Task.objects.create(workspace=self.ws, project=activity.project, parent=activity, title="Vérifier les sauvegardes")
+        today = timezone.localdate()
+        for project, task, hours in ((afflux, None, "3"), (activity.project, sub, "2"), (activity.project, activity, "1.5")):
+            dm.TimesheetEntry.objects.create(user=self.dev, workspace=self.ws, project=project, task=task,
+                                             entry_date=today, hours=Decimal(hours), description="Suivi")
+        old = timezone.now() - timedelta(days=40)
+        dm.Project.objects.filter(pk=afflux.pk).update(updated_at=old)
+        dm.Task.objects.filter(pk=activity.pk).update(updated_at=old)
+        rows = {r["title"]: r for r in self.board().json()["rows"]}
+        self.assertEqual(rows["AFFLUX"]["logged_hours"], 3.0)
+        self.assertFalse(rows["AFFLUX"]["stale"])
+        self.assertIsNotNone(rows["AFFLUX"]["last_logged_at"])
+        self.assertEqual(rows["Maintenance serveurs · Sauvegardes"]["logged_hours"], 3.5)  # sous-tâches comprises
+        # Sans saisie récente, l'alerte réapparaît.
+        dm.TimesheetEntry.objects.filter(project=afflux).update(updated_at=old)
+        rows = {r["title"]: r for r in self.board().json()["rows"]}
+        self.assertTrue(rows["AFFLUX"]["stale"])
 
     def test_kpis_and_charts(self):
         body = self.board().json()

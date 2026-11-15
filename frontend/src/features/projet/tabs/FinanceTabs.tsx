@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatHours } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   projectEditPath, useAIForecast, useProjectBudgetAction,
@@ -150,9 +150,22 @@ export function ForecastTab({ projectId, workspaceId, data, openForm }: { projec
       <StatGrid>
         <Stat label="Budget approuvé" value={money(data.approved_budget, c)} />
         <Stat label="Revenus attendus" value={money(data.planned_revenue, c)} />
-        <Stat label="Dépenses validées" value={money(data.actual_cost, c)} />
+        <Stat label="Coût réel" value={money(data.actual_cost, c)} />
         <Stat label="Marge prévisionnelle" value={money(data.forecast_margin, c)} />
       </StatGrid>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat label="Heures saisies (dont validées)" value={`${formatHours(data.timesheet_hours)} (${formatHours(data.timesheet_approved_hours)})`} />
+        {data.timesheet_labor_cost != null ? (
+          <>
+            <Stat label="Temps saisi valorisé (TJM)" value={money(data.timesheet_labor_cost, c)} />
+            <Stat label="Dépenses décaissées / validées" value={money(data.actual_expense_cost, c)} />
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground sm:col-span-2 sm:self-center">
+            Le coût réel inclut le temps saisi valorisé au TJM ; son détail est réservé aux personnes autorisées à voir les tarifs.
+          </p>
+        )}
+      </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <Stat label="Taux de marge cible" value={percent(data.target_margin_percent)} />
         <Stat label="Taux de marge estimé" value={percent(data.profit_margin_percent)} />

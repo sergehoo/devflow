@@ -1169,7 +1169,10 @@ class DashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, TemplateView):
             )
         )["total"]
 
-        logged_cost_total = timesheets_qs.aggregate(
+        # Coût du temps saisi (TJM figé par saisie), hors heures refusées et lignes à 0 h.
+        valued_timesheets = timesheets_qs.filter(hours__gt=0).exclude(
+            approval_status=dm.TimesheetEntry.ApprovalStatus.REJECTED)
+        logged_cost_total = valued_timesheets.aggregate(
             total=Coalesce(
                 Sum("cost_snapshot__computed_cost"),
                 Value(Decimal("0.00")),
@@ -1177,13 +1180,34 @@ class DashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, TemplateView):
             )
         )["total"]
 
+        # Coût réel par projet, même règle que la fiche projet (ProjectBudgetService) :
+        # dépenses décaissées/validées dont la part RH = max(dépenses RH, temps saisi × TJM).
+        actual_by_project = {
+            row["project_id"]: row for row in expenses_qs.filter(
+                status__in=[dm.ProjectExpense.ExpenseStatus.PAID, dm.ProjectExpense.ExpenseStatus.VALIDATED],
+            ).order_by().values("project_id").annotate(
+                total=Sum("amount"),
+                labor=Sum("amount", filter=Q(category__category_type=dm.CostCategory.CategoryType.HUMAN)),
+            )
+        }
+        timesheet_cost_by_project = dict(
+            valued_timesheets.filter(project__isnull=False).order_by().values("project_id")
+            .annotate(cost=Sum("cost_snapshot__computed_cost")).values_list("project_id", "cost")
+        )
+        actual_cost_total = Decimal("0.00")
+        for project_id in set(actual_by_project) | set(timesheet_cost_by_project):
+            row = actual_by_project.get(project_id) or {}
+            spent, labor = row.get("total") or Decimal("0"), row.get("labor") or Decimal("0")
+            actual_cost_total += ProjectBudgetService.actual_cost_with_labor(
+                spent, labor, timesheet_cost_by_project.get(project_id) or Decimal("0"))["actual_cost"]
+
         budget_usage_percent = (
-            self.pct(float(actual_expenses_total), float(approved_budget_total))
+            self.pct(float(actual_cost_total), float(approved_budget_total))
             if approved_budget_total else 0
         )
 
         margin_estimate = planned_revenue_total - estimated_cost_total
-        actual_margin = received_revenue_total - actual_expenses_total
+        actual_margin = received_revenue_total - actual_cost_total
 
         finance = {
             "approved_budget_total": approved_budget_total,
@@ -1195,6 +1219,7 @@ class DashboardView(WorkspaceSecurityMixin, DevflowBaseMixin, TemplateView):
             # "draft_expenses_total": draft_expenses_total,
             "logged_hours_total": logged_hours_total,
             "logged_cost_total": logged_cost_total,
+            "actual_cost_total": actual_cost_total,
             "budget_usage_percent": budget_usage_percent,
             "margin_estimate": margin_estimate,
             "actual_margin": actual_margin,
@@ -3045,6 +3070,12 @@ class ProjectDetailView(DevflowDetailView):
                 output_field=hours_field,
             ),
         )
+        # Heures saisies dans les timesheets, dont les lignes « activité » (projet sans tâche),
+        # absentes du temps passé des tâches.
+        from project.services.project_time import project_logged_hours
+        _logged = project_logged_hours(project)
+        task_stats["activity_hours"] = _logged["activities"]
+        task_stats["logged_hours"] = _logged["total"]
 
         planning_stats = {
             "milestones_count": milestones_qs.count(),
@@ -3314,19 +3345,24 @@ class ProjectDetailView(DevflowDetailView):
             )
 
             labor_cost = Decimal("0.00")
+            labor_actual = Decimal("0.00")
             direct_cost = Decimal("0.00")
             other_cost = Decimal("0.00")
+            actual_statuses = {dm.ProjectExpense.ExpenseStatus.PAID, dm.ProjectExpense.ExpenseStatus.VALIDATED}
 
             for expense in expenses_qs.exclude(status=dm.ProjectExpense.ExpenseStatus.REJECTED):
                 amount = expense.amount or Decimal("0.00")
                 if expense.is_labor_cost:
                     labor_cost += amount
+                    if expense.status in actual_statuses:
+                        labor_actual += amount
                 elif expense.is_direct_cost:
                     direct_cost += amount
                 else:
                     other_cost += amount
 
             expense_stats["labor_cost"] = labor_cost
+            expense_stats["labor_actual"] = labor_actual
             expense_stats["direct_cost"] = direct_cost
             expense_stats["other_cost"] = other_cost
 
@@ -3378,6 +3414,10 @@ class ProjectDetailView(DevflowDetailView):
                 "calculated_member_labor_cost": member_cost_summary["project_cost_total"],
                 "calculated_member_labor_sale": member_cost_summary["project_sale_total"],
             }
+            # RAF calculé en direct (estimation × part restante d'après le temps passé,
+            # aligné sur les timesheets) : les lignes « RAF » stockées sont des instantanés
+            # que chaque rafraîchissement automatique du budget efface.
+            estimate_stats["raf_cost"] = ProjectBudgetService.summarize_estimate_lines(project)["raf_cost"]
 
             estimate_labor = Decimal("0.00")
             estimate_direct = Decimal("0.00")
@@ -3454,7 +3494,14 @@ class ProjectDetailView(DevflowDetailView):
             forecast_cost = estimate_stats["forecast_cost"]
             committed_cost = expense_stats["committed_expenses"]
             accrued_cost = expense_stats["accrued_expenses"]
-            actual_cost = expense_stats["paid_expenses"] + expense_stats["validated_expenses"]
+            # Coût réel : dépenses décaissées/validées + temps saisi des collaborateurs
+            # valorisé au TJM (même règle anti double-comptage que ProjectBudgetService).
+            timesheet_finance = ProjectBudgetService.summarize_timesheets(project)
+            actual = ProjectBudgetService.actual_cost_with_labor(
+                expense_stats["paid_expenses"] + expense_stats["validated_expenses"],
+                expense_stats["labor_actual"], timesheet_finance["logged_cost"],
+            )
+            actual_cost = actual["actual_cost"]
             raf_cost = estimate_stats["raf_cost"]
 
             forecast_final_cost = actual_cost + committed_cost + accrued_cost + raf_cost
@@ -3464,7 +3511,7 @@ class ProjectDetailView(DevflowDetailView):
             forecast_margin = planned_revenue - forecast_final_cost
             real_margin = revenue_stats["received_revenue"] - actual_cost
             gross_margin = revenue_stats["received_revenue"] - expense_stats["direct_cost"]
-            operating_margin = gross_margin - expense_stats["labor_cost"]
+            operating_margin = gross_margin - max(expense_stats["labor_cost"], timesheet_finance["logged_cost"])
             net_profit = operating_margin
 
             expense_ratio_percent = 0
@@ -3487,6 +3534,11 @@ class ProjectDetailView(DevflowDetailView):
                 "committed_cost": committed_cost,
                 "accrued_cost": accrued_cost,
                 "actual_cost": actual_cost,
+                "actual_expense_cost": actual["actual_expense_cost"],
+                "actual_labor_cost": actual["actual_labor_cost"],
+                "timesheet_labor_cost": actual["timesheet_labor_cost"],
+                "timesheet_hours": timesheet_finance["total_hours"],
+                "timesheet_approved_hours": timesheet_finance["approved_hours"],
                 "raf_cost": raf_cost,
                 "forecast_final_cost": forecast_final_cost,
                 "received_revenue": revenue_stats["received_revenue"],

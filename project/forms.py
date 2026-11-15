@@ -1256,6 +1256,11 @@ class TaskForm(BaseStyledModelForm):
         self.fields["completed_at"].input_formats = ["%Y-%m-%dT%H:%M"]
 
         if self.instance and self.instance.pk:
+            # Tâche suivie dans les timesheets : le temps passé est la somme des saisies
+            # (signaux TimesheetEntry) ; un formulaire ouvert ne doit pas l'écraser.
+            if self.instance.timesheet_entries.exists():
+                self.fields["spent_hours"].disabled = True
+                self.fields["spent_hours"].help_text = "Calculé automatiquement depuis les timesheets."
             if self.instance.due_date:
                 self.initial["due_date"] = self.instance.due_date.strftime("%Y-%m-%d")
             if self.instance.started_at:

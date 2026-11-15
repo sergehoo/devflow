@@ -16,9 +16,10 @@ import io
 import math
 from collections import Counter, defaultdict
 from datetime import date, timedelta
+from decimal import Decimal
 from html import escape
 
-from django.db.models import Q
+from django.db.models import Max, Q, Sum
 from django.utils import timezone
 
 from project import models as dm
@@ -41,6 +42,7 @@ SEVERITY_LABELS = {"LOW": "Faible", "MEDIUM": "Moyenne", "HIGH": "Élevée", "CR
 SEVERITY_ORDER = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
 DUE_SOON_DAYS = 7
 STALE_DAYS = 14
+ZERO_HOURS = Decimal("0")
 PORTEUR_ROLE = "Porteur"
 
 
@@ -190,6 +192,27 @@ def build_rows(scope, user=None, *, project_id=None, today=None) -> list[dict]:
             "id": pk, "type": "decision", "kind": "DECISION", "kind_label": ALERT_LABELS["DECISION"],
             "severity": None, "severity_label": "", "text": title})
 
+    # Temps saisi dans les timesheets : heures et dernière saisie par projet / activité
+    # (sous-tâches comprises). Une saisie récente compte comme une mise à jour.
+    logged = defaultdict(lambda: [ZERO_HOURS, None])
+
+    def add_logged(ref, hours, last):
+        bucket = logged[ref]
+        bucket[0] += hours or ZERO_HOURS
+        if last and (bucket[1] is None or last > bucket[1]):
+            bucket[1] = last
+
+    entries = dm.TimesheetEntry.objects.order_by()
+    for pid, hours, last in (entries.filter(project_id__in=pids).values("project_id")
+                             .annotate(h=Sum("hours"), last=Max("updated_at")).values_list("project_id", "h", "last")):
+        add_logged(("P", pid), hours, last)
+    for tid, hours, last in (entries.filter(task_id__in=tids).values("task_id")
+                             .annotate(h=Sum("hours"), last=Max("updated_at")).values_list("task_id", "h", "last")):
+        add_logged(("T", tid), hours, last)
+    for tid, hours, last in (entries.filter(task__parent_id__in=tids).values("task__parent_id")
+                             .annotate(h=Sum("hours"), last=Max("updated_at")).values_list("task__parent_id", "h", "last")):
+        add_logged(("T", tid), hours, last)
+
     def people_of(ref, users):
         owners, seen = [], set()
         for user_obj in users:
@@ -212,6 +235,8 @@ def build_rows(scope, user=None, *, project_id=None, today=None) -> list[dict]:
         next_items, row_alerts = upcoming[ref], alerts[ref]
         is_open = status_key not in CLOSED
         late = bool(end and end < today and is_open)
+        logged_hours, last_logged = logged[ref] if ref in logged else (ZERO_HOURS, None)
+        last_update = max(filter(None, (obj.updated_at, last_logged)), default=None)
         return {
             "id": f"{ref[0]}{obj.pk}", "kind": kind, "pk": obj.pk,
             "workspace": {"id": obj.workspace_id, "name": obj.workspace.name},
@@ -223,7 +248,9 @@ def build_rows(scope, user=None, *, project_id=None, today=None) -> list[dict]:
             "start": start.isoformat() if start else None, "end": end.isoformat() if end else None,
             "late": late, "days_late": (today - end).days if late else 0,
             "due_soon": bool(end and is_open and today <= end <= today + timedelta(days=DUE_SOON_DAYS)),
-            "stale": bool(is_open and obj.updated_at and (timezone.now() - obj.updated_at).days >= STALE_DAYS),
+            "stale": bool(is_open and last_update and (timezone.now() - last_update).days >= STALE_DAYS),
+            "logged_hours": float(logged_hours),
+            "last_logged_at": last_logged.isoformat() if last_logged else None,
             "done": done_items, "next": next_items, "alerts": row_alerts,
             "blocked": obj.status == "BLOCKED" or any(a["kind"] in ("BLOCKER", "DEPENDENCY") for a in row_alerts),
             "pending_decisions": sum(1 for a in row_alerts if a["type"] == "decision"),

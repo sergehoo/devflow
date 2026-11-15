@@ -398,6 +398,13 @@ class TaskSerializer(serializers.ModelSerializer):
         # Déduit du projet côté serveur (project/api/guards.py).
         extra_kwargs = {"workspace": {"required": False}}
 
+    def validate_spent_hours(self, value):
+        """Tâche suivie dans les timesheets : le temps passé est calculé, la valeur reçue est ignorée."""
+        task = self.instance
+        if task is not None and getattr(task, "pk", None) and task.timesheet_entries.exists():
+            return task.spent_hours
+        return value
+
 
 class TimesheetEntrySerializer(serializers.ModelSerializer):
     computed_cost = serializers.SerializerMethodField()

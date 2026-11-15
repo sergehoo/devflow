@@ -38,7 +38,7 @@ const TABS: Record<string, object> = {
   },
   taches: {
     key: "taches",
-    stats: { total: 1, todo: 1, in_progress: 0, review: 0, done: 0, blocked: 0, cancelled: 0, overdue: 0, flagged: 0, total_estimate_hours: "8.00", total_spent_hours: "2.00" },
+    stats: { total: 1, todo: 1, in_progress: 0, review: 0, done: 0, blocked: 0, cancelled: 0, overdue: 0, flagged: 0, total_estimate_hours: "8.00", total_spent_hours: "2.00", activity_hours: "3.50", logged_hours: "5.50" },
     has_board: false, board: [], dependencies: DEPS,
     tasks: [{ id: 12, title: "Maquettes", backlog_item: "", parent: "", parent_id: null, status: "TODO", status_label: "À faire", priority: "HIGH",
       priority_label: "Haute", assignee: "Bob", assignee_id: 2, estimate_hours: "8.00", spent_hours: "2.00", due_date: null }],
@@ -137,6 +137,31 @@ describe("Fiche projet complète", () => {
     expect(spy.mock.calls.some(([u]) => String(u).includes("detail-tabs/?tab=taches"))).toBe(true);
     expect(screen.getByRole("button", { name: /Réaffecter « Maquettes »/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Voir le board/ })).toHaveAttribute("href", "/tasks?project=7&view=board");
+    // Heures des timesheets, y compris les activités saisies hors tâche.
+    expect(screen.getByText("Heures saisies (timesheets)").parentElement).toHaveTextContent("5,5 h");
+    expect(screen.getByText("dont activités hors tâche").parentElement).toHaveTextContent("3,5 h");
+  });
+
+  it("budget prévisionnel : le coût réel inclut le temps saisi, détail TJM réservé à billing.view", async () => {
+    const forecast = {
+      key: "budget_previsionnel", currency: "XOF", budget_id: null, approved_budget: "500000.00", planned_revenue: "0", actual_cost: "120000.00",
+      actual_expense_cost: "20000.00", actual_labor_cost: "100000.00", timesheet_labor_cost: "100000.00", timesheet_hours: "8.00", timesheet_approved_hours: "4.00",
+      forecast_margin: "0", target_margin_percent: 0, profit_margin_percent: 0, expense_ratio_percent: 24,
+      invoiced_revenue: "0", received_revenue: "0", remaining_to_invoice: "0", remaining_to_collect: "0", revenues: [],
+    };
+    mockDetail({ financial: true, permissions: ["project.view", "finance.view"], tabs: { budget_previsionnel: forecast } });
+    const { unmount } = renderPage(<ProjectDetailPage />, "/projects/7?tab=budget_previsionnel", "/projects/:id");
+    expect(await screen.findByText("Temps saisi valorisé (TJM)")).toBeInTheDocument();
+    // En-tête, bandeau et onglet : le même coût réel, temps saisi compris.
+    expect(screen.getAllByText("Coût réel").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText("Heures saisies (dont validées)").parentElement).toHaveTextContent("8 h (4 h)");
+    unmount();
+
+    mockDetail({ financial: true, permissions: ["project.view", "finance.view"],
+      tabs: { budget_previsionnel: { ...forecast, actual_expense_cost: null, actual_labor_cost: null, timesheet_labor_cost: null } } });
+    renderPage(<ProjectDetailPage />, "/projects/7?tab=budget_previsionnel", "/projects/:id");
+    expect(await screen.findByText(/son détail est réservé aux personnes autorisées à voir les tarifs/)).toBeInTheDocument();
+    expect(screen.queryByText("Temps saisi valorisé (TJM)")).not.toBeInTheDocument();
   });
 
   it("onglet Réunions : liens vers le module Réunions", async () => {

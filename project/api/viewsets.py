@@ -66,6 +66,7 @@ from project.services.ai.services.project_intelligence import (
 from project.services.ai.services.project_report import ProjectAIReportService
 from project.services.ai.services.risk_analysis import RiskAnalysisService
 from project.services.budget import ProjectBudgetService
+from project.services import project_time
 
 
 # Permission stack standard pour tous les viewsets (sauf surcharge explicite).
@@ -275,11 +276,15 @@ class ProjectViewSet(RBACUpdateArchiveMixin, WorkspaceScopedViewSetMixin, viewse
         )
         by_status = {row["status"]: row["n"] for row in tasks.values("status").annotate(n=Count("id"))}
         members = project.members.select_related("user", "team").order_by("user__first_name", "user__username")
+        logged = project_time.project_logged_hours(project)
         return Response({
             "tasks_total": agg["total"],
             "tasks_overdue": agg["overdue"],
             "estimate_hours": float(agg["estimate"] or 0),
             "spent_hours": float(agg["spent"] or 0),
+            # Heures saisies dans les timesheets : sur les tâches et en activités hors tâche.
+            "logged_hours": float(logged["total"]),
+            "activity_hours": float(logged["activities"]),
             "tasks_by_status": [
                 {"status": value, "label": label, "count": by_status.get(value, 0)}
                 for value, label in dm.Task.Status.choices

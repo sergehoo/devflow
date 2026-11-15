@@ -6,10 +6,13 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import DecimalField, OuterRef, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from project import models as dm
+
+SPENT_FIELD = DecimalField(max_digits=8, decimal_places=2)
 
 
 class TaskTimeError(Exception):
@@ -28,6 +31,28 @@ def parse_hours(value) -> Decimal:
     if hours > Decimal("24"):
         raise TaskTimeError("Le temps passé ne peut pas dépasser 24 heures.")
     return hours
+
+
+def sync_spent_hours(task_ids) -> int:
+    """Aligne ``Task.spent_hours`` sur la somme des saisies de temps de chaque tâche.
+
+    Source de vérité unique du temps passé : les ``TimesheetEntry`` (grille
+    hebdomadaire, saisie rapide, reversement à la clôture), quel que soit leur
+    statut de validation. Appelée par les signaux de ``TimesheetEntry`` à chaque
+    création, modification ou suppression. Mise à jour en ``update()`` : ne
+    redéclenche ni ``Task.save`` (``full_clean``) ni les signaux de tâche.
+    """
+    ids = {int(pk) for pk in task_ids if pk}
+    if not ids:
+        return 0
+    total = (
+        dm.TimesheetEntry.objects.filter(task_id=OuterRef("pk"))
+        .order_by().values("task_id").annotate(total=Sum("hours")).values("total")[:1]
+    )
+    return dm.Task.objects.filter(pk__in=ids).update(
+        spent_hours=Coalesce(Subquery(total, output_field=SPENT_FIELD), Value(Decimal("0"), output_field=SPENT_FIELD)),
+        updated_at=timezone.now(),
+    )
 
 
 @transaction.atomic
