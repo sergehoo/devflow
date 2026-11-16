@@ -790,7 +790,7 @@ class BillingRate(TimeStampedModel, SoftDeleteModel):
         :param project: Phase 3 (PR15). Si fourni, on cherche d'abord un
             BillingRate spécifique à ce projet (TJM négocié). Si aucun, on
             retombe sur les tarifs génériques (project__isnull=True).
-            Si project=None : comportement legacy (tous tarifs confondus).
+            Si project=None : tarifs généraux uniquement.
         """
         if kind not in ("cost", "sale"):
             raise ValueError("kind must be 'cost' or 'sale'")
@@ -798,7 +798,7 @@ class BillingRate(TimeStampedModel, SoftDeleteModel):
         today = on_date or timezone.localdate()
         profile = getattr(user, "profile", None)
 
-        filter_kwargs = {"user": user, "valid_from__lte": today}
+        filter_kwargs = {"user": user, "valid_from__lte": today, "is_archived": False}
         if kind == "cost":
             filter_kwargs["is_internal_cost"] = True
         else:
@@ -819,10 +819,9 @@ class BillingRate(TimeStampedModel, SoftDeleteModel):
                 .first()
             )
         if rate is None:
-            generic_filter = dict(filter_kwargs)
-            if project is not None:
-                # On cible explicitement les tarifs génériques (sans projet).
-                generic_filter["project__isnull"] = True
+            # Tarifs généraux uniquement : un TJM négocié sur un projet ne s'applique jamais
+            # aux autres projets (ni aux calculs sans projet).
+            generic_filter = {**filter_kwargs, "project__isnull": True}
             rate = (
                 BillingRate.objects.filter(**generic_filter)
                 .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))

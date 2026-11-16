@@ -79,6 +79,7 @@ export const NAVIGATION: NavGroup[] = [
       { label: "Cockpit financier", to: "/finance/portfolio", visible: anyOf("budget.view") },
       { label: "Dépenses", to: "/m/project-expense", visible: anyOf("budget.view") },
       { label: "Allocation IA des ressources", to: "/finance/allocation", visible: anyOf("budget.view") },
+      { label: "TJM des collaborateurs", to: "/finance/tjm", visible: anyOf("billing.view") },
       { label: "Factures", to: "/m/invoice", visible: anyOf("billing.view") },
       { label: "Clients", to: "/m/invoice-client", visible: anyOf("billing.view") },
     ],

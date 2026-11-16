@@ -384,9 +384,12 @@ urlpatterns += [
 
 # --- finance ---
 from project.api import views_finance as vfi  # noqa: E402
+from project.api import views_rates as vrates  # noqa: E402
 
 urlpatterns += [
     path("finance/portfolio/", vfi.FinancePortfolioView.as_view(), name="api-finance-portfolio"),
+    path("finance/rates/", vrates.RatesView.as_view(), name="api-finance-rates"),
+    path("finance/rates/<int:pk>/", vrates.RateDetailView.as_view(), name="api-finance-rate"),
     path("finance/allocation/", vfi.FinanceAllocationView.as_view(), name="api-finance-allocation"),
     path("invoices/<int:pk>/lines/", vfi.InvoiceLinesAPI.as_view(), name="api-invoice-lines"),
     path("invoices/<int:pk>/lines/reorder/", vfi.InvoiceReorderAPI.as_view(), name="api-invoice-lines-reorder"),

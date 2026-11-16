@@ -106,6 +106,7 @@ export const router = createBrowserRouter(
         // --- finance --- cockpit financier, allocation IA, éditeur de facture
         { path: "finance/portfolio", handle: { crumb: "Cockpit financier" }, lazy: async () => ({ Component: (await import("@/features/finance/FinancePages")).FinancePortfolioPage }) },
         { path: "finance/allocation", handle: { crumb: "Allocation IA" }, lazy: async () => ({ Component: (await import("@/features/finance/FinancePages")).AllocationPage }) },
+        { path: "finance/tjm", handle: { crumb: "TJM des collaborateurs" }, lazy: async () => ({ Component: (await import("@/features/finance/RatesPage")).RatesPage }) },
         { path: "invoices/:id", handle: { crumb: "Facture" }, lazy: async () => ({ Component: (await import("@/features/finance/FinancePages")).InvoiceEditorPage }) },
         // --- tickets --- (centre de support multi-applications)
         {

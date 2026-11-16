@@ -144,6 +144,7 @@ def create_or_update_timesheet_snapshot(sender, instance, created, **kwargs):
         dm.BillingRate.objects.filter(
             user_id=instance.user_id,
             is_internal_cost=True,
+            is_archived=False,
             valid_from__lte=today,
         )
         .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))

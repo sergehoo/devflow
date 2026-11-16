@@ -2950,8 +2950,8 @@ class ProjectDetailView(DevflowDetailView):
             allocation_percent = Decimal(member.allocation_percent or 0)
             allocation_ratio = allocation_percent / Decimal("100")
 
-            daily_cost = dm.BillingRate.get_user_daily_cost(user) or Decimal("0.00")
-            daily_sale = dm.BillingRate.get_user_sale_daily_rate(user) or Decimal("0.00")
+            daily_cost = dm.BillingRate.get_user_daily_cost(user, project=project) or Decimal("0.00")
+            daily_sale = dm.BillingRate.get_user_sale_daily_rate(user, project=project) or Decimal("0.00")
 
             allocated_daily_cost = daily_cost * allocation_ratio
             allocated_daily_sale = daily_sale * allocation_ratio

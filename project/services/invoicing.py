@@ -185,7 +185,7 @@ class InvoiceGenerator:
             if hours <= 0:
                 continue
 
-            sale_daily = dm.BillingRate.get_user_sale_daily_rate(user)
+            sale_daily = dm.BillingRate.get_user_sale_daily_rate(user, project=self.project)
             profile = getattr(user, "profile", None)
             hpd = Decimal("8")
             if profile and getattr(profile, "capacity_hours_per_day", None):
@@ -214,7 +214,7 @@ class InvoiceGenerator:
         """Une ligne par entrée timesheet (mode détaillé)."""
         position = 0
         for entry in qs.order_by("entry_date", "user__last_name"):
-            sale_daily = dm.BillingRate.get_user_sale_daily_rate(entry.user)
+            sale_daily = dm.BillingRate.get_user_sale_daily_rate(entry.user, project=self.project)
             profile = getattr(entry.user, "profile", None)
             hpd = Decimal("8")
             if profile and getattr(profile, "capacity_hours_per_day", None):
