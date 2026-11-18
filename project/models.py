@@ -1331,7 +1331,8 @@ class Sprint(TimeStampedModel, SoftDeleteModel):
         return (self.end_date - timezone.localdate()).days
 
     def clean(self):
-        if self.end_date < self.start_date:
+        # Date manquante : déjà signalée par le champ obligatoire (sinon TypeError → 500).
+        if self.start_date and self.end_date and self.end_date < self.start_date:
             raise ValidationError("La date de fin doit être postérieure à la date de début.")
 
     def __str__(self):
@@ -2194,7 +2195,9 @@ class TaskDependency(TimeStampedModel):
         ordering = ["-created_at"]
 
     def clean(self):
-        if self.from_task == self.to_task:
+        # Ids (pas les relations) : une tâche manquante ou invalide est déjà signalée par
+        # le champ ; lire ``self.to_task`` levait RelatedObjectDoesNotExist (500).
+        if self.from_task_id and self.from_task_id == self.to_task_id:
             raise ValidationError("Une tâche ne peut pas dépendre d'elle-même.")
 
     def __str__(self):

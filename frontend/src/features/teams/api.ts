@@ -17,10 +17,14 @@ export interface Member {
   team: { id: number; name: string } | null;
   role: string; role_label: string; status: string; status_label: string; job_title: string;
   current_load_percent: number; joined_at: string | null; manager: string; capacity_hours_per_week: number | null; is_owner: boolean;
+  /** Modifier / retirer ce rattachement (droits du team lead limités par Django). */
+  can_manage: boolean;
+  /** Retrait possible (le dernier rattachement du propriétaire est protégé). */
+  can_remove: boolean;
 }
 type Option = { value: string; label: string };
 export interface MembersPage extends Paginated<Member> {
-  permissions: { can_manage_passwords: boolean; can_onboard: boolean };
+  permissions: { can_manage_passwords: boolean; can_onboard: boolean; can_manage: boolean };
   filters: { teams: Option[]; roles: Option[]; statuses: Option[] };
 }
 

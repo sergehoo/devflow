@@ -48,15 +48,22 @@ def _unique_username(email: str) -> str:
     return username
 
 
-def _apply_profile(profile, *, job_title, weekly_capacity, arrival_date, manager_profile):
+def _apply_profile(profile, *, job_title, weekly_capacity, arrival_date, manager_profile, keep_existing=False):
+    """
+    ``keep_existing`` (rattachement d'un collaborateur déjà en place à une autre équipe) :
+    le formulaire préremplit capacité (40 h) et date d'arrivée (aujourd'hui) et laisse le N+1
+    vide ; ces valeurs par défaut ne doivent pas écraser son profil. On ne renseigne alors
+    que ce qui manque (N+1 choisi, date d'entrée encore vide).
+    """
     if job_title:
         profile.job_title = job_title
     if weekly_capacity is not None:
         profile.capacity_hours_per_week = weekly_capacity
         profile.capacity_hours_per_day = (Decimal(weekly_capacity) / 5).quantize(Decimal("0.01"))
-    if arrival_date:
+    if arrival_date and not (keep_existing and profile.joined_company_at):
         profile.joined_company_at = arrival_date
-    profile.manager = manager_profile
+    if manager_profile is not None or not keep_existing:
+        profile.manager = manager_profile
     profile.full_clean(exclude=["avatar"])
     profile.save()
     return profile
@@ -108,6 +115,7 @@ def onboard_employee(
         _apply_profile(
             profile, job_title=job_title, weekly_capacity=weekly_capacity,
             arrival_date=arrival_date, manager_profile=manager_profile,
+            keep_existing=existing_user is not None,
         )
 
     membership, _ = dm.TeamMembership.objects.update_or_create(
@@ -153,3 +161,94 @@ def set_manager(user, workspace, manager_user):
     profile.full_clean(exclude=["avatar"])
     profile.save(update_fields=["manager", "updated_at"])
     return profile
+
+
+# ---------------------------------------------------------------------------
+# Droits sur les appartenances (création, modification, retrait)
+# ---------------------------------------------------------------------------
+# ``TeamMembership.role`` ouvre encore des accès hérités : lecture finance
+# (views_budget.can_view_financials, views.can_view_financial_data : ADMIN, CTO, PM, PO,
+# TECH_LEAD) et validation des dépenses (niveau 1 : PM, PO ; niveau 2 : ADMIN, CTO,
+# TECH_LEAD). Ces rôles sont réservés aux détenteurs de ``members.manage``.
+ELEVATED_ROLES = frozenset({
+    dm.TeamMembership.Role.ADMIN, dm.TeamMembership.Role.CTO, dm.TeamMembership.Role.PM,
+    dm.TeamMembership.Role.PRODUCT_OWNER, dm.TeamMembership.Role.TECH_LEAD,
+})
+
+
+def can_manage_members(user, workspace) -> bool:
+    """Gestion complète (propriétaire, admin) ou gestion des membres d'équipe (team lead)."""
+    from project.services.rbac import RBACService
+
+    return bool(workspace) and (
+        RBACService.can(user, "members.manage", workspace=workspace)
+        or RBACService.can(user, "team.manage_members", workspace=workspace)
+    )
+
+
+def _protected_target(member_user, workspace) -> bool:
+    """Cible hors de portée d'un team lead : encadrement RBAC ou rôle d'équipe élevé."""
+    from project.services import rbac
+
+    if member_user.is_superuser or workspace.owner_id == member_user.pk:
+        return True
+    if rbac.RBACService.get_role_for(member_user, workspace) in (
+        rbac.SUPER_ADMIN, rbac.WORKSPACE_OWNER, rbac.PROJECT_MANAGER, rbac.TEAM_LEAD,
+    ):
+        return True
+    return dm.TeamMembership.objects.filter(
+        workspace=workspace, user=member_user, role__in=ELEVATED_ROLES,
+    ).exists()
+
+
+def membership_change_error(actor, workspace, *, member_user, role=None, previous_role=None) -> str | None:
+    """
+    Refus d'une création / modification / suppression d'appartenance, ou ``None``.
+    Un team lead (``team.manage_members`` sans ``members.manage``) ne touche ni à son propre
+    rattachement, ni à l'encadrement (propriétaire, admins, chefs de projet, autres team leads,
+    titulaires d'un rôle d'équipe élevé), et n'attribue ni ne retire de rôle élevé.
+    """
+    from project.services.rbac import RBACService
+
+    if not can_manage_members(actor, workspace):
+        return "Vous n'avez pas le droit de gérer les membres de ce workspace."
+    if RBACService.can(actor, "members.manage", workspace=workspace):
+        return None
+    if member_user is not None and member_user.pk == actor.pk:
+        return "Vous ne pouvez pas modifier votre propre rattachement."
+    if role in ELEVATED_ROLES or previous_role in ELEVATED_ROLES:
+        return "Seul un administrateur du workspace peut attribuer ou retirer ce rôle."
+    if member_user is not None and _protected_target(member_user, workspace):
+        return "Seul un administrateur du workspace peut modifier le rattachement de ce collaborateur."
+    return None
+
+
+def manageable_membership_ids(actor, workspace, memberships) -> set:
+    """Appartenances que ``actor`` peut modifier / retirer (affichage des actions par ligne)."""
+    from project.services.rbac import RBACService
+
+    if not can_manage_members(actor, workspace):
+        return set()
+    memberships = list(memberships)
+    if RBACService.can(actor, "members.manage", workspace=workspace):
+        return {m.pk for m in memberships}
+    return {
+        m.pk for m in memberships
+        if m.user_id != actor.pk and m.role not in ELEVATED_ROLES and not _protected_target(m.user, workspace)
+    }
+
+
+def removable_membership_ids(actor, workspace, memberships) -> set:
+    """
+    Appartenances que ``actor`` peut retirer : celles qu'il gère, sauf le DERNIER rattachement
+    du propriétaire (il peut quitter une équipe secondaire ; seul un superadmin retire le dernier).
+    """
+    memberships = list(memberships)
+    allowed = manageable_membership_ids(actor, workspace, memberships)
+    if not allowed or workspace is None or actor.is_superuser:
+        return allowed
+    owner_rows = dm.TeamMembership.objects.filter(workspace=workspace, user_id=workspace.owner_id).count()
+    return {
+        m.pk for m in memberships
+        if m.pk in allowed and not (m.user_id == workspace.owner_id and owner_rows <= 1)
+    }

@@ -39,6 +39,19 @@ class ProjectFinancialPermissionMixin:
 
         return None
 
+    def attach_request_project(self, form):
+        """
+        Formulaires financiers sans champ « projet » : le projet vient de ``?project=``.
+        Sans lui (bouton « Ajouter » d'une liste globale), l'enregistrement échouait en 500
+        (projet obligatoire en base) : on renvoie une erreur de formulaire explicite.
+        """
+        project = self.get_project_from_request()
+        if project is None:
+            form.add_error(None, "Choisissez le projet : ouvrez ce formulaire depuis la fiche du projet (onglet Finance).")
+            return None
+        form.instance.project = project
+        return project
+
     def get_workspace_membership(self, workspace):
         if not workspace or not self.request.user.is_authenticated:
             return None
@@ -123,6 +136,11 @@ class ProjectFinancialPermissionMixin:
         project = None
 
         obj = getattr(self, "object", None)
+        if obj is None and self.kwargs.get("pk") is not None and hasattr(self, "get_object"):
+            # Fiche / modification sans ``?project=`` (route React /m/<ressource>/<id>/edit) :
+            # dispatch() s'exécute avant que la vue ne charge l'objet ; sans cette résolution,
+            # le contrôle financier était sauté (un simple membre modifiait un budget).
+            obj = self.get_object()
         if obj and hasattr(obj, "project"):
             project = obj.project
         else:
@@ -133,7 +151,8 @@ class ProjectFinancialPermissionMixin:
 
     def dispatch(self, request, *args, **kwargs):
         self.object = getattr(self, "object", None)
-        self.ensure_financial_permission()
+        if request.user.is_authenticated:  # anonyme : LoginRequiredMixin redirige vers la connexion
+            self.ensure_financial_permission()
         return super().dispatch(request, *args, **kwargs)
 
 class ProjectBudgetDetailView(ProjectFinancialPermissionMixin, DevflowDetailView):
@@ -160,9 +179,12 @@ class ProjectBudgetCreateView(ProjectFinancialPermissionMixin, DevflowCreateView
         return reverse_lazy("project_detail", kwargs={"pk": self.object.project_id})
 
     def form_valid(self, form):
-        project_id = self.request.GET.get("project")
-        if project_id:
-            form.instance.project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user))
+        project = self.attach_request_project(form)
+        if project is None:
+            return self.form_invalid(form)
+        if dm.ProjectBudget.objects.filter(project=project).exists():
+            form.add_error(None, "Ce projet a déjà un budget : modifiez-le plutôt que d'en créer un second.")
+            return self.form_invalid(form)
         messages.success(self.request, "Budget projet enregistré avec succès.")
         return super().form_valid(form)
 
@@ -189,9 +211,8 @@ class ProjectEstimateLineCreateView(ProjectFinancialPermissionMixin, DevflowCrea
         return reverse_lazy("project_detail", kwargs={"pk": self.object.project_id})
 
     def form_valid(self, form):
-        project_id = self.request.GET.get("project")
-        if project_id:
-            form.instance.project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user))
+        if self.attach_request_project(form) is None:
+            return self.form_invalid(form)
         form.instance.created_by = self.request.user
         messages.success(self.request, "Ligne d'estimation ajoutée.")
         return super().form_valid(form)
@@ -208,9 +229,8 @@ class ProjectRevenueCreateView(ProjectFinancialPermissionMixin, DevflowCreateVie
         return reverse_lazy("project_detail", kwargs={"pk": self.object.project_id})
 
     def form_valid(self, form):
-        project_id = self.request.GET.get("project")
-        if project_id:
-            form.instance.project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user))
+        if self.attach_request_project(form) is None:
+            return self.form_invalid(form)
         messages.success(self.request, "Prévision de revenu enregistrée.")
         return super().form_valid(form)
 
@@ -511,9 +531,8 @@ class ProjectExpenseCreateView(ProjectFinancialPermissionMixin, DevflowCreateVie
         return reverse_lazy("project_detail", kwargs={"pk": self.object.project_id})
 
     def form_valid(self, form):
-        project_id = self.request.GET.get("project")
-        if project_id:
-            form.instance.project = get_object_or_404(dm.Project, pk=project_id, workspace_id__in=get_user_workspace_ids(self.request.user))
+        if self.attach_request_project(form) is None:
+            return self.form_invalid(form)
         form.instance.created_by = self.request.user
         messages.success(self.request, "Dépense ajoutée.")
         return super().form_valid(form)

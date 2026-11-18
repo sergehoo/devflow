@@ -66,3 +66,26 @@ class TeamApiTests(TestCase):
         self.assertEqual(self.client.get("/api/v1/forms/member/").status_code, 403)
         self.client.force_login(self.owner)
         self.assertEqual(self.client.get("/api/v1/forms/member/").status_code, 200)
+
+    def _onboarding_payload(self, **extra):
+        schema = {f["name"]: f for f in self.client.get("/api/v1/forms/member/").json()["fields"]}
+        payload = {k: ("" if f["value"] is None else f["value"]) for k, f in schema.items() if f["type"] not in ("checkbox", "multiselect", "file")}
+        payload.update(extra)
+        return payload
+
+    def test_onboarding_existing_user_reports_success(self):
+        """Régression : l'intégration réussie (redirection sans ``object``) était renvoyée en 400 « Enregistrement impossible. »."""
+        self.client.force_login(self.owner)
+        mobile = dm.Team.objects.create(workspace=self.ws, name="Mobile")
+        res = self.client.post("/api/v1/forms/member/", self._onboarding_payload(
+            mode="existing", user=self.dev.pk, team=mobile.pk, role="TECH_LEAD", manager=self.owner.pk,
+            job_title="Responsable Infrastructures", weekly_capacity="40", arrival_date="2026-07-01",
+        ))
+        self.assertEqual(res.status_code, 201, res.content)
+        membership = dm.TeamMembership.objects.get(workspace=self.ws, user=self.dev, team=mobile)
+        self.assertEqual(res.json()["id"], membership.pk)
+        self.assertEqual(membership.role, "TECH_LEAD")
+        self.assertTrue(res.json()["messages"])
+        again = self.client.post("/api/v1/forms/member/", self._onboarding_payload(mode="existing", user=self.dev.pk, team=mobile.pk))
+        self.assertEqual(again.status_code, 400)
+        self.assertIn("team", again.json())

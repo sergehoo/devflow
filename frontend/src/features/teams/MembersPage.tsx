@@ -75,11 +75,13 @@ export function MembersPage() {
                     <td className="px-4 py-2.5"><Badge>{m.status_label}</Badge>{m.joined_at && <span className="block text-[11px] text-muted-foreground">depuis {formatDate(m.joined_at)}</span>}</td>
                     <td className="px-4 py-2.5">
                       <span className="flex justify-end gap-1">
-                        <Button size="icon" variant="ghost" aria-label={`Modifier ${m.user.name}`} asChild><Link to={`/members/${m.id}/edit`}><Pencil /></Link></Button>
+                        {m.can_manage && (
+                          <Button size="icon" variant="ghost" aria-label={`Modifier ${m.user.name}`} asChild><Link to={`/members/${m.id}/edit`}><Pencil /></Link></Button>
+                        )}
                         {data.permissions.can_manage_passwords && m.user.id !== me?.id && (
                           <Button size="icon" variant="ghost" aria-label={`Réinitialiser le mot de passe de ${m.user.name}`} onClick={() => setReset(m)}><KeyRound /></Button>
                         )}
-                        {!m.is_owner && <Button size="icon" variant="ghost" aria-label={`Retirer ${m.user.name}`} onClick={() => setRemoving(m)}><UserMinus /></Button>}
+                        {m.can_remove && <Button size="icon" variant="ghost" aria-label={`Retirer ${m.user.name}`} onClick={() => setRemoving(m)}><UserMinus /></Button>}
                       </span>
                     </td>
                   </tr>

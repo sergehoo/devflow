@@ -463,6 +463,20 @@ class DevflowCreateView(WorkspaceSecurityMixin, DevflowBaseMixin, CreateView):
 
             self.object.workspace = workspace
 
+        # Le workspace est fixé après la validation du formulaire (champ laissé vide) : les
+        # contraintes d'unicité qui l'incluent n'ont pas été vérifiées → IntegrityError (500).
+        # Seuls les champs du formulaire (+ workspace) sont contrôlés : un champ rempli plus tard
+        # par save() (numéro, slug automatique…) ne doit pas déclencher de faux doublon.
+        checked = set(form.fields) | {"workspace"}
+        try:
+            self.object.validate_unique(
+                exclude=[f.name for f in self.object._meta.fields if f.name not in checked],
+            )
+        except ValidationError as exc:
+            for field, errors in exc.message_dict.items():
+                form.add_error(field if field in form.fields else None, errors)
+            return self.form_invalid(form)
+
         self.object.save()
 
         form.save_m2m()
@@ -760,7 +774,13 @@ class ProfileUpdateView(DevflowBaseMixin, WorkspaceSecurityMixin, LoginRequiredM
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
         form = self.get_form()
-        account_form = UserAccountForm(request.POST, instance=request.user)
+        # Un champ de compte absent du POST (formulaire React : profil seul) garde sa valeur :
+        # sinon prénom, nom et e-mail étaient remplacés par des chaînes vides.
+        data = request.POST.copy()
+        for field in UserAccountForm.Meta.fields:
+            if field not in data:
+                data[field] = getattr(request.user, field) or ""
+        account_form = UserAccountForm(data, instance=request.user)
 
         if form.is_valid() and account_form.is_valid():
             return self.forms_valid(form, account_form)
@@ -1638,6 +1658,8 @@ class TeamDeleteView(DevflowDeleteView):
     section = "team"
     page_title = "Supprimer équipe"
     success_list_url_name = "team_list"
+    # La suppression emporte tous les rattachements de l'équipe (CASCADE) : réservée à l'administration.
+    rbac_delete_action = "team.delete"
 
 
 class TeamArchiveView(ArchiveObjectView):
@@ -1672,8 +1694,13 @@ class TeamMembershipListView(DevflowListView):
         from project.services.password_reset import can_manage_passwords
         ctx = super().get_context_data(**kwargs)
         ws = self.get_current_workspace()
+        from project.services.team_onboarding import manageable_membership_ids, removable_membership_ids
+
         ctx["can_manage_passwords"] = can_manage_passwords(self.request.user, ws)
         ctx["workspace_owner_id"] = ws.owner_id if ws else None
+        ctx["manageable_ids"] = manageable_membership_ids(self.request.user, ws, ctx.get("object_list") or [])
+        ctx["removable_ids"] = removable_membership_ids(self.request.user, ws, ctx.get("object_list") or [])
+        ctx["can_invite"] = invitation_access_error(self.request.user, ws) is None
         return ctx
 
 
@@ -1734,6 +1761,8 @@ class TeamMembershipDetailView(DevflowDetailView):
             and m.user.is_active and m.user_id != self.request.user.pk
             and m.user_id != m.workspace.owner_id and not m.user.is_superuser
         )
+        from project.services.team_onboarding import manageable_membership_ids
+        ctx["can_manage_membership"] = m.pk in manageable_membership_ids(self.request.user, m.workspace, [m])
         return ctx
 
 
@@ -1779,15 +1808,32 @@ class TeamMembershipCreateView(WorkspaceSecurityMixin, DevflowBaseMixin, FormVie
         from django.core.exceptions import ValidationError as DjangoValidationError
         from project.services.team_onboarding import onboard_employee
 
+        from project.services.team_onboarding import membership_change_error
+
         data = form.cleaned_data
         is_new = data["mode"] == form.MODE_NEW
+        pending = (
+            dm.WorkspaceInvitation.objects.filter(
+                workspace=self.get_current_workspace(), email__iexact=data.get("email") or "",
+                status=dm.WorkspaceInvitation.Status.PENDING,
+            ).only("role").first()
+            if is_new else None
+        )
+        refusal = membership_change_error(
+            self.request.user, self.get_current_workspace(),
+            member_user=None if is_new else data.get("user"), role=data.get("role"),
+            previous_role=pending.role if pending else None,  # l'intégration remplace l'invitation
+        )
+        if refusal:
+            form.add_error("role" if "rôle" in refusal else None, refusal)
+            return self.form_invalid(form)
         try:
             membership, invitation = onboard_employee(
                 workspace=self.get_current_workspace(),
                 actor=self.request.user,
                 team=data.get("team"),
                 role=data["role"],
-                weekly_capacity=data.get("weekly_capacity"),
+                weekly_capacity=data.get("weekly_capacity"),  # vide = inchangée (existant) / 40 h (nouveau)
                 arrival_date=data.get("arrival_date"),
                 manager_user=data.get("manager"),
                 job_title=data.get("job_title") or "",
@@ -1803,6 +1849,7 @@ class TeamMembershipCreateView(WorkspaceSecurityMixin, DevflowBaseMixin, FormVie
                 form.add_error("manager" if "manager" in str(msg).lower() else None, msg)
             return self.form_invalid(form)
 
+        self.object = membership  # pont React (forms/member) : succès + identifiant créé
         if invitation:
             messages.success(
                 self.request,
@@ -1821,6 +1868,13 @@ class TeamMembershipUpdateView(DevflowUpdateView):
     page_title = "Modifier appartenance équipe"
     success_list_url_name = "team_membership_list"
 
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            from project.services.team_onboarding import can_manage_members
+            if not can_manage_members(request.user, self.get_object().workspace):
+                raise PermissionDenied("Vous n'avez pas le droit de modifier les membres.")
+        return super().dispatch(request, *args, **kwargs)
+
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["current_workspace"] = self.get_current_workspace()
@@ -1832,6 +1886,9 @@ class TeamMembershipUpdateView(DevflowUpdateView):
         form = super().get_form(form_class)
         ws = self.get_current_workspace()
         form.fields.pop("workspace", None)
+        if "user" in form.fields:
+            # Changer de collaborateur = un autre rattachement (refusé côté serveur) : champ figé.
+            form.fields["user"].disabled = True
         profile = dm.UserProfile.objects.filter(user_id=self.object.user_id, workspace=ws).first()
         if profile:
             form.fields["manager"] = ManagerField(
@@ -1841,8 +1898,19 @@ class TeamMembershipUpdateView(DevflowUpdateView):
 
     def form_valid(self, form):
         from django.core.exceptions import ValidationError as DjangoValidationError
-        from project.services.team_onboarding import set_manager
+        from project.services.team_onboarding import membership_change_error, set_manager
 
+        previous = dm.TeamMembership.objects.only("role", "user_id").get(pk=form.instance.pk)
+        if form.instance.user_id != previous.user_id:
+            form.add_error("user", "Le collaborateur d'un rattachement ne peut pas être changé : ajoutez-le plutôt.")
+            return self.form_invalid(form)
+        refusal = membership_change_error(
+            self.request.user, form.instance.workspace, member_user=form.instance.user,
+            role=form.instance.role, previous_role=previous.role,
+        )
+        if refusal:
+            form.add_error("role" if "rôle" in refusal else None, refusal)
+            return self.form_invalid(form)
         if "manager" in form.fields:
             manager = form.cleaned_data.get("manager")
             if manager and manager.pk == form.instance.user_id:
@@ -1862,6 +1930,26 @@ class TeamMembershipDeleteView(DevflowDeleteView):
     section = "team"
     page_title = "Supprimer appartenance équipe"
     success_list_url_name = "team_membership_list"
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            from project.services.rbac import RBACService
+            from project.services.team_onboarding import membership_change_error
+
+            membership = self.get_object()
+            workspace = membership.workspace
+            last_one = not dm.TeamMembership.objects.filter(
+                workspace=workspace, user_id=membership.user_id,
+            ).exclude(pk=membership.pk).exists()
+            if workspace.owner_id == membership.user_id and last_one and not request.user.is_superuser:
+                raise PermissionDenied("Le propriétaire du workspace ne peut pas en être retiré.")
+            if not RBACService.can(request.user, "members.remove", workspace=workspace):
+                refusal = membership_change_error(
+                    request.user, workspace, member_user=membership.user, previous_role=membership.role,
+                )
+                if refusal:
+                    raise PermissionDenied(refusal)
+        return super().dispatch(request, *args, **kwargs)
 
 
 # =============================================================================
@@ -7591,7 +7679,7 @@ class MilestoneCreateView(DevflowCreateView):
     section = "project"
     page_title = "Créer jalon"
     success_message = "Jalon créé avec succès."
-    success_list_url_name = "project:milestone_list"
+    success_list_url_name = "milestone_list"
 
     def get_initial(self):
         initial = super().get_initial()
@@ -7677,7 +7765,7 @@ class MilestoneUpdateView(DevflowUpdateView):
     template_name = "project/milestone/form.html"
     section = "project"
     page_title = "Modifier jalon"
-    success_list_url_name = "project:milestone_list"
+    success_list_url_name = "milestone_list"
 
     def form_valid(self, form):
         messages.success(self.request, "Jalon modifié avec succès.")
@@ -7692,12 +7780,12 @@ class MilestoneDeleteView(DevflowDeleteView):
     model = dm.Milestone
     section = "project"
     page_title = "Supprimer jalon"
-    success_list_url_name = "project:milestone_list"
+    success_list_url_name = "milestone_list"
 
 
 class MilestoneArchiveView(ArchiveObjectView):
     model = dm.Milestone
-    success_list_url_name = "project:milestone_list"
+    success_list_url_name = "milestone_list"
 
 
 class MilestoneTaskListView(DevflowListView):
@@ -7817,7 +7905,7 @@ class MilestoneTaskDeleteView(DevflowDeleteView):
     model = dm.MilestoneTask
     section = "project"
     page_title = "Supprimer tâche jalon"
-    success_list_url_name = "project:milestone_task_list"
+    success_list_url_name = "milestone_task_list"
 
 
 class ReleaseListView(DevflowListView):
@@ -8261,7 +8349,7 @@ class RoadmapUpdateView(DevflowUpdateView):
     section = "project"
     template_name = "project/roadmap/form.html"
     page_title = "Modifier roadmap"
-    success_list_url_name = "project:roadmap_list"
+    success_list_url_name = "roadmap_list"
 
     def form_valid(self, form):
         messages.success(self.request, "Roadmap modifiée avec succès.")
@@ -8386,7 +8474,7 @@ class RoadmapItemUpdateView(DevflowUpdateView):
     section = "project"
     template_name = "project/roadmap_item/form.html"
     page_title = "Modifier élément roadmap"
-    success_list_url_name = "project:roadmap_item_list"
+    success_list_url_name = "roadmap_item_list"
 
     def form_valid(self, form):
         messages.success(self.request, "Élément roadmap modifié avec succès.")
@@ -8442,7 +8530,86 @@ class BoardColumnDeleteView(DevflowDeleteView):
     success_list_url_name = "board_column_list"
 
 
-class WorkspaceInvitationListView(DevflowListView):
+def invitation_access_error(user, workspace, invitation=None) -> str | None:
+    """
+    Gérer les invitations = gérer de futurs rattachements : mêmes droits que l'intégration.
+    Sur une invitation existante, un team lead ne touche pas aux invitations de rôle élevé
+    ni à celles qui visent l'encadrement.
+    """
+    from project.services.rbac import RBACService
+    from project.services.team_onboarding import can_manage_members, membership_change_error
+
+    if not workspace or not (
+        RBACService.can(user, "members.invite", workspace=workspace) or can_manage_members(user, workspace)
+    ):
+        return "Vous n'avez pas le droit de gérer les invitations de ce workspace."
+    if invitation is not None:
+        target = get_user_model().objects.filter(email__iexact=invitation.email).first()
+        return membership_change_error(user, workspace, member_user=target, previous_role=invitation.role)
+    return None
+
+
+def scoped_invitation_or_404(view, pk):
+    """Invitation du périmètre de l'utilisateur (404 sinon) dont il peut gérer le cycle de vie."""
+    invitation = get_object_or_404(view.filter_by_workspace(dm.WorkspaceInvitation.objects.all()), pk=pk)
+    refusal = invitation_access_error(view.request.user, invitation.workspace, invitation)
+    if refusal:
+        raise PermissionDenied(refusal)
+    return invitation
+
+
+class _InvitationRightsMixin:
+    """
+    Invitation = futur rattachement : mêmes droits que l'intégration d'un collaborateur.
+    Sans ce contrôle, un simple membre s'invitait lui-même avec le rôle ADMIN puis acceptait.
+    Le workspace n'est plus choisi dans le formulaire : c'est celui sur lequel les droits
+    ont été vérifiés (sinon ``?workspace=`` d'un espace personnel + champ workspace d'un autre).
+    """
+
+    def _invitation_workspace(self):
+        return self.get_object().workspace if self.kwargs.get("pk") else self.get_current_workspace()
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            invitation = self.get_object() if self.kwargs.get("pk") else None
+            workspace = invitation.workspace if invitation else self.get_current_workspace()
+            refusal = invitation_access_error(request.user, workspace)
+            if refusal:
+                raise PermissionDenied(refusal)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        form.fields.pop("workspace", None)
+        if not form.instance.workspace_id:
+            form.instance.workspace = self._invitation_workspace()
+        return form
+
+    def invitation_refusal(self, form, previous_role=None):
+        from project.services.team_onboarding import membership_change_error
+
+        email = form.cleaned_data.get("email") or ""
+        target = get_user_model().objects.filter(email__iexact=email).first() if email else None
+        return membership_change_error(
+            self.request.user, form.instance.workspace, member_user=target,
+            role=form.cleaned_data.get("role"), previous_role=previous_role,
+        )
+
+
+class _InvitationAccessMixin:
+    """Liste / fiche / suppression : réservées aux gestionnaires d'invitations (les liens d'acceptation y figurent)."""
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            invitation = self.get_object() if self.kwargs.get("pk") else None
+            workspace = invitation.workspace if invitation else self.get_current_workspace()
+            refusal = invitation_access_error(request.user, workspace, invitation)
+            if refusal:
+                raise PermissionDenied(refusal)
+        return super().dispatch(request, *args, **kwargs)
+
+
+class WorkspaceInvitationListView(_InvitationAccessMixin, DevflowListView):
     model = dm.WorkspaceInvitation
     template_name = "project/workspace_invitation/list.html"
     section = "workspace"
@@ -8465,15 +8632,25 @@ class WorkspaceInvitationListView(DevflowListView):
     def get_queryset(self):
         return super().get_queryset().select_related("invited_by", "team", "workspace")
 
+    def get_context_data(self, **kwargs):
+        from project.services.rbac import RBACService
 
-class WorkspaceInvitationDetailView(DevflowDetailView):
+        ctx = super().get_context_data(**kwargs)
+        ws = self.get_current_workspace()
+        # Le lien public d'acceptation suffit à créer le compte invité : réservé à l'administration.
+        ctx["can_see_invitation_links"] = bool(ws and RBACService.can(self.request.user, "members.manage", workspace=ws))
+        ctx["can_invite"] = invitation_access_error(self.request.user, ws) is None
+        return ctx
+
+
+class WorkspaceInvitationDetailView(_InvitationAccessMixin, DevflowDetailView):
     model = dm.WorkspaceInvitation
     template_name = "project/workspace_invitation/detail.html"
     section = "workspace"
     page_title = "Détail invitation workspace"
 
 
-class WorkspaceInvitationCreateView(DevflowCreateView):
+class WorkspaceInvitationCreateView(_InvitationRightsMixin, DevflowCreateView):
     model = dm.WorkspaceInvitation
     form_class = WorkspaceInvitationForm
     template_name = "project/workspace_invitation/form.html"
@@ -8495,10 +8672,15 @@ class WorkspaceInvitationCreateView(DevflowCreateView):
         return initial
 
     def form_valid(self, form):
+        refusal = self.invitation_refusal(form)
+        if refusal:
+            form.add_error("role" if "rôle" in refusal else None, refusal)
+            return self.form_invalid(form)
         invitation = form.save(
             invited_by=self.request.user,
             workspace=self.get_current_workspace(),
         )
+        self.object = invitation  # pont React (forms/workspace-invitation) : succès + identifiant créé
         try:
             from project.services.invitations import send_invitation_email
             send_invitation_email(invitation, request=self.request)
@@ -8520,12 +8702,7 @@ class WorkspaceInvitationResendView(WorkspaceSecurityMixin, DevflowBaseMixin, Vi
 
     def post(self, request, pk):
         from datetime import timedelta as _td
-        invitation = self.filter_by_workspace(
-            dm.WorkspaceInvitation.objects.all()
-        ).filter(pk=pk).first()
-        if not invitation:
-            messages.error(request, "Invitation introuvable.")
-            return redirect("workspace_invitation_list")
+        invitation = scoped_invitation_or_404(self, pk)
         if invitation.status != dm.WorkspaceInvitation.Status.PENDING:
             messages.warning(request, "Seules les invitations en attente peuvent être renvoyées.")
             return redirect("workspace_invitation_list")
@@ -8548,12 +8725,7 @@ class WorkspaceInvitationRevokeView(WorkspaceSecurityMixin, DevflowBaseMixin, Vi
     """Révoque une invitation (PENDING → REVOKED)."""
 
     def post(self, request, pk):
-        invitation = self.filter_by_workspace(
-            dm.WorkspaceInvitation.objects.all()
-        ).filter(pk=pk).first()
-        if not invitation:
-            messages.error(request, "Invitation introuvable.")
-            return redirect("workspace_invitation_list")
+        invitation = scoped_invitation_or_404(self, pk)
         if invitation.status != dm.WorkspaceInvitation.Status.PENDING:
             messages.warning(request, "Seules les invitations en attente peuvent être révoquées.")
             return redirect("workspace_invitation_list")
@@ -8563,7 +8735,7 @@ class WorkspaceInvitationRevokeView(WorkspaceSecurityMixin, DevflowBaseMixin, Vi
         return redirect("workspace_invitation_list")
 
 
-class WorkspaceInvitationUpdateView(DevflowUpdateView):
+class WorkspaceInvitationUpdateView(_InvitationRightsMixin, DevflowUpdateView):
     model = dm.WorkspaceInvitation
     form_class = WorkspaceInvitationForm
     template_name = "project/workspace_invitation/form.html"
@@ -8571,8 +8743,16 @@ class WorkspaceInvitationUpdateView(DevflowUpdateView):
     page_title = "Modifier invitation workspace"
     success_list_url_name = "workspace_invitation_list"
 
+    def form_valid(self, form):
+        previous = dm.WorkspaceInvitation.objects.only("role").get(pk=form.instance.pk).role
+        refusal = self.invitation_refusal(form, previous_role=previous)
+        if refusal:
+            form.add_error("role" if "rôle" in refusal else None, refusal)
+            return self.form_invalid(form)
+        return super().form_valid(form)
 
-class WorkspaceInvitationDeleteView(DevflowDeleteView):
+
+class WorkspaceInvitationDeleteView(_InvitationAccessMixin, DevflowDeleteView):
     model = dm.WorkspaceInvitation
     section = "workspace"
     page_title = "Supprimer invitation workspace"
@@ -8583,9 +8763,7 @@ class WorkspaceInvitationAcceptView(DevflowBaseMixin, View):
     """Accept admin-side (réservée aux managers du workspace)."""
 
     def post(self, request, pk):
-        invitation = self.filter_by_workspace(
-            dm.WorkspaceInvitation.objects.all()
-        ).get(pk=pk)
+        invitation = scoped_invitation_or_404(self, pk)
         invitation.status = dm.WorkspaceInvitation.Status.ACCEPTED
         invitation.accepted_at = timezone.now()
         invitation.save(update_fields=["status", "accepted_at", "updated_at"])
@@ -8698,8 +8876,9 @@ class WorkspaceInvitationPublicAcceptView(View):
             dm.UserProfile.objects.get_or_create(
                 user=user, workspace=invitation.workspace,
             )
-            # TeamMembership
-            dm.TeamMembership.objects.update_or_create(
+            # TeamMembership : créé avec le rôle de l'invitation ; un rattachement existant garde
+            # son rôle (une ancienne invitation ne doit pas rétrograder ni promouvoir en silence).
+            membership, created = dm.TeamMembership.objects.get_or_create(
                 workspace=invitation.workspace,
                 user=user,
                 team=invitation.team,
@@ -8708,6 +8887,9 @@ class WorkspaceInvitationPublicAcceptView(View):
                     "status": dm.TeamMembership.Status.ACTIVE,
                 },
             )
+            if not created and membership.status != dm.TeamMembership.Status.ACTIVE:
+                membership.status = dm.TeamMembership.Status.ACTIVE
+                membership.save(update_fields=["status", "updated_at"])
             # Notification au demandeur
             if invitation.invited_by_id:
                 try:
@@ -9471,13 +9653,11 @@ class InvoiceCreateView(DevflowCreateView):
             # sans contexte), on prend celui du project si fourni.
             invoice.workspace = invoice.project.workspace
         if not invoice.workspace_id:
-            messages.error(
-                self.request,
-                "Impossible de créer la facture : aucun workspace de rattachement.",
-            )
-            return redirect("invoice_list")
+            form.add_error(None, "Impossible de créer la facture : aucun workspace de rattachement.")
+            return self.form_invalid(form)
         invoice.save()
         invoice.recompute_totals()
+        self.object = invoice  # pont React (forms/invoice) : succès + identifiant créé
         scope = (
             f"projet {invoice.project.name}" if invoice.project_id
             else "(facture libre)"

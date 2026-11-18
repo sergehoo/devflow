@@ -16,10 +16,12 @@ CSRF : imposé par ``SessionAuthentication`` (DRF) sur le POST.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, time
 from decimal import Decimal
 
 from django import forms
+from django.contrib import messages as dj_messages
 from django.contrib.messages import get_messages
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied as DjangoPermissionDenied
 from django.db.models import Model
@@ -30,6 +32,8 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+logger = logging.getLogger(__name__)
 
 
 def _form_views():
@@ -220,18 +224,35 @@ class LegacyFormView(APIView):
 
     def post(self, request, name, pk=None):
         view, response = self._run(request, name, pk)
-        notices = [str(m) for m in new_messages(request._request, self._stale)]
+        notices = new_messages(request._request, self._stale)
+        texts = [str(m) for m in notices]
         context = getattr(response, "context_data", None) or {}
         form = context.get("form")
-        if response.status_code in (301, 302) and getattr(view, "object", None) is not None:
+        redirected = response.status_code in (301, 302, 303)
+        obj = getattr(view, "object", None)
+        # Une vue qui refuse l'enregistrement par ``messages.error`` + redirection (ex. dépense
+        # validée niveau 2) reste un échec, même si elle expose l'objet chargé.
+        failures = [str(m) for m in notices if m.level >= dj_messages.ERROR]
+        if redirected and failures:
+            return Response({"detail": " ".join(failures)}, status=status.HTTP_400_BAD_REQUEST)
+        updated = pk is not None or name in ("profile", "password")  # profil : mise à jour sans pk
+        if redirected and getattr(obj, "pk", None) is not None:
             return Response(
-                {"id": view.object.pk, "messages": notices},
-                status=status.HTTP_200_OK if pk else status.HTTP_201_CREATED,
+                {"id": obj.pk, "messages": texts},
+                status=status.HTTP_200_OK if updated else status.HTTP_201_CREATED,
             )
-        if response.status_code in (301, 302) and name in ("profile", "password"):  # vues sans objet créé
-            return Response({"id": None, "messages": notices}, status=status.HTTP_200_OK)
         if form is not None and form.errors:
             return Response(form_errors(form), status=status.HTTP_400_BAD_REQUEST)
+        if redirected:
+            # Redirection (PRG) = enregistrement réussi pour une vue Django. Une vue qui n'expose
+            # pas ``self.object`` (mot de passe, méthodologie…) ne doit pas être présentée comme
+            # un échec alors que l'objet a été enregistré (cas « intégration d'un collaborateur »).
+            if name not in ("profile", "password"):
+                logger.warning("Pont formulaires « %s » : redirection sans objet exposé (%s).", name, type(view).__name__)
+            return Response({"id": None, "messages": texts}, status=status.HTTP_200_OK)
+        logger.warning(
+            "Pont formulaires « %s » : réponse inattendue %s (%s).", name, response.status_code, type(view).__name__,
+        )
         return Response({"detail": "Enregistrement impossible."}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -262,7 +283,6 @@ def run_action_view(request, view_class, kwargs):
     """
     import json
 
-    from django.contrib import messages as dj_messages
     from django.http import JsonResponse
 
     django_request = request._request

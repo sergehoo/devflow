@@ -48,6 +48,7 @@ def would_create_cycle(employee, manager, workspace) -> bool:
 class EmployeeOnboardingForm(forms.Form):
     MODE_EXISTING = "existing"
     MODE_NEW = "new"
+    DEFAULT_CAPACITY = Decimal("40")
 
     mode = forms.ChoiceField(
         label="Type d'ajout",
@@ -68,9 +69,12 @@ class EmployeeOnboardingForm(forms.Form):
         label="Rôle", choices=dm.TeamMembership.Role.choices,
         initial=dm.TeamMembership.Role.DEVELOPER,
     )
+    # Vide = 40 h pour un nouvel employé, capacité actuelle conservée pour un collaborateur
+    # existant (une valeur préremplie écrasait silencieusement un temps partiel).
     weekly_capacity = forms.DecimalField(
         label="Capacité hebdomadaire (h)", min_value=Decimal("1"), max_value=Decimal("80"),
-        decimal_places=2, initial=Decimal("40"),
+        decimal_places=2, required=False,
+        help_text="Vide : 40 h pour un nouvel employé, capacité actuelle conservée pour un collaborateur existant.",
     )
     arrival_date = forms.DateField(
         label="Date d'arrivée", initial=timezone.localdate,
@@ -121,6 +125,8 @@ class EmployeeOnboardingForm(forms.Form):
                     f"Cet utilisateur est déjà membre {'de cette équipe' if team else 'du workspace (sans équipe)'}.",
                 )
         elif mode == self.MODE_NEW:
+            if cleaned.get("weekly_capacity") is None:
+                cleaned["weekly_capacity"] = self.DEFAULT_CAPACITY
             for name in ("first_name", "last_name", "email"):
                 if not cleaned.get(name):
                     self.add_error(name, "Champ obligatoire pour un nouvel employé.")

@@ -41,6 +41,10 @@ class TeamMembersView(APIView):
                 user_id__in=[m.user_id for m in page], workspace=ws,
             ).select_related("manager__user")
         } if ws else {}
+        from project.services.team_onboarding import manageable_membership_ids, removable_membership_ids
+
+        manageable = manageable_membership_ids(request.user, ws, page) if ws else set()
+        removable = removable_membership_ids(request.user, ws, page) if ws else set()
         response = paginator.get_paginated_response([
             {
                 "id": m.pk,
@@ -55,11 +59,16 @@ class TeamMembersView(APIView):
                 "capacity_hours_per_week": float(profiles[m.user_id].capacity_hours_per_week)
                 if profiles.get(m.user_id) and profiles[m.user_id].capacity_hours_per_week is not None else None,
                 "is_owner": bool(ws and ws.owner_id == m.user_id),
+                "can_manage": m.pk in manageable,
+                "can_remove": m.pk in removable,
             }
             for m in page
         ])
+        from project.services.team_onboarding import can_manage_members
+
         response.data["permissions"] = {
             "can_manage_passwords": bool(ws and can_manage_passwords(request.user, ws)),
+            "can_manage": bool(ws and can_manage_members(request.user, ws)),
             "can_onboard": bool(ws and (RBACService.can(request.user, "members.invite", workspace=ws)
                                         or RBACService.can(request.user, "team.manage_members", workspace=ws))),
         }
