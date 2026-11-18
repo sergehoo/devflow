@@ -667,13 +667,80 @@ class ChatService:
             "type": "chat.event", "event": "read",
             "data": {"user_id": user.pk, "last_read_at": now.isoformat()},
         })
-        from project.services.realtime import push_to_users
+        from project.services.realtime import push_notification_count, push_to_users
         push_to_users([user.pk], "chat.read", {"channel_id": channel.pk})
+        # Conversation lue → ses notifications « message » aussi (cloche à jour).
+        notifications_read = cls._message_notifications(user, channel.pk).update(is_read=True, read_at=now)
+        if notifications_read:
+            push_notification_count(user)
         return {
             "channel_id": channel.pk,
             "last_read_at": now.isoformat(),
             "unread_count": 0,
+            "notifications_read": notifications_read,
         }
+
+    # ─── Notifications « message » ↔ lecture des conversations ─────────
+    @staticmethod
+    def _message_notifications(user, channel_id: int):
+        """Notifications « message » non lues de ``user`` pour un canal."""
+        return dm.Notification.objects.filter(
+            recipient=user, is_read=False,
+            notification_type=dm.Notification.NotificationType.MESSAGE,
+            metadata__channel_id=channel_id,
+        )
+
+    @classmethod
+    def acknowledge_message_notifications(cls, *, user, notifications, read_siblings: bool = True) -> list[int]:
+        """
+        Notifications « message » marquées lues (cloche, page Notifications) :
+        chaque conversation concernée est lue jusqu'au dernier de ces messages,
+        sans jamais faire reculer un repère de lecture. Sans cela, le badge de
+        la messagerie restait affiché alors que l'utilisateur avait tout lu.
+
+        ``notifications`` : queryset évalué AVANT le passage à « lu ».
+        ``read_siblings`` : marque aussi lues les notifications plus anciennes
+        du même fil (inutile pour « tout marquer comme lu »).
+        Retourne les canaux dont le repère de lecture a avancé.
+        """
+        message_ids: set[int] = set()
+        until: dict[int, datetime] = {}
+        rows = notifications.filter(
+            recipient=user, notification_type=dm.Notification.NotificationType.MESSAGE,
+        ).values_list("metadata", "created_at")
+        for meta, created_at in rows:
+            if not isinstance(meta, dict):
+                continue
+            channel_id, message_id = meta.get("channel_id"), meta.get("message_id")
+            if type(channel_id) is not int:  # notifications « message » des enregistrements : pas de fil
+                continue
+            until[channel_id] = max(until.get(channel_id, created_at), created_at)
+            if type(message_id) is int:
+                message_ids.add(message_id)
+        if not until:
+            return []
+
+        now = timezone.now()
+        advanced = []
+        marks = (
+            dm.Message.objects.filter(pk__in=message_ids, channel_id__in=list(until))
+            .values("channel_id").annotate(last=Max("created_at")).order_by()
+        )
+        for row in marks:
+            moved = dm.ChannelMembership.objects.filter(user=user, channel_id=row["channel_id"]).filter(
+                Q(last_read_at__isnull=True) | Q(last_read_at__lt=row["last"]),
+            ).update(last_read_at=row["last"], updated_at=now)
+            if moved:
+                advanced.append(row["channel_id"])
+        if read_siblings:
+            for channel_id, created_at in until.items():
+                cls._message_notifications(user, channel_id).filter(created_at__lte=created_at).update(
+                    is_read=True, read_at=now,
+                )
+        if advanced:
+            from project.services.realtime import push_to_users
+            push_to_users([user.pk], "chat.read", {"channel_ids": advanced})
+        return advanced
 
     # ─── Unread counts ──────────────────────────────────────────────────
     @classmethod

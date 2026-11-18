@@ -8,6 +8,7 @@ serializers Task / Workspace.
 
 import shutil
 import tempfile
+from datetime import timedelta
 
 from asgiref.sync import async_to_sync
 from channels.routing import URLRouter
@@ -15,6 +16,8 @@ from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from project import models as dm
@@ -244,3 +247,132 @@ class MessengerUiTests(MessengerFixture):
         self.assertContains(other, "mode: 'bubble'")
         for label in ("Membres channels", "Pièces jointes messages", ">Réactions<"):
             self.assertNotContains(other, label)
+
+
+class ReadSyncTests(MessengerFixture):
+    """Notifications « message » et lecture des conversations restent alignées (badge Messagerie)."""
+
+    NOTIF = "/api/v1/me/notifications"
+
+    def setUp(self):
+        self.dm_id = self.open_dm(self.alice, self.bob)
+        self.other_id = self.open_dm(self.alice, self.carol)
+        self.t0 = timezone.now() - timedelta(hours=1)
+
+    def say(self, author, channel_id, body, minutes):
+        resp = self.api(author).post(f"{API}/channels/{channel_id}/messages/", {"body": body}, format="json")
+        self.assertEqual(resp.status_code, 201, resp.content)
+        at = self.t0 + timedelta(minutes=minutes)
+        dm.Message.objects.filter(pk=resp.json()["id"]).update(created_at=at)
+        notif = dm.Notification.objects.get(recipient=self.alice, metadata__message_id=resp.json()["id"])
+        dm.Notification.objects.filter(pk=notif.pk).update(created_at=at)
+        return notif
+
+    def unread(self):
+        by_channel = self.api(self.alice).get(f"{API}/unread/").json()["by_channel"]
+        return {int(k): v for k, v in by_channel.items()}
+
+    def is_read(self, notif):
+        notif.refresh_from_db()
+        return notif.is_read
+
+    def test_opening_conversation_reads_its_message_notifications(self):
+        first = self.say(self.bob, self.dm_id, "Salut", 1)
+        second = self.say(self.bob, self.dm_id, "Tu es là ?", 2)
+        elsewhere = self.say(self.carol, self.other_id, "Coucou", 3)
+        task = dm.Notification.objects.create(
+            recipient=self.alice, workspace=self.ws_a, notification_type="TASK", title="Tâche",
+        )
+        resp = self.api(self.alice).post(f"{API}/channels/{self.dm_id}/mark-read/")
+        self.assertEqual((resp.status_code, resp.json()["notifications_read"]), (200, 2))
+        self.assertEqual([self.is_read(n) for n in (first, second, elsewhere, task)], [True, True, False, False])
+        summary = self.api(self.alice).get(f"{self.NOTIF}/summary/").json()
+        self.assertEqual(summary["unread_count"], 2)
+        self.assertEqual(self.api(self.alice).post(f"{API}/channels/{self.dm_id}/mark-read/").json()["notifications_read"], 0)
+
+    def test_read_all_notifications_clears_messenger_badge(self):
+        self.say(self.bob, self.dm_id, "Salut", 1)
+        self.say(self.carol, self.other_id, "Coucou", 2)
+        others = dict(dm.ChannelMembership.objects.exclude(user=self.alice).values_list("pk", "last_read_at"))
+        self.assertEqual(self.unread(), {self.dm_id: 1, self.other_id: 1})
+        self.assertEqual(self.api(self.alice).post(f"{self.NOTIF}/read-all/").json()["updated"], 2)
+        self.assertEqual(self.unread(), {})
+        conversations = self.api(self.alice).get(f"{API}/conversations/").json()["conversations"]
+        self.assertEqual({c["unread_count"] for c in conversations}, {0})
+        # Les repères de lecture des autres participants ne bougent pas.
+        self.assertEqual(dict(dm.ChannelMembership.objects.exclude(user=self.alice).values_list("pk", "last_read_at")), others)
+
+    def test_single_notification_reads_conversation_up_to_its_message(self):
+        older = self.say(self.bob, self.dm_id, "Un", 1)
+        middle = self.say(self.bob, self.dm_id, "Deux", 2)
+        newer = self.say(self.bob, self.dm_id, "Trois", 3)
+        resp = self.api(self.alice).post(f"{self.NOTIF}/{middle.pk}/read/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.unread(), {self.dm_id: 1})  # « Trois » reste non lu
+        self.assertEqual([self.is_read(n) for n in (older, middle, newer)], [True, True, False])
+        mark = dm.ChannelMembership.objects.get(channel_id=self.dm_id, user=self.alice).last_read_at
+        self.assertEqual(mark, self.t0 + timedelta(minutes=2))
+
+    def test_read_marker_never_moves_backwards(self):
+        old = self.say(self.bob, self.dm_id, "Ancien", 1)
+        self.say(self.bob, self.dm_id, "Récent", 2)
+        later = self.t0 + timedelta(minutes=30)
+        dm.ChannelMembership.objects.filter(channel_id=self.dm_id, user=self.alice).update(last_read_at=later)
+        dm.Notification.objects.filter(pk=old.pk).update(is_read=False)
+        self.api(self.alice).post(f"{self.NOTIF}/{old.pk}/read/")
+        self.assertEqual(dm.ChannelMembership.objects.get(channel_id=self.dm_id, user=self.alice).last_read_at, later)
+
+    def test_other_users_and_recording_notifications_untouched(self):
+        self.say(self.bob, self.dm_id, "Salut", 1)
+        self.api(self.alice).post(f"{API}/channels/{self.dm_id}/messages/", {"body": "Réponse"}, format="json")
+        bob_mark = dm.ChannelMembership.objects.get(channel_id=self.dm_id, user=self.bob).last_read_at
+        recording = dm.Notification.objects.create(
+            recipient=self.alice, workspace=self.ws_a, notification_type="MESSAGE", title="Compte rendu prêt",
+            url="/meetings/1/recordings/1/summary/", metadata={"meeting_id": 1},
+        )
+        resp = self.api(self.alice).post(f"{self.NOTIF}/{recording.pk}/read/")
+        self.assertEqual(resp.status_code, 200)
+        self.api(self.alice).post(f"{self.NOTIF}/read-all/")
+        self.assertEqual(dm.ChannelMembership.objects.get(channel_id=self.dm_id, user=self.bob).last_read_at, bob_mark)
+        self.assertEqual(self.api(self.bob).get(f"{API}/unread/").json()["total"], 1)
+
+    def test_legacy_notification_pages_read_conversations_too(self):
+        one = self.say(self.bob, self.dm_id, "Salut", 1)
+        self.say(self.carol, self.other_id, "Coucou", 2)
+        self.client.force_login(self.alice)
+        self.client.post(reverse("notification_mark_read", args=[one.pk]))
+        self.assertEqual(self.unread(), {self.other_id: 1})
+        self.client.post(reverse("notification_mark_all_read"))
+        self.assertEqual(self.unread(), {})
+
+    def test_migration_reconciles_existing_state(self):
+        from importlib import import_module
+
+        from django.apps import apps as global_apps
+
+        sync = import_module("project.migrations.0060_sync_chat_read_with_message_notifications").sync
+        acknowledged = self.say(self.bob, self.dm_id, "Lu par la cloche", 1)
+        self.say(self.carol, self.other_id, "Lu dans le fil", 2)
+        stale = self.say(self.carol, self.other_id, "Notification restée non lue", 3)
+        recording = dm.Notification.objects.create(
+            recipient=self.alice, workspace=self.ws_a, notification_type="MESSAGE", title="Compte rendu prêt",
+            metadata={"meeting_id": 1},
+        )
+        dm.Notification.objects.filter(pk=acknowledged.pk).update(is_read=True)
+        dm.ChannelMembership.objects.filter(channel_id=self.other_id, user=self.alice).update(
+            last_read_at=self.t0 + timedelta(minutes=5),
+        )
+        self.assertEqual(self.unread(), {self.dm_id: 1})
+        sync(global_apps, None)
+        sync(global_apps, None)  # idempotente
+        self.assertEqual(self.unread(), {})
+        self.assertEqual(
+            dm.ChannelMembership.objects.get(channel_id=self.dm_id, user=self.alice).last_read_at,
+            self.t0 + timedelta(minutes=1),
+        )
+        self.assertEqual(
+            dm.ChannelMembership.objects.get(channel_id=self.other_id, user=self.alice).last_read_at,
+            self.t0 + timedelta(minutes=5),  # jamais reculé
+        )
+        self.assertTrue(self.is_read(stale))
+        self.assertFalse(self.is_read(recording))

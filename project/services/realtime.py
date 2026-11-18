@@ -33,6 +33,19 @@ def push_to_users(user_ids, event: str, data: dict | None = None) -> None:
         logger.debug("realtime push failed (%s)", event, exc_info=True)
 
 
+def own_notifications(user):
+    """Notifications de ``user`` limitées aux workspaces auxquels il a encore accès."""
+    from project import models as dm
+    from project.utils.workspaces import get_user_workspace_ids
+
+    return dm.Notification.objects.filter(recipient=user, workspace_id__in=get_user_workspace_ids(user))
+
+
+def push_notification_count(user) -> None:
+    """Badge de la cloche (tous les onglets) : nombre de notifications non lues."""
+    push_to_users([user.pk], "notification.read", {"unread_count": own_notifications(user).filter(is_read=False).count()})
+
+
 def serialize_notification(n) -> dict:
     return {
         "id": n.pk,

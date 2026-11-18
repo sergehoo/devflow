@@ -188,10 +188,14 @@ export function useToggleReaction(channelId: number) {
 export function useMarkRead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (channelId: number) => api(`me/chat/channels/${channelId}/mark-read/`, { method: "POST" }),
-    onSuccess: (_r, channelId) => {
+    mutationFn: (channelId: number) =>
+      api<{ notifications_read?: number }>(`me/chat/channels/${channelId}/mark-read/`, { method: "POST" }),
+    onSuccess: (r, channelId) => {
       qc.setQueriesData<{ conversations: Conversation[] }>({ queryKey: CONVERSATIONS_KEY }, (d) =>
         d && { ...d, conversations: d.conversations.map((c) => (c.id === channelId ? { ...c, unread_count: 0 } : c)) });
+      // Ses notifications « message » viennent d'être lues : cloche à rafraîchir
+      // (clé NOTIF_KEY de features/notifications, écrite ici pour éviter un import circulaire).
+      if (r?.notifications_read) void qc.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
 }

@@ -1,8 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flattenMessages, messagesKey, upsertMessage } from "@/features/messenger/api";
+import { useNotificationSummary } from "@/features/notifications/api";
 import { Conversation } from "@/features/messenger/Conversation";
 import { ConversationList } from "@/features/messenger/ConversationList";
 import { FakeWebSocket } from "./fakeSocket";
@@ -59,6 +61,29 @@ describe("Messenger", () => {
     expect(screen.getByText("Bob écrit…")).toBeInTheDocument();
     act(() => ws.receive({ type: "reaction", message_id: 1, reactions: [{ emoji: "👍", count: 1, mine: false }] }));
     expect(await screen.findByRole("button", { name: "👍 1" })).toBeInTheDocument();
+  });
+
+  it("refreshes the notification bell when opening a conversation reads its notifications", async () => {
+    function Bell() {
+      const { data } = useNotificationSummary();
+      return <p>{data ? `${data.unread_count} notification(s)` : "…"}</p>;
+    }
+    let unread = 2;
+    const spy = mockApi({
+      "auth/me/": ME,
+      "POST me/chat/channels/9/mark-read/": () => { unread = 1; return { unread_count: 0, notifications_read: 1 }; },
+      "me/chat/channels/9/messages/": PAGE,
+      "me/notifications/summary/": () => ({ unread_count: unread, recent: [] }),
+    });
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return <><Bell />{open ? <Conversation channelId={9} title="Bob" /> : <button type="button" onClick={() => setOpen(true)}>Ouvrir</button>}</>;
+    }
+    renderPage(<Harness />);
+    expect(await screen.findByText("2 notification(s)")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Ouvrir" }));
+    await waitFor(() => expect(spy.mock.calls.some(([u, i]) => String(u).includes("mark-read") && i?.method === "POST")).toBe(true));
+    expect(await screen.findByText("1 notification(s)")).toBeInTheDocument();
   });
 
   it("groups conversations by section with unread badges", async () => {

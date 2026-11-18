@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CONVERSATIONS_KEY } from "@/features/messenger/api";
 import { useRealtimeStatus } from "@/lib/realtime";
 import { api } from "@/services/api";
 import type { Paginated } from "@/types/api";
@@ -62,13 +63,20 @@ export function useNotifications(params: { status?: string; type?: string; q?: s
   });
 }
 
-function useNotifMutation<V>(fn: (v: V) => Promise<unknown>) {
+function useNotifMutation<V>(fn: (v: V) => Promise<unknown>, { readsMessages = false } = {}) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: NOTIF_KEY }) });
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      // Une notification « message » lue lit aussi la conversation : badge Messagerie à rafraîchir.
+      if (readsMessages) void qc.invalidateQueries({ queryKey: CONVERSATIONS_KEY });
+      return qc.invalidateQueries({ queryKey: NOTIF_KEY });
+    },
+  });
 }
 
-export const useMarkRead = () => useNotifMutation((id: number) => api(`${BASE}${id}/read/`, { method: "POST" }));
-export const useMarkAllRead = () => useNotifMutation(() => api(`${BASE}read-all/`, { method: "POST" }));
+export const useMarkRead = () => useNotifMutation((id: number) => api(`${BASE}${id}/read/`, { method: "POST" }), { readsMessages: true });
+export const useMarkAllRead = () => useNotifMutation(() => api(`${BASE}read-all/`, { method: "POST" }), { readsMessages: true });
 export const useDeleteNotification = () => useNotifMutation((id: number) => api(`${BASE}${id}/`, { method: "DELETE" }));
 
 export function usePreferences() {

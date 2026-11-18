@@ -1,9 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useConversations } from "@/features/messenger/api";
 import { NotificationsPage } from "@/features/notifications/NotificationsPage";
 import { PreferencesPage } from "@/features/notifications/PreferencesPage";
-import { mockApi, renderPage } from "./utils";
+import { ME, mockApi, renderPage } from "./utils";
 
 const N = (id: number, extra = {}) => ({
   id, type: "TASK", type_label: "Tâche", title: `Notif ${id}`, body: "Corps", url: `/tasks/${id}/`, is_read: false,
@@ -25,6 +26,21 @@ describe("Notifications", () => {
     await waitFor(() => expect(spy.mock.calls.some(([u, i]) => String(u).includes("read-all") && i?.method === "POST")).toBe(true));
     await userEvent.click(screen.getByText("Notif 1"));
     await waitFor(() => expect(spy.mock.calls.some(([u, i]) => String(u).includes("me/notifications/1/read/") && i?.method === "POST")).toBe(true));
+  });
+
+  it("refreshes the messenger badge once message notifications are read", async () => {
+    function MessengerBadge() {
+      const { data } = useConversations();
+      return <p>{data ? `${data.length} conversation(s)` : "…"}</p>;
+    }
+    const spy = mockApi({ "auth/me/": ME, "me/chat/conversations/": { workspace_id: 1, conversations: [] },
+      "POST me/notifications/read-all/": { updated: 1 }, "me/notifications/": LIST });
+    renderPage(<><NotificationsPage /><MessengerBadge /></>, "/notifications");
+    expect(await screen.findByText("0 conversation(s)")).toBeInTheDocument();
+    const fetches = () => spy.mock.calls.filter(([u]) => String(u).includes("me/chat/conversations/")).length;
+    const before = fetches();
+    await userEvent.click(await screen.findByRole("button", { name: /Tout marquer comme lu/ }));
+    await waitFor(() => expect(fetches()).toBeGreaterThan(before));
   });
 
   it("saves only changed preferences", async () => {

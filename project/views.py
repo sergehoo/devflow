@@ -57,6 +57,8 @@ from .forms import (
     InvoiceGenerateForm,
 )
 from .services.budget import ProjectBudgetService
+from .services.chat import ChatService
+from .services.realtime import push_notification_count
 from .utils.workspaces import (
     ensure_workspace,
     get_user_workspace_ids,
@@ -6415,12 +6417,15 @@ class NotificationDeleteView(_OwnNotificationMixin, DevflowDeleteView):
 
 class NotificationMarkReadView(DevflowBaseMixin, View):
     def post(self, request, pk):
-        notification = get_object_or_404(
-            self.filter_by_workspace(dm.Notification.objects.filter(recipient=request.user)), pk=pk,
-        )
+        mine = self.filter_by_workspace(dm.Notification.objects.filter(recipient=request.user))
+        notification = get_object_or_404(mine, pk=pk)
+        if not notification.is_read:
+            # Notification « message » lue → conversation lue jusqu'à ce message.
+            ChatService.acknowledge_message_notifications(user=request.user, notifications=mine.filter(pk=pk))
         notification.is_read = True
         notification.read_at = timezone.now()
         notification.save(update_fields=["is_read", "read_at", "updated_at"])
+        push_notification_count(request.user)
         messages.success(request, "Notification marquée comme lue.")
         return redirect("notification_list")
 
@@ -6428,7 +6433,9 @@ class NotificationMarkReadView(DevflowBaseMixin, View):
 class NotificationMarkAllReadView(DevflowBaseMixin, View):
     def post(self, request):
         queryset = self.filter_by_workspace(dm.Notification.objects.filter(recipient=request.user, is_read=False))
+        ChatService.acknowledge_message_notifications(user=request.user, notifications=queryset, read_siblings=False)
         queryset.update(is_read=True, read_at=timezone.now())
+        push_notification_count(request.user)
         messages.success(request, "Toutes les notifications ont été marquées comme lues.")
         return redirect("notification_list")
 

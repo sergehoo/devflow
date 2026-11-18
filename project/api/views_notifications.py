@@ -26,20 +26,16 @@ from rest_framework.views import APIView
 
 from project import models as dm
 from project.api.pagination import FlexiblePagination
-from project.services.realtime import push_to_users, serialize_notification
-from project.utils.workspaces import get_user_workspace_ids
+from project.services.chat import ChatService
+from project.services.realtime import own_notifications, push_notification_count, serialize_notification
 
 
 def _own_notifications(user):
-    return (
-        dm.Notification.objects.filter(recipient=user, workspace_id__in=get_user_workspace_ids(user))
-        .select_related("workspace")
-        .order_by("-created_at")
-    )
+    return own_notifications(user).select_related("workspace").order_by("-created_at")
 
 
 def _sync_other_tabs(user):
-    push_to_users([user.pk], "notification.read", {"unread_count": _own_notifications(user).filter(is_read=False).count()})
+    push_notification_count(user)
 
 
 class NotificationListView(APIView):
@@ -87,6 +83,10 @@ class NotificationReadView(APIView):
     def post(self, request, pk):
         n = get_object_or_404(_own_notifications(request.user), pk=pk)
         if not n.is_read:
+            # Notification « message » lue → conversation lue jusqu'à ce message.
+            ChatService.acknowledge_message_notifications(
+                user=request.user, notifications=_own_notifications(request.user).filter(pk=n.pk),
+            )
             n.is_read, n.read_at = True, timezone.now()
             n.save(update_fields=["is_read", "read_at", "updated_at"])
         _sync_other_tabs(request.user)
@@ -97,7 +97,9 @@ class NotificationReadAllView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        updated = _own_notifications(request.user).filter(is_read=False).update(is_read=True, read_at=timezone.now())
+        unread = _own_notifications(request.user).filter(is_read=False)
+        ChatService.acknowledge_message_notifications(user=request.user, notifications=unread, read_siblings=False)
+        updated = unread.update(is_read=True, read_at=timezone.now())
         _sync_other_tabs(request.user)
         return Response({"updated": updated, "unread_count": 0})
 
