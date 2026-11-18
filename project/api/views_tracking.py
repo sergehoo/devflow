@@ -96,7 +96,10 @@ class TrackingBoardView(APIView):
 
 
 class TrackingExportProjectsView(APIView):
-    """Projets que l'utilisateur peut cocher dans la fenêtre d'export (``?workspace=`` : un espace)."""
+    """
+    Projets que l'utilisateur peut cocher dans la fenêtre d'export, avec leur dernière activité.
+    ``?workspace=`` : un espace ; ``?start=&end=`` (AAAA-MM-JJ) : nombre d'activités sur la période.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -110,8 +113,17 @@ class TrackingExportProjectsView(APIView):
             workspace_id = int(raw)
             if workspace_id not in scope["full"] | scope["assigned"]:
                 raise NotFound("Espace de travail introuvable.")
+        start, end = request.query_params.get("start"), request.query_params.get("end")
+        period = None
+        if start or end:
+            try:
+                period = (board._day(start or "", "start"), board._day(end or "", "end"))
+            except board.TrackingFilterError as exc:
+                raise ValidationError({"detail": str(exc)}) from exc
+            if period[1] < period[0]:
+                raise ValidationError({"detail": "La période se termine avant de commencer."})
         return Response({
-            "projects": board.exportable_projects(scope, request.user, workspace_id),
+            "projects": board.exportable_projects(scope, request.user, workspace_id, period),
             "max": board.MAX_EXPORT_PROJECTS,
             "scope": board.scope_label(scope),
         })

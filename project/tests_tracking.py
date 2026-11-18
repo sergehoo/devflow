@@ -1229,6 +1229,43 @@ class TrackingSelectionExportTests(TrackingFixture):
         self.assertEqual(self.lines(wb["PROJET"]), {})
         self.assertEqual(wb["PROJET"]["A5"].value, board.EMPTY_MENTION)
 
+    def test_selectable_projects_report_recent_activity(self):
+        interne = dm.Project.objects.get(workspace=self.ws, name="Interne")
+        portail = dm.Project.objects.get(workspace=self.ws, name="Portail")
+        march = timezone.make_aware(datetime(2026, 3, 12, 9))
+        done = dm.Task.objects.create(workspace=self.ws, project=self.afflux, title="Livraison", status="DONE")
+        dm.Task.objects.filter(pk=done.pk).update(created_at=march, completed_at=march)
+        dm.TimesheetEntry.objects.create(user=self.dev, workspace=self.ws, project=interne, entry_date=date(2026, 3, 5),
+                                         hours=Decimal("2"), description="Atelier")
+        fresh = dm.Task.objects.create(workspace=self.ws, project=portail, title="Nouvelle demande")
+        dm.Task.objects.filter(pk=fresh.pk).update(created_at=march)
+        dm.Task.objects.filter(project=portail).exclude(pk=fresh.pk).update(created_at=timezone.make_aware(datetime(2025, 1, 2)))
+        maintenance = dm.Task.objects.get(project=self.container, title__startswith="Maintenance")
+        dm.TimesheetEntry.objects.create(user=self.dev, workspace=self.ws, project=self.container, task=maintenance,
+                                         entry_date=date(2026, 3, 20), hours=Decimal("1"))
+
+        rows = self.selectable(start="2026-03-01", end="2026-03-31")
+        self.assertEqual(rows["AFFLUX"]["period_activity"], 2)  # tâche créée + terminée en mars
+        self.assertEqual(rows["Interne"]["period_activity"], 1)  # temps saisi en mars
+        self.assertEqual(rows["Interne"]["last_activity"], timezone.localdate().isoformat())  # tâches du jeu d'essai
+        self.assertEqual(rows["Portail"]["period_activity"], 1)  # tâche créée en mars
+        self.assertEqual(rows[importer.DEFAULT_CONTAINER]["period_activity"], 1)
+        self.assertEqual(rows[importer.DEFAULT_CONTAINER]["activity_count"], 3)
+        self.assertGreaterEqual(rows["AFFLUX"]["last_activity"], "2026-03-12")
+        self.assertIsNone(self.selectable()["AFFLUX"]["period_activity"])  # sans période
+        # Périmètre restreint : seule l'activité confiée compte.
+        self.assertEqual(self.selectable(self.dev, start="2026-03-01", end="2026-03-31")[importer.DEFAULT_CONTAINER]
+                         ["period_activity"], 1)
+        for params in ({"start": "2026-03-31", "end": "2026-03-01"}, {"start": "mars"}, {"end": "2026-03-31"}):
+            self.assertEqual(self.api(self.pm).get(f"{self.URL}projects/", params).status_code, 400, params)
+
+        # Mode « période » : le projet actif par une tâche créée en mars est exporté (actions à venir).
+        _response, wb = self.workbook([self.afflux.pk, portail.pk, interne.pk], mode="period")
+        lines = self.lines(wb["PROJET"])
+        self.assertEqual(set(lines), {"AFFLUX", "Portail", "Interne"})
+        self.assertIsNone(lines["Portail"][4])
+        self.assertIn("— Nouvelle demande", lines["Portail"][5])
+
     def test_default_export_is_unchanged(self):
         """L'export de l'écran Pilotage (GET, filtres) garde son comportement et ses jalons absents."""
         dm.Milestone.objects.create(workspace=self.ws, project=self.afflux, name="Généralisation",

@@ -148,6 +148,10 @@ export interface ExportProject {
   /** Projet d'accueil : il apporte ses activités (bloc « tâches / activités » du classeur). */
   is_activities: boolean;
   activity_count: number;
+  /** Dernière activité : tâche créée ou terminée, temps saisi, jalon atteint, historique du suivi. */
+  last_activity: string | null;
+  /** Activités sur la période demandée (`null` sans période). */
+  period_activity: number | null;
 }
 export type ExportMode = "full" | "period";
 export type ExportPeriod =
@@ -157,13 +161,16 @@ export type ExportPeriod =
   | { kind: "custom"; start: string; end: string };
 export interface SelectionExport { projects: number[]; period: ExportPeriod; mode: ExportMode }
 
-/** Projets cochables : le périmètre (RBAC, projets visibles) est calculé par Django. */
-export function useExportProjects(workspaceId: number | undefined, enabled: boolean) {
+/** Projets cochables : le périmètre (RBAC, projets visibles) et l'activité sont calculés par Django. */
+export function useExportProjects(workspaceId: number | undefined, enabled: boolean, range?: { start: string; end: string }) {
   return useQuery({
-    queryKey: [...KEY, "export-projects", workspaceId ?? null],
+    queryKey: [...KEY, "export-projects", workspaceId ?? null, range?.start ?? null, range?.end ?? null],
     queryFn: ({ signal }) =>
-      api<{ projects: ExportProject[]; max: number; scope: string }>("tracking/export/projects/", { signal, params: { workspace: workspaceId } }),
+      api<{ projects: ExportProject[]; max: number; scope: string }>("tracking/export/projects/", {
+        signal, params: { workspace: workspaceId, start: range?.start, end: range?.end },
+      }),
     enabled,
+    placeholderData: keepPreviousData,
   });
 }
 

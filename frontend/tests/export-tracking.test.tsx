@@ -7,9 +7,14 @@ import { ME, renderPage } from "./utils";
 const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const P = (id: number, name: string, extra = {}) => ({
   id, name, code: "", workspace: { id: 1, name: "Alpha" }, status: "IN_PROGRESS", status_label: "En cours",
-  start_date: "2024-01-08", target_date: "2026-12-31", progress: 40, is_activities: false, activity_count: 0, ...extra,
+  start_date: "2024-01-08", target_date: "2026-12-31", progress: 40, is_activities: false, activity_count: 0,
+  last_activity: null, period_activity: 0, ...extra,
 });
-const PROJECTS = [P(1, "AFFLUX"), P(2, "Portail"), P(3, "Activités Pôle Développement", { is_activities: true, activity_count: 4 })];
+const PROJECTS = [
+  P(1, "AFFLUX", { last_activity: "2026-11-12", period_activity: 3 }),
+  P(2, "Portail", { last_activity: "2025-06-02" }),
+  P(3, "Activités Pôle Développement", { is_activities: true, activity_count: 4, last_activity: "2026-11-15", period_activity: 7 }),
+];
 
 let exportResponse: () => Response;
 const json = (body: unknown, status = 200) =>
@@ -48,6 +53,27 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("Export Excel configuré", () => {
+  it("shows each project's latest activity and filters the projects active over the period", async () => {
+    const spy = mockFetch();
+    const dialog = await openDialog();
+    expect(within(dialog).getByRole("checkbox", { name: /AFFLUX/ }).closest("label")).toHaveTextContent("Dernière activité · 12 nov. 2026");
+    expect(within(dialog).getByRole("checkbox", { name: /AFFLUX/ }).closest("label")).toHaveTextContent("3 sur la période");
+    // La liste est demandée avec la période affichée (mois en cours par défaut).
+    const listCall = spy.mock.calls.map(([u]) => String(u)).find((u) => u.includes("tracking/export/projects/"))!;
+    expect(listCall).toMatch(/start=\d{4}-\d{2}-01/);
+    expect(listCall).toMatch(/end=\d{4}-\d{2}-\d{2}/);
+
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Actifs sur la période (2)" }));
+    const names = within(dialog).getAllByRole("checkbox").map((c) => c.closest("label")!.querySelector("span span")!.textContent);
+    expect(names).toEqual(["Activités Pôle Développement", "AFFLUX"]); // les plus actifs en tête
+    await userEvent.click(within(dialog).getByRole("button", { name: "Tout sélectionner (2)" }));
+    expect(within(dialog).getByText(/projet\(s\) coché\(s\) sur 3/)).toHaveTextContent("2 projet(s) coché(s) sur 3");
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Sans activité sur la période (1)" }));
+    expect(within(dialog).getByRole("checkbox", { name: /Portail/ })).not.toBeChecked();
+    expect(within(dialog).queryByRole("checkbox", { name: /AFFLUX/ })).not.toBeInTheDocument();
+  });
+
+
   it("sends the checked projects, the period and the mode, then downloads the workbook", async () => {
     const spy = mockFetch();
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);

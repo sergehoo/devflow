@@ -15,11 +15,12 @@ from __future__ import annotations
 import io
 import math
 from collections import Counter, defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from html import escape
 
 from django.db.models import Count, Max, Q, Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from project import models as dm
@@ -951,32 +952,102 @@ def parse_export_request(data) -> dict:
     return {"projects": ids, "mode": mode, "start": start, "end": end, "label": label}
 
 
-def exportable_projects(scope, user, workspace_id=None) -> list[dict]:
+def _day_of(value):
+    """Date (jour local) d'une valeur date ou date-heure."""
+    if isinstance(value, datetime):
+        return timezone.localdate(value) if timezone.is_aware(value) else value.date()
+    return value
+
+
+def activity_by_ref(project_ids, activity_ids, period=None) -> dict:
+    """
+    Activité de chaque ligne du suivi : ``{("P", projet) | ("T", activité): {"last": date, "count": int}}``.
+
+    Une activité = tâche créée ou terminée, temps saisi, jalon atteint, entrée d'historique du suivi
+    (mêmes rattachements que les lignes : tâches de 1er niveau d'un projet, activité et ses sous-tâches).
+    ``count`` : activités comprises dans ``period`` (``(début, fin)``), 0 sans période.
+    """
+    project_ids, activity_ids = set(project_ids), set(activity_ids)
+    stats: dict = defaultdict(lambda: {"last": None, "count": 0})
+
+    def collect(queryset, ref_field, date_field, kind, is_datetime):
+        refs = queryset.order_by().values(ref_field)
+        for ref_id, last in refs.annotate(m=Max(date_field)).values_list(ref_field, "m"):
+            day = _day_of(last)
+            bucket = stats[(kind, ref_id)]
+            if day and (bucket["last"] is None or day > bucket["last"]):
+                bucket["last"] = day
+        if period:
+            lookup = f"{date_field}__date__range" if is_datetime else f"{date_field}__range"
+            for ref_id, n in (queryset.filter(**{lookup: period}).order_by().values(ref_field)
+                              .annotate(n=Count("id")).values_list(ref_field, "n")):
+                stats[(kind, ref_id)]["count"] += n
+
+    entries = dm.TimesheetEntry.objects.filter(hours__gt=0)
+    tasks = dm.Task.objects.filter(is_archived=False)
+    logs = dm.ActivityLog.objects.filter(metadata__source=SOURCE, metadata__kind="action_done")
+    if project_ids:
+        top = tasks.filter(project_id__in=project_ids, parent__isnull=True)
+        collect(entries.filter(project_id__in=project_ids), "project_id", "entry_date", "P", False)
+        collect(top, "project_id", "created_at", "P", True)
+        collect(top.filter(completed_at__isnull=False), "project_id", "completed_at", "P", True)
+        collect(dm.Milestone.objects.filter(project_id__in=project_ids, is_archived=False, status=dm.Milestone.Status.DONE)
+                .annotate(reached=Coalesce("completed_at", "due_date")), "project_id", "reached", "P", False)
+        collect(logs.filter(project_id__in=project_ids, task__isnull=True), "project_id", "created_at", "P", True)
+    if activity_ids:
+        own, subs = tasks.filter(id__in=activity_ids), tasks.filter(parent_id__in=activity_ids)
+        collect(entries.filter(task_id__in=activity_ids), "task_id", "entry_date", "T", False)
+        collect(entries.filter(task__parent_id__in=activity_ids), "task__parent_id", "entry_date", "T", False)
+        collect(own, "id", "created_at", "T", True)
+        collect(own.filter(completed_at__isnull=False), "id", "completed_at", "T", True)
+        collect(subs, "parent_id", "created_at", "T", True)
+        collect(subs.filter(completed_at__isnull=False), "parent_id", "completed_at", "T", True)
+        collect(logs.filter(task_id__in=activity_ids), "task_id", "created_at", "T", True)
+    return dict(stats)
+
+
+def exportable_projects(scope, user, workspace_id=None, period=None) -> list[dict]:
     """
     Projets que l'utilisateur peut cocher : exactement ceux qui produisent des lignes
-    dans le suivi (projets visibles, et projets d'accueil pour leurs activités visibles).
+    dans le suivi (projets visibles, et projets d'accueil pour leurs activités visibles),
+    avec leur dernière activité et, si ``period`` est donnée, le nombre d'activités sur la période.
     """
     if not scope["full"] and not scope["assigned"]:
         return []
     p_filter, t_filter = _scope_filters(scope, user)
-    regular = set(dm.Project.objects.filter(p_filter, is_archived=False)
-                  .exclude(category__code=CONTAINER_CATEGORY).values_list("id", flat=True))
-    activities = dict(
-        dm.Task.objects.filter(t_filter, is_archived=False, parent__isnull=True, project__is_archived=False,
-                               project__category__code=CONTAINER_CATEGORY)
-        .order_by().values("project_id").annotate(n=Count("id", distinct=True)).values_list("project_id", "n"))
-    projects = dm.Project.objects.filter(id__in=regular | set(activities)).select_related("workspace")
+    regular = dm.Project.objects.filter(p_filter, is_archived=False).exclude(category__code=CONTAINER_CATEGORY)
+    hosted = dm.Task.objects.filter(t_filter, is_archived=False, parent__isnull=True, project__is_archived=False,
+                                    project__category__code=CONTAINER_CATEGORY)
     if workspace_id is not None:
-        projects = projects.filter(workspace_id=workspace_id)
-    return [{
-        "id": p.pk, "name": p.name, "code": p.code or "",
-        "workspace": {"id": p.workspace_id, "name": p.workspace.name},
-        "status": p.status, "status_label": p.get_status_display(),
-        "start_date": p.start_date.isoformat() if p.start_date else None,
-        "target_date": p.target_date.isoformat() if p.target_date else None,
-        "progress": p.progress_percent or 0,
-        "is_activities": p.pk in activities, "activity_count": activities.get(p.pk, 0),
-    } for p in projects.order_by("workspace__name", "name", "id")]
+        regular, hosted = regular.filter(workspace_id=workspace_id), hosted.filter(workspace_id=workspace_id)
+    regular_ids = set(regular.values_list("id", flat=True))
+    activities = defaultdict(set)  # projet d'accueil → ses activités visibles
+    for tid, pid in hosted.values_list("id", "project_id").distinct():
+        activities[pid].add(tid)
+    stats = activity_by_ref(regular_ids, {t for tids in activities.values() for t in tids}, period)
+
+    def summary(pk):
+        refs = [("T", t) for t in activities[pk]] if pk in activities else [("P", pk)]
+        found = [stats[r] for r in refs if r in stats]
+        last = max((b["last"] for b in found if b["last"]), default=None)
+        return last, sum(b["count"] for b in found)
+
+    projects = dm.Project.objects.filter(id__in=regular_ids | set(activities)).select_related("workspace")
+    rows = []
+    for p in projects.order_by("workspace__name", "name", "id"):
+        last, count = summary(p.pk)
+        rows.append({
+            "id": p.pk, "name": p.name, "code": p.code or "",
+            "workspace": {"id": p.workspace_id, "name": p.workspace.name},
+            "status": p.status, "status_label": p.get_status_display(),
+            "start_date": p.start_date.isoformat() if p.start_date else None,
+            "target_date": p.target_date.isoformat() if p.target_date else None,
+            "progress": p.progress_percent or 0,
+            "is_activities": p.pk in activities, "activity_count": len(activities.get(p.pk, ())),
+            "last_activity": last.isoformat() if last else None,
+            "period_activity": count if period else None,
+        })
+    return rows
 
 
 def _in_period(item, start, end) -> bool:
@@ -999,10 +1070,16 @@ def export_selection(scope, user, spec, projects, *, today=None, now=None) -> tu
     rows = build_rows(scope, user, selection=set(spec["projects"]), today=as_of, period=(start, end),
                       until=end, milestones=True)
     if mode == "period":
+        # Projets actifs sur la période : action menée (tâche terminée, temps saisi, jalon, historique)
+        # ou tâche créée pendant la période ; les actions menées sont limitées à la période.
+        refs = {(("P" if r["kind"] == "project" else "T"), r["pk"]) for r in rows}
+        stats = activity_by_ref({pk for kind, pk in refs if kind == "P"}, {pk for kind, pk in refs if kind == "T"},
+                                (start, end))
         kept = []
         for row in rows:
             done = [i for i in row["done"] if _in_period(i, start, end)]
-            if done:
+            ref = ("P" if row["kind"] == "project" else "T", row["pk"])
+            if done or stats.get(ref, {}).get("count"):
                 kept.append({**row, "done": done})
         rows = kept
     names = [p["name"] for p in projects]
@@ -1019,7 +1096,8 @@ def export_selection(scope, user, spec, projects, *, today=None, now=None) -> tu
     extra_info = [
         ("Mode d'export", EXPORT_MODES[mode] + (
             " : toutes les lignes des projets cochés, état à la date de fin."
-            if mode == "full" else " : lignes ayant au moins une action menée dans la période.")),
+            if mode == "full" else " : lignes actives sur la période (tâche créée ou terminée, temps saisi, "
+                                    "jalon atteint, historique) ; actions menées limitées à la période.")),
         ("Période", f"{spec['label']} — du {start:%d/%m/%Y} au {end:%d/%m/%Y}"),
         ("Indicateurs calculés au", f"{as_of:%d/%m/%Y}"),
         ("Projets sélectionnés", len(names)),

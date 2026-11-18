@@ -20,9 +20,10 @@ const KINDS: [Kind, string][] = [["month", "Mois"], ["quarter", "Trimestre"], ["
 const MONTHS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 const MODES: [ExportMode, string, string][] = [
   ["full", "Suivi complet", "Toutes les lignes des projets cochés, même anciens, dans l'état connu à la fin de la période."],
-  ["period", "Activités de la période", "Uniquement les lignes ayant une action menée pendant la période, limitées à ces actions."],
+  ["period", "Activités de la période", "Uniquement les projets actifs sur la période (tâches créées ou terminées, temps saisi, jalons), actions menées limitées à la période."],
 ];
 const MAX_YEARS = 5;
+type ActivityFilter = "all" | "active" | "idle";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const iso = (y: number, m: number, d: number) => `${y}-${pad(m)}-${pad(d)}`;
@@ -71,7 +72,6 @@ export function ExportTrackingDialog({ open, onOpenChange, preselect }: {
   open: boolean; onOpenChange: (open: boolean) => void; preselect?: Preselection;
 }) {
   const { data: me } = useMe();
-  const projects = useExportProjects(me?.workspace?.id, open && Boolean(me));
   const now = new Date();
   const [q, setQ] = useState("");
   const [checked, setChecked] = useState<Set<number>>(() => new Set());
@@ -86,23 +86,33 @@ export function ExportTrackingDialog({ open, onOpenChange, preselect }: {
   const [presetting, setPresetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [activity, setActivity] = useState<ActivityFilter>("all");
+
+  const period: ExportPeriod = kind === "custom" ? { kind, start, end }
+    : kind === "year" ? { kind, year } : kind === "quarter" ? { kind, year, quarter } : { kind, year, month };
+  const invalidPeriod = periodError(period);
+  const range = periodRange(period);
+  // L'activité de chaque projet (dernière activité, activités sur la période) suit la période choisie.
+  const projects = useExportProjects(me?.workspace?.id, open && Boolean(me), invalidPeriod ? undefined : range);
 
   const all = useMemo(() => projects.data?.projects ?? [], [projects.data]);
   const known = useMemo(() => new Set(all.map((p) => p.id)), [all]);
+  const activeCount = all.filter((p) => (p.period_activity ?? 0) > 0).length;
   const visible = useMemo(() => {
     const tokens = fold(q).split(/\s+/).filter(Boolean);
-    return all.filter((p) => tokens.every((t) => fold(`${p.name} ${p.code} ${p.workspace.name}`).includes(t)));
-  }, [all, q]);
+    const shown = all.filter((p) => tokens.every((t) => fold(`${p.name} ${p.code} ${p.workspace.name}`).includes(t))
+      && (activity === "all" || ((p.period_activity ?? 0) > 0) === (activity === "active")));
+    // Projets actifs : les plus actifs, puis les plus récents, en tête.
+    return activity === "active"
+      ? [...shown].sort((a, b) => (b.period_activity ?? 0) - (a.period_activity ?? 0) || (b.last_activity ?? "").localeCompare(a.last_activity ?? ""))
+      : shown;
+  }, [all, q, activity]);
   // Les cases cochées comptent seules : un projet masqué par la recherche reste coché.
   const selected = all.filter((p) => checked.has(p.id));
   const hidden = selected.filter((p) => !visible.includes(p)).length;
   const max = projects.data?.max ?? 500;
   const years = Array.from({ length: 8 }, (_, i) => now.getFullYear() - 6 + i);
 
-  const period: ExportPeriod = kind === "custom" ? { kind, start, end }
-    : kind === "year" ? { kind, year } : kind === "quarter" ? { kind, year, quarter } : { kind, year, month };
-  const invalidPeriod = periodError(period);
-  const range = periodRange(period);
   const tooMany = selected.length > max;
 
   const toggle = (id: number) => setChecked((prev) => {
@@ -164,7 +174,7 @@ export function ExportTrackingDialog({ open, onOpenChange, preselect }: {
               </Button>
             )}
             <Button size="sm" variant="ghost" disabled={!visible.length} onClick={selectVisible}>
-              Tout sélectionner{q ? ` (${visible.length})` : ""}
+              Tout sélectionner{q || activity !== "all" ? ` (${visible.length})` : ""}
             </Button>
             <Button size="sm" variant="ghost" disabled={!checked.size} onClick={clear}>Tout désélectionner</Button>
           </div>
@@ -173,6 +183,16 @@ export function ExportTrackingDialog({ open, onOpenChange, preselect }: {
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle-foreground" aria-hidden="true" />
             <Input type="search" className="pl-9" placeholder="Rechercher un projet (nom, code)…" aria-label="Rechercher un projet à exporter"
               value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <div role="radiogroup" aria-label="Filtrer par activité" className="flex flex-wrap gap-1.5">
+            {([["all", "Tous", all.length], ["active", "Actifs sur la période", activeCount],
+              ["idle", "Sans activité sur la période", all.length - activeCount]] as const).map(([value, label, count]) => (
+              <button key={value} type="button" role="radio" aria-checked={activity === value} onClick={() => setActivity(value)}
+                className={cn("rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                  activity === value ? "border-primary-strong bg-primary-faint text-foreground" : "text-muted-foreground hover:bg-hover hover:text-foreground")}>
+                {label} <span className="tabular-nums">({count})</span>
+              </button>
+            ))}
           </div>
           {projects.isPending ? <Skeleton className="h-56" /> : projects.isError ? (
             <ErrorState message={projects.error.message} onRetry={() => void projects.refetch()} />
@@ -195,7 +215,13 @@ export function ExportTrackingDialog({ open, onOpenChange, preselect }: {
                             : `${p.start_date || p.target_date ? `${formatDate(p.start_date)} → ${formatDate(p.target_date)}` : "Dates non renseignées"} · ${p.progress} %`}
                         </span>
                       </span>
-                      {p.is_activities ? <Badge className="bg-primary-soft text-foreground">Activités</Badge> : <Badge>{p.status_label}</Badge>}
+                      <span className="flex shrink-0 flex-col items-end gap-1 text-right">
+                        {p.is_activities ? <Badge className="bg-primary-soft text-foreground">Activités</Badge> : <Badge>{p.status_label}</Badge>}
+                        <span className="text-[11px] leading-tight text-muted-foreground">
+                          {p.last_activity ? <>Dernière activité · <time dateTime={p.last_activity}>{formatDate(p.last_activity)}</time></> : "Aucune activité"}
+                          {(p.period_activity ?? 0) > 0 && <span className="block font-semibold text-brand">{p.period_activity} sur la période</span>}
+                        </span>
+                      </span>
                     </label>
                   </li>
                 );
