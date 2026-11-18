@@ -1,157 +1,232 @@
 """
-Identité DevFlow — générateur unique du symbole « flux binaire ».
+Identité DevFlow — générateur unique du logo « ampoule & engrenage ».
 
-Un flux en S (le « / » de </>) : voie centrale jaune (le workflow) encadrée de
-deux voies de données composées de caractères 0 / 1 orientés le long de la
-courbe. Trois niveaux de détail : détaillé (≥ 56 px), compact (1 = trait,
-0 = point, 24–48 px), favicon (16–32 px, traits épaissis et resserrés).
+Source : le logo officiel (PSD « devflow LOGO ») exporté en
+``scripts/brand/devflow-logo-master.png`` (symbole + « DEV » + « flow » manuscrit).
 
-Produit, depuis la même géométrie : public/brand/*.svg, public/favicon.svg,
-les PNG (16, 32, 180, 192, 512, maskable), src/components/brand/geometry.ts et
-le partiel Django templates/partials/_devflow_mark.html.
+- Le symbole (ampoule jaune, rayons, engrenage) est redessiné en vecteur sur la
+  géométrie mesurée du dessin source (repère 1143 × 1262, traits de 37) : net à
+  toutes les tailles, engrenage en ``currentColor`` (noir en clair, crème en sombre).
+  Trois niveaux : détaillé (≥ 56 px), compact (24–48 px, traits épaissis) et
+  favicon (16–32 px : ampoule seule, engrenage 6 dents, moyeu plein).
+- Le logo complet (avec « flow » manuscrit) reste l'image du PSD, déclinée en
+  clair et en sombre (noir → crème).
 
-    cd frontend && python3 scripts/generate-brand.py      # PNG : rsvg-convert (librsvg)
+Produit : public/brand/*.svg|png, public/favicon.svg, les PNG d'icônes (16, 32,
+180, 192, 512, maskable), src/components/brand/geometry.ts et le partiel Django
+templates/partials/_devflow_mark.html.
+
+    cd frontend && ../venv/bin/python scripts/generate-brand.py     # PNG : rsvg-convert (librsvg) + Pillow
 """
+import json
 import math
 import os
 import shutil
 import subprocess
-import sys
 
-YELLOW, INK, AMBER, CREAM = "#FFD54F", "#202020", "#B07A00", "#F5F1E8"
-BITS = "1011001110100101101100101"
+YELLOW, INK, CREAM = "#FFD119", "#000000", "#F5F1E8"
 
-def bez(p, t):
-    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = p
-    u = 1 - t
-    x = u**3*x0 + 3*u*u*t*x1 + 3*u*t*t*x2 + t**3*x3
-    y = u**3*y0 + 3*u*u*t*y1 + 3*u*t*t*y2 + t**3*y3
-    dx = 3*u*u*(x1-x0) + 6*u*t*(x2-x1) + 3*t*t*(x3-x2)
-    dy = 3*u*u*(y1-y0) + 6*u*t*(y2-y1) + 3*t*t*(y3-y2)
-    n = math.hypot(dx, dy) or 1
-    return x, y, dx/n, dy/n
+# ─── Géométrie mesurée sur le dessin source (repère 1143 × 1262) ─────────────
+CX, CY, R = 571.5, 584.5, 376.5          # ampoule : cercle, axe de symétrie x = CX
+GY = 612.0                               # centre de l'engrenage (x = CX)
+STROKE = 37
+GAP = (225.9, 237.1)                     # ouverture du verre en haut à gauche (degrés, y vers le bas)
+DEPART, K1, K2 = 126.3, 42.0, 48.0       # raccord cercle → culot (courbe de Bézier)
+NECK_X, NECK_Y, BASE_Y, CORNER = 405.0, 990.0, 1164.0, 62.0
+BAND = (583.5, 658.5)                    # bague du culot : interruption centrale
+CAP = (98.0, 79.0)                       # demi-ellipse sous le culot
+GEAR = dict(r_tip=252.0, w_tip=38.0, r_base=191.0, w_base=45.0)
+RING = 101.0
+OFFSET = (0.5, 0.5)
+LEFT_RAYS = [((571.5, 18.5), (571.5, 125.5)), ((394.5, 118.8), (409.3, 156.8)), ((180.8, 180.3), (256.7, 256.2)),
+             ((120.2, 393.9), (157.3, 408.5)), ((19.5, 570.9), (126.5, 570.9))]
 
-def lane(p, offset, n=400, t0=0.0, t1=1.0):
-    pts = []
-    for i in range(n + 1):
-        x, y, tx, ty = bez(p, t0 + (t1 - t0) * i / n)
-        pts.append((x - ty*offset, y + tx*offset, tx, ty))
-    return pts
 
-def path_d(pts, every=10):
-    """Polyligne allégée (1 point sur ``every``, 1 décimale) : quelques centaines d'octets par voie."""
-    keep = pts[::every] + ([pts[-1]] if (len(pts) - 1) % every else [])
-    return "M" + "L".join(f"{x:.1f} {y:.1f}" for x, y, *_ in keep)
+def num(v):
+    return f"{v:.1f}".rstrip("0").rstrip(".")
 
-def resample(pts, step, margin):
-    out, acc = [], 0.0
-    total = sum(math.hypot(b[0]-a[0], b[1]-a[1]) for a, b in zip(pts, pts[1:]))
-    target = margin
-    for a, b in zip(pts, pts[1:]):
-        seg = math.hypot(b[0]-a[0], b[1]-a[1])
-        while acc + seg >= target and target <= total - margin + 1e-6:
-            r = (target - acc) / seg
-            out.append((a[0] + (b[0]-a[0])*r, a[1] + (b[1]-a[1])*r, a[2], a[3]))
-            target += step
-        acc += seg
-    return out
 
-def glyphs(pts, color, step, h, start=0):
+def pt(p):
+    return f"{num(p[0] + OFFSET[0])} {num(p[1] + OFFSET[1])}"
+
+
+def mirror(p):
+    return (2 * CX - p[0], p[1])
+
+
+def polar(deg, r=R):
+    t = math.radians(deg)
+    return CX + r * math.cos(t), CY + r * math.sin(t)
+
+
+def rays_d(keep=None):
     out = []
-    for i, (x, y, tx, ty) in enumerate(resample(pts, step, step * 0.5)):
-        ang = math.degrees(math.atan2(ty, tx))
-        bit = BITS[(start + i) % len(BITS)]
-        if bit == "1":
-            shape = f'<rect x="{-h*0.15:.2f}" y="{-h/2:.2f}" width="{h*0.3:.2f}" height="{h:.2f}" rx="{h*0.15:.2f}"/>'
-        else:
-            shape = f'<ellipse rx="{h*0.3:.2f}" ry="{h*0.42:.2f}" fill="none" stroke="{color}" stroke-width="{h*0.24:.2f}"/>'
-        out.append(f'<g transform="translate({x:.1f} {y:.1f}) rotate({ang:.0f})">{shape}</g>')
-    return f'<g fill="{color}">' + "".join(out) + "</g>"
-
-CURVE = [(9, 50), (31, 51), (33, 13), (55, 14)]
-GAP = 9
-
-def mark(ink=INK, amber=AMBER, kind="detailed"):
-    """detailed : caractères 0/1 (≥ 64 px) ; compact : trait/point (24–48 px) ; tiny : favicon 16–32 px."""
-    if kind == "detailed":
-        a, b, c = lane(CURVE, -GAP, t0=0.10, t1=1.0), lane(CURVE, 0), lane(CURVE, GAP, t0=0.0, t1=0.90)
-        return (f'<path d="{path_d(b)}" fill="none" stroke="{YELLOW}" stroke-width="6.5" stroke-linecap="round"/>'
-                + glyphs(a, ink, 5.5, 6.2) + glyphs(c, amber, 5.5, 6.2, start=7))
-    gap, wc, wl, dash, k = (9.5, 8, 4.6, "0 7.5 6 7.5", 1.0) if kind == "compact" else (11, 10, 6.5, "0 9.5 8 9.5", 0.84)
-    curve = [(32 + (x - 32) * k, 32 + (y - 32) * k) for x, y in CURVE]  # resserré : rien ne déborde du cadre
-    a, b, c = lane(curve, -gap, t0=0.12, t1=1.0), lane(curve, 0), lane(curve, gap, t0=0.0, t1=0.88)
-    out = [f'<path d="{path_d(b)}" fill="none" stroke="{YELLOW}" stroke-width="{wc}" stroke-linecap="round"/>']
-    for pts, col in ((a, ink), (c, amber)):
-        out.append(f'<path d="{path_d(pts)}" fill="none" stroke="{col}" stroke-width="{wl}" stroke-linecap="round" stroke-dasharray="{dash}"/>')
+    for i, (a, b) in enumerate(LEFT_RAYS):
+        if keep is not None and i not in keep:
+            continue
+        out.append(f"M{pt(a)}L{pt(b)}")
+        if a[0] != CX:
+            out.append(f"M{pt(mirror(a))}L{pt(mirror(b))}")
     return "".join(out)
 
-def svg(inner, size=64):
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="{size}" height="{size}">{inner}</svg>'
+
+def bulb_d():
+    """Verre (arc ouvert en haut à gauche), raccords, culot arrondi, bague et demi-ellipse."""
+    xl, xr = NECK_X, 2 * CX - NECK_X
+    a1 = polar(DEPART)
+    t = math.radians(DEPART)
+    c1 = (a1[0] + K1 * math.sin(t), a1[1] - K1 * math.cos(t))
+    c2 = (xl, NECK_Y - K2)
+    outline = (f"M{pt(polar(GAP[0]))}A{num(R)} {num(R)} 0 0 0 {pt(a1)}C{pt(c1)} {pt(c2)} {pt((xl, NECK_Y))}"
+               f"L{pt((xl, BASE_Y - CORNER))}A{num(CORNER)} {num(CORNER)} 0 0 0 {pt((xl + CORNER, BASE_Y))}"
+               f"L{pt((xr - CORNER, BASE_Y))}A{num(CORNER)} {num(CORNER)} 0 0 0 {pt((xr, BASE_Y - CORNER))}"
+               f"L{pt((xr, NECK_Y))}C{pt(mirror(c2))} {pt(mirror(c1))} {pt(mirror(a1))}"
+               f"A{num(R)} {num(R)} 0 0 0 {pt(polar(GAP[1]))}")
+    band = f"M{pt((xl, NECK_Y))}L{pt((BAND[0], NECK_Y))}M{pt((BAND[1], NECK_Y))}L{pt((xr, NECK_Y))}"
+    cap = f"M{pt((CX - CAP[0], BASE_Y))}A{num(CAP[0])} {num(CAP[1])} 0 0 0 {pt((CX + CAP[0], BASE_Y))}"
+    return outline + band + cap
 
 
-WORD = ('<text x="78" y="43" font-family="Inter, \'Segoe UI\', system-ui, -apple-system, sans-serif" font-size="31" '
-        'font-weight="800" letter-spacing="-0.8"><tspan fill="{ink}">Dev</tspan><tspan fill="{flow}">Flow</tspan></text>')
+def gear_d(teeth=8):
+    """Engrenage : dents à sommet plat, creux en arc de cercle. Moins de dents = dents élargies."""
+    widen = 8 / teeth * (1.15 if teeth != 8 else 1)
+    r_tip, w_tip, r_base, w_base = GEAR["r_tip"], GEAR["w_tip"] * widen, GEAR["r_base"], GEAR["w_base"] * widen
+    rv = math.hypot(w_base, r_base)
+    teeth_pts = []
+    for k in range(teeth):
+        a = math.radians(-90 + 360 * k / teeth)
+        ux, uy, vx, vy = math.cos(a), math.sin(a), -math.sin(a), math.cos(a)
+        p = lambda rad, tan: (CX + rad * ux + tan * vx, GY + rad * uy + tan * vy)  # noqa: E731
+        teeth_pts.append((p(r_base, -w_base), p(r_tip, -w_tip), p(r_tip, w_tip), p(r_base, w_base)))
+    d = [f"M{pt(teeth_pts[0][0])}"]
+    for k, (_bl, tl, tr, br) in enumerate(teeth_pts):
+        d.append(f"L{pt(tl)}L{pt(tr)}L{pt(br)}A{num(rv)} {num(rv)} 0 0 1 {pt(teeth_pts[(k + 1) % teeth][0])}")
+    return "".join(d) + "Z"
 
 
-def file_svg(inner, w=64, title="DevFlow"):
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} 64" width="{w}" height="64" role="img" aria-label="{title}">'
-            f'<title>{title}</title>{inner}</svg>\n')
+# Niveaux de détail : épaisseur des traits, rayons conservés, dents, moyeu (anneau ou disque plein).
+LEVELS = {
+    "detailed": dict(stroke=STROKE, rays=None, teeth=8, hub=("ring", RING)),
+    "compact": dict(stroke=60, rays=None, teeth=8, hub=("ring", RING)),
+    "tiny": dict(stroke=95, rays=(), teeth=6, hub=("dot", 60)),
+}
+
+
+def view_box(level):
+    """Cadre carré centré sur le symbole (rayons compris, ou ampoule seule pour le favicon)."""
+    spec = LEVELS[level]
+    half = spec["stroke"] / 2
+    top = (18.5 if spec["rays"] is None else 208.0) - half - 20
+    bottom = 1243 + half + 20
+    size = bottom - top
+    return f"{num(CX + OFFSET[0] - size / 2)} {num(top + OFFSET[1])} {num(size)} {num(size)}"
+
+
+def geometry(level):
+    spec = LEVELS[level]
+    kind, radius = spec["hub"]
+    return {
+        "viewBox": view_box(level), "stroke": spec["stroke"],
+        "yellow": rays_d(spec["rays"]) + bulb_d(), "gear": gear_d(spec["teeth"]),
+        "hub": {"cx": CX + OFFSET[0], "cy": GY + OFFSET[1], "r": radius, "filled": kind == "dot"},
+    }
+
+
+def mark_inner(level, ink=INK, ink_attr=None):
+    g = geometry(level)
+    ink_paint = ink_attr or f'stroke="{ink}"'
+    line = f'fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="{g["stroke"]}"'
+    hub = g["hub"]
+    hub_svg = (f'<circle cx="{num(hub["cx"])}" cy="{num(hub["cy"])}" r="{num(hub["r"])}" {ink_paint.replace("stroke", "fill")}/>'
+               if hub["filled"] else
+               f'<circle cx="{num(hub["cx"])}" cy="{num(hub["cy"])}" r="{num(hub["r"])}" {ink_paint} {line}/>')
+    return (f'<path d="{g["yellow"]}" stroke="{YELLOW}" {line}/>'
+            f'<path d="{g["gear"]}" {ink_paint} {line}/>{hub_svg}')
+
+
+def file_svg(level, ink=INK, title="DevFlow", extra=""):
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view_box(level)}" width="64" height="64" role="img" '
+            f'aria-label="{title}"><title>{title}</title>{extra}{mark_inner(level, ink)}</svg>\n')
 
 
 def favicon():
-    """Favicon adaptatif : encre anthracite en clair, crème en sombre (règle CSS, pas de var() en attribut)."""
-    inner = mark(ink="INK", kind="tiny").replace('stroke="INK"', 'class="ink"')
-    style = "<style>.ink{stroke:#202020}@media (prefers-color-scheme:dark){.ink{stroke:#F5F1E8}}</style>"
-    return file_svg(style + inner)
+    """Favicon adaptatif : engrenage noir en clair, crème en sombre (règle CSS, pas de var() en attribut)."""
+    style = f"<style>.ink{{stroke:{INK};fill:{INK}}}@media (prefers-color-scheme:dark){{.ink{{stroke:{CREAM};fill:{CREAM}}}}}</style>"
+    inner = mark_inner("tiny", ink_attr='class="ink"').replace('class="ink" fill="none"', 'class="ink" style="fill:none"')
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view_box("tiny")}" width="64" height="64">'
+            f"{style}{inner}</svg>\n")
 
+
+def on_background(level, pad_ratio):
+    """Icône pleine (fond crème) : ``pad_ratio`` = marge autour du symbole (zone sûre des icônes masquables)."""
+    x, y, size, _ = (float(v) for v in view_box(level).split())
+    pad = size * pad_ratio
+    vb = f"{num(x - pad)} {num(y - pad)} {num(size + 2 * pad)} {num(size + 2 * pad)}"
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}"><rect x="{num(x - pad)}" y="{num(y - pad)}" '
+            f'width="{num(size + 2 * pad)}" height="{num(size + 2 * pad)}" fill="{CREAM}"/>{mark_inner(level)}</svg>')
 
 
 def ts_module():
     """Géométrie du symbole pour le composant React (même source que les fichiers SVG)."""
-    import json
-
-    def glyph_list(pts, step, start):
-        out = []
-        for i, (x, y, tx, ty) in enumerate(resample(pts, step, step * 0.5)):
-            out.append([round(x, 1), round(y, 1), round(math.degrees(math.atan2(ty, tx))), int(BITS[(start + i) % len(BITS)])])
-        return out
-
-    a, b, c = lane(CURVE, -GAP, t0=0.10, t1=1.0), lane(CURVE, 0), lane(CURVE, GAP, t0=0.0, t1=0.90)
-    detailed = {"flow": path_d(b), "ink": glyph_list(a, 5.5, 0), "amber": glyph_list(c, 5.5, 7)}
-    ca, cb, cc = lane(CURVE, -9.5, t0=0.12, t1=1.0), lane(CURVE, 0), lane(CURVE, 9.5, t0=0.0, t1=0.88)
-    compact = {"flow": path_d(cb), "ink": path_d(ca), "amber": path_d(cc)}
-    return ("/* Généré par frontend/scripts/generate-brand.py (symbole « flux binaire ») — ne pas éditer à la main. */\n"
-            f"export const BRAND_COLORS = {{ yellow: \"{YELLOW}\", amber: \"{AMBER}\" }} as const;\n"
-            "/** Glyphes : [x, y, angle (deg), bit 0|1] le long des voies de flux (repère 64 × 64). */\n"
-            f"export const DETAILED = {json.dumps(detailed)} as const;\n"
-            f"export const COMPACT = {json.dumps(compact)} as const;\n")
-
+    levels = {name: geometry(name) for name in LEVELS}
+    return ("/* Généré par frontend/scripts/generate-brand.py (logo « ampoule & engrenage ») — ne pas éditer à la main. */\n"
+            f'export const BRAND_COLORS = {{ yellow: "{YELLOW}", ink: "{INK}", cream: "{CREAM}" }} as const;\n'
+            "/** Symbole : chemins jaunes (rayons + ampoule), engrenage et moyeu (encre = currentColor). */\n"
+            f"export const MARK = {json.dumps(levels)} as const;\n"
+            "export type MarkLevel = keyof typeof MARK;\n"
+            "/** Logo complet (image du PSD) : largeur / hauteur. */\n"
+            f"export const FULL_LOGO_RATIO = {FULL_RATIO};\n")
 
 
 def django_partial():
-    """Symbole compact en SVG inline pour les gabarits Django historiques (aucune dépendance aux statiques)."""
-    inner = mark(ink="currentColor", kind="compact")
-    return ("{# Symbole DevFlow (généré par frontend/scripts/generate-brand.py). Usage : {% include \"partials/_devflow_mark.html\" with size=28 %} #}\n"
-            '<svg class="devflow-mark" viewBox="0 0 64 64" width="{{ size|default:28 }}" height="{{ size|default:28 }}" aria-hidden="true" focusable="false" '
-            f'style="flex-shrink:0">{inner}</svg>\n')
+    """Symbole compact en SVG inline pour les gabarits Django historiques (engrenage en currentColor)."""
+    return ('{# Symbole DevFlow (généré par frontend/scripts/generate-brand.py). Usage : {% include "partials/_devflow_mark.html" with size=28 %} #}\n'
+            f'<svg class="devflow-mark" viewBox="{view_box("compact")}" width="{{{{ size|default:28 }}}}" height="{{{{ size|default:28 }}}}" '
+            f'aria-hidden="true" focusable="false" style="flex-shrink:0">{mark_inner("compact", "currentColor")}</svg>\n')
+
+
+FULL_RATIO = 1.0
+
+
+def full_logos(public):
+    """Logo complet clair / sombre depuis l'image maîtresse (noir → crème, jaune conservé)."""
+    global FULL_RATIO
+    from PIL import Image
+
+    master = Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "brand", "devflow-logo-master.png")).convert("RGBA")
+    FULL_RATIO = round(master.width / master.height, 4)
+    width = 720  # ≥ 3 × la plus grande largeur affichée
+    light = master.resize((width, round(width / FULL_RATIO)), Image.LANCZOS)
+    cream = tuple(int(CREAM[i:i + 2], 16) for i in (1, 3, 5))
+    # Part de noir d'un pixel = 1 - max(r, g, b) : le noir devient crème, le jaune ne bouge pas.
+    pixels = light.load()
+    dark = Image.new("RGBA", light.size)
+    out = dark.load()
+    for y in range(light.height):
+        for x in range(light.width):
+            pr, pg, pb, pa = pixels[x, y]
+            k = 1 - max(pr, pg, pb) / 255
+            out[x, y] = (min(255, round(pr + k * cream[0])), min(255, round(pg + k * cream[1])),
+                         min(255, round(pb + k * cream[2])), pa)
+    for image, name in ((light, "devflow-logo.png"), (dark, "devflow-logo-dark.png")):
+        # Deux teintes + transparence : une palette de 256 couleurs suffit (fichier ~4 × plus léger).
+        image.quantize(colors=256, method=Image.Quantize.FASTOCTREE).save(os.path.join(public, "brand", name), optimize=True)
 
 
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # frontend/
     public = os.path.join(root, "public")
-    os.makedirs(os.path.join(public, "brand"), exist_ok=True)
-    tiny = file_svg(mark(kind="tiny"))
-    cream = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="-14 -14 92 92" width="92" height="92">'
-             f'<rect x="-14" y="-14" width="92" height="92" fill="{CREAM}"/>{mark(kind="compact")}</svg>')
-    maskable = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="-26 -26 116 116" width="116" height="116">'
-                f'<rect x="-26" y="-26" width="116" height="116" fill="{CREAM}"/>{mark(kind="compact")}</svg>')
+    brand = os.path.join(public, "brand")
+    os.makedirs(brand, exist_ok=True)
+    for old in ("logo.svg", "logo-dark.svg"):  # ancien logo « flux binaire »
+        if os.path.exists(os.path.join(brand, old)):
+            os.remove(os.path.join(brand, old))
+    full_logos(public)
     files = {
-        "brand/logo-mark.svg": file_svg(mark()),
-        "brand/logo-mark-dark.svg": file_svg(mark(ink=CREAM)),
-        "brand/logo-mark-compact.svg": file_svg(mark(kind="compact")),
-        "brand/logo-mark-compact-dark.svg": file_svg(mark(ink=CREAM, kind="compact")),
-        "brand/logo.svg": file_svg(mark() + WORD.format(ink=INK, flow=AMBER), w=228),
-        "brand/logo-dark.svg": file_svg(mark(ink=CREAM) + WORD.format(ink=CREAM, flow=YELLOW), w=228),
+        "brand/logo-mark.svg": file_svg("detailed"),
+        "brand/logo-mark-dark.svg": file_svg("detailed", CREAM),
+        "brand/logo-mark-compact.svg": file_svg("compact"),
+        "brand/logo-mark-compact-dark.svg": file_svg("compact", CREAM),
         "favicon.svg": favicon(),
     }
     for name, content in files.items():
@@ -165,10 +240,15 @@ def main():
     if not rsvg:
         print("rsvg-convert absent : PNG non régénérés (brew install librsvg / apt install librsvg2-bin).")
         return
-    for source, size, target in ((tiny, 16, "favicon-16.png"), (tiny, 32, "favicon-32.png"), (cream, 180, "apple-touch-icon.png"),
-                                 (files["brand/logo-mark-compact.svg"], 192, "icon-192.png"),
-                                 (files["brand/logo-mark.svg"], 512, "icon-512.png"), (maskable, 512, "icon-maskable-512.png")):
-        subprocess.run([rsvg, "-w", str(size), "-h", str(size), "-o", os.path.join(public, target), "-"], input=source.encode(), check=True)
+    tiny = file_svg("tiny")
+    for source, size, target in ((tiny, 16, "favicon-16.png"), (tiny, 32, "favicon-32.png"),
+                                 (on_background("compact", 0.10), 180, "apple-touch-icon.png"),
+                                 # Fond crème : l'engrenage reste lisible sur les écrans d'accueil sombres.
+                                 (on_background("compact", 0.08), 192, "icon-192.png"),
+                                 (on_background("detailed", 0.08), 512, "icon-512.png"),
+                                 (on_background("detailed", 0.16), 512, "icon-maskable-512.png")):
+        subprocess.run([rsvg, "-w", str(size), "-h", str(size), "-o", os.path.join(public, target), "-"],
+                       input=source.encode(), check=True)
     print("Identité DevFlow régénérée.")
 
 

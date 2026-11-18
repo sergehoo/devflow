@@ -237,6 +237,15 @@ def has_markup(value) -> bool:
     return bool(_HTML_TAG_RE.search(text)) or html.unescape(text) != text
 
 
+@register.simple_tag
+def brand_logo_url() -> str:
+    """URL absolue du logo DevFlow pour les e-mails (vide si ``SITE_URL`` n'est pas configuré)."""
+    from django.conf import settings
+
+    base = (getattr(settings, "SITE_URL", "") or "").rstrip("/")
+    return f"{base}/static/frontend/brand/devflow-logo.png" if base.startswith(("http://", "https://")) else ""
+
+
 @register.filter
 def full_amount(value):
     """

@@ -35,7 +35,7 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-md rounded-[22px] border border-transparent bg-card shadow-card dark:border-border p-8 shadow-xl">
-        <DevFlowLogo variant="full" size={56} className="mb-6" />
+        <DevFlowLogo variant="full" size={76} className="mb-6" />
         <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-brand">Connexion sécurisée</p>
         <h1 className="mt-2 font-serif text-3xl font-semibold text-foreground">Bienvenue sur DevFlow</h1>
         <p className="mt-2 text-sm text-muted-foreground">Connectez-vous pour retrouver vos projets, tâches et équipes.</p>

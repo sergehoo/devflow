@@ -1,0 +1,12 @@
+{# Logo complet DevFlow « ampoule & engrenage » (fichiers générés par frontend/scripts/generate-brand.py). #}
+{# Usage : {% include "partials/_devflow_logo.html" with height=40 %}  — tone="dark" : version pour fond sombre. #}
+<span class="devflow-logo{% if tone == 'dark' %} devflow-logo--on-dark{% endif %}" role="img" aria-label="DevFlow"
+      style="display:inline-flex;align-items:center;flex-shrink:0;height:{{ height|default:40 }}px">
+    <img class="devflow-logo__light" src="/static/frontend/brand/devflow-logo.png" alt="" height="{{ height|default:40 }}" decoding="async" style="height:100%;width:auto">
+    <img class="devflow-logo__dark" src="/static/frontend/brand/devflow-logo-dark.png" alt="" height="{{ height|default:40 }}" decoding="async" style="height:100%;width:auto">
+</span>
+<style>
+    .devflow-logo__dark { display: none; }
+    [data-theme="dark"] .devflow-logo__light, .devflow-logo--on-dark .devflow-logo__light { display: none; }
+    [data-theme="dark"] .devflow-logo__dark, .devflow-logo--on-dark .devflow-logo__dark { display: block; }
+</style>

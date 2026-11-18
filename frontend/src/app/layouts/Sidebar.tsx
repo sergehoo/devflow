@@ -22,7 +22,7 @@ const visibleItems = (group: NavGroup, me: Me) => (group.items ?? []).filter((i)
 const isActive = (pathname: string, to: string) => (EXACT.has(to) ? pathname === to : pathname === to || pathname.startsWith(`${to}/`));
 
 /** Symbole DevFlow (variante compacte, lisible de 24 à 48 px). */
-export function BrandMark({ size = 44 }: { size?: number }) {
+export function BrandMark({ size = 48 }: { size?: number }) {
   return <DevFlowLogo variant="compact" size={size} title={null} />;
 }
 
@@ -175,7 +175,7 @@ export function MobileSidebar({ me }: { me: Me }) {
           onClick={(e) => { if ((e.target as HTMLElement).closest("a")) setOpen(false); }}
         >
           <Drawer.Title className="flex items-center gap-3 px-1 pb-4 text-lg font-bold">
-            <DevFlowLogo variant="full" size={36} />
+            <DevFlowLogo variant="full" size={56} />
           </Drawer.Title>
           <nav aria-label="Navigation principale" className="flex-1 space-y-1 overflow-y-auto">
             {NAVIGATION.filter((g) => !g.visible || g.visible(me)).map((g) =>
