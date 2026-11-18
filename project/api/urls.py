@@ -347,6 +347,7 @@ from project.api import views_tracking as _trk  # noqa: E402
 urlpatterns += [
     path("tracking/board/", _trk.TrackingBoardView.as_view(), name="api-tracking-board"),
     path("tracking/export/", _trk.TrackingExportView.as_view(), name="api-tracking-export"),
+    path("tracking/export/projects/", _trk.TrackingExportProjectsView.as_view(), name="api-tracking-export-projects"),
     path("tracking/brief/", _trk.TrackingBriefView.as_view(), name="api-tracking-brief"),
     path("tracking/projects/<int:pk>/", _trk.TrackingProjectView.as_view(), name="api-tracking-project"),
     path("tracking/imports/", _trk.TrackingImportListView.as_view(), name="api-tracking-import-list"),

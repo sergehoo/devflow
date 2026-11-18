@@ -5,7 +5,7 @@
  * (`project/api/views_tracking.py`). Ce module ne fait que lire et transmettre.
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/services/api";
+import { api, ApiError, getCookie } from "@/services/api";
 
 export interface Ref { id: number; name: string }
 export interface Choice { value: string; label: string }
@@ -132,6 +132,73 @@ export function trackingExportUrl(filters: TrackingFilters = {}, fmt: "xlsx" | "
 }
 
 const KEY = ["tracking"] as const;
+
+/* ─── Fenêtre d'export (bouton « Exporter le suivi Excel » des Projets et du tableau de bord) ─── */
+
+export interface ExportProject {
+  id: number;
+  name: string;
+  code: string;
+  workspace: Ref;
+  status: string;
+  status_label: string;
+  start_date: string | null;
+  target_date: string | null;
+  progress: number;
+  /** Projet d'accueil : il apporte ses activités (bloc « tâches / activités » du classeur). */
+  is_activities: boolean;
+  activity_count: number;
+}
+export type ExportMode = "full" | "period";
+export type ExportPeriod =
+  | { kind: "month"; year: number; month: number }
+  | { kind: "quarter"; year: number; quarter: number }
+  | { kind: "year"; year: number }
+  | { kind: "custom"; start: string; end: string };
+export interface SelectionExport { projects: number[]; period: ExportPeriod; mode: ExportMode }
+
+/** Projets cochables : le périmètre (RBAC, projets visibles) est calculé par Django. */
+export function useExportProjects(workspaceId: number | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: [...KEY, "export-projects", workspaceId ?? null],
+    queryFn: ({ signal }) =>
+      api<{ projects: ExportProject[]; max: number; scope: string }>("tracking/export/projects/", { signal, params: { workspace: workspaceId } }),
+    enabled,
+  });
+}
+
+export const EXPORT_ERROR = "Le fichier n'a pas pu être généré. Réessayez ; si le problème persiste, contactez l'administrateur.";
+
+/** POST de la sélection → classeur Excel enregistré par le navigateur. Erreurs 400 : `ApiError` (détail, `inaccessible`). */
+export async function downloadSelectionExport(body: SelectionExport): Promise<{ filename: string; rows: number }> {
+  const token = getCookie("csrftoken");
+  const res = await fetch("/api/v1/tracking/export/", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json", Accept: "application/json", "X-Requested-With": "XMLHttpRequest",
+      ...(token ? { "X-CSRFToken": token } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const type = res.headers.get("Content-Type") ?? "";
+  if (!res.ok) {
+    const data: unknown = type.includes("application/json") ? await res.json().catch(() => null) : null;
+    const detail = data && typeof data === "object" && typeof (data as { detail?: unknown }).detail === "string"
+      ? (data as { detail: string }).detail : EXPORT_ERROR;
+    throw new ApiError(res.status, detail, data);
+  }
+  if (!type.includes("spreadsheetml")) throw new ApiError(res.status, EXPORT_ERROR, null);
+  const match = /filename="?([^";]+)"?/i.exec(res.headers.get("Content-Disposition") ?? "");
+  const filename = match?.[1] ?? "Suivi_Pole_Developpement.xlsx";
+  const url = URL.createObjectURL(await res.blob());
+  const link = Object.assign(document.createElement("a"), { href: url, download: filename });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  return { filename, rows: Number(res.headers.get("X-Export-Rows") ?? 0) };
+}
 
 export function useTrackingBoard(filters: TrackingFilters) {
   return useQuery({

@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from html import escape
 
-from django.db.models import Max, Q, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.utils import timezone
 
 from project import models as dm
@@ -125,12 +125,18 @@ def _hours(value) -> str:
     return f"{text} h"
 
 
-def build_rows(scope, user=None, *, project_id=None, today=None, period=None) -> list[dict]:
+def build_rows(scope, user=None, *, project_id=None, selection=None, today=None, period=None,
+               until=None, milestones=False) -> list[dict]:
     """
     Lignes « projet » puis « tâche / activité » visibles dans ``scope``.
 
     ``period`` (``(début, fin)``, défaut : 30 derniers jours) borne les saisies de temps
     reprises dans les actions menées ; les heures totales (``logged_hours``) couvrent tout.
+
+    Export configuré : ``selection`` restreint aux projets choisis (un projet d'accueil
+    apporte ses activités) ; ``until`` donne l'état à cette date (historique, alertes et
+    tâches terminées postérieurs écartés, tâche terminée après ``until`` encore à venir) ;
+    ``milestones`` ajoute les jalons atteints (actions menées) et à venir.
     """
     today = today or timezone.localdate()
     period = period or time_period(today=today)
@@ -145,6 +151,9 @@ def build_rows(scope, user=None, *, project_id=None, today=None, period=None) ->
     if project_id is not None:
         project_ids = project_ids.filter(pk=project_id)
         activity_ids = activity_ids.filter(project_id=project_id)
+    if selection is not None:
+        project_ids = project_ids.filter(pk__in=selection)
+        activity_ids = activity_ids.filter(project_id__in=selection)
     pids = set(project_ids.values_list("id", flat=True))
     tids = set(activity_ids.values_list("id", flat=True))
 
@@ -176,9 +185,10 @@ def build_rows(scope, user=None, *, project_id=None, today=None, period=None) ->
                  .select_related("user").order_by("id")):
         assignees[link.task_id].append(link.user)
 
+    known_by = Q(created_at__date__lte=until) if until else Q()
     done, upcoming = defaultdict(list), defaultdict(list)
     for pid, tid, text, title, created in (
-            dm.ActivityLog.objects.filter(metadata__source=SOURCE, metadata__kind="action_done")
+            dm.ActivityLog.objects.filter(known_by, metadata__source=SOURCE, metadata__kind="action_done")
             .filter(Q(project_id__in=pids, task__isnull=True) | Q(task_id__in=tids))
             .order_by("id").values_list("project_id", "task_id", "description", "title", "created_at")):
         done[("T", tid) if tid else ("P", pid)].append(
@@ -189,16 +199,30 @@ def build_rows(scope, user=None, *, project_id=None, today=None, period=None) ->
                  .values_list("id", "project_id", "parent_id", "title", "status", "due_date", "completed_at"))
     for pk, pid, parent_id, title, status, due, completed in task_rows:
         ref = ("T", parent_id) if parent_id else ("P", pid)
+        if status == dm.Task.Status.DONE and until and completed and completed.date() > until:
+            status = dm.Task.Status.IN_PROGRESS  # terminée après la date de fin : encore à venir à cette date
         if status == dm.Task.Status.DONE:
             done[ref].append({"text": title, "date": completed.date().isoformat() if completed else None,
                               "source": "task", "id": pk})
         elif status != dm.Task.Status.CANCELLED:
             upcoming[ref].append({"id": pk, "text": title, "due": due.isoformat() if due else None,
                                   "status": status, "late": bool(due and due < today)})
+    if milestones:
+        for pk, pid, name, status, due, completed in (
+                dm.Milestone.objects.filter(project_id__in=pids, is_archived=False).order_by("due_date", "id")
+                .values_list("id", "project_id", "name", "status", "due_date", "completed_at")):
+            when = completed or due
+            if status == dm.Milestone.Status.DONE and not (until and when > until):
+                done[("P", pid)].append({"text": f"Jalon atteint : {name}", "date": when.isoformat(),
+                                         "source": "milestone"})
+            else:
+                label = "Jalon manqué" if status == dm.Milestone.Status.MISSED else "Jalon"
+                upcoming[("P", pid)].append({"id": None, "text": f"{label} : {name}", "due": due.isoformat(),
+                                             "status": status, "late": bool(due < today)})
 
     alerts = defaultdict(list)
     for pk, pid, tid, title, severity, category in (
-            dm.Risk.objects.filter(is_archived=False, status__in=[dm.Risk.Status.OPEN, dm.Risk.Status.ESCALATED])
+            dm.Risk.objects.filter(known_by, is_archived=False, status__in=[dm.Risk.Status.OPEN, dm.Risk.Status.ESCALATED])
             .filter(Q(project_id__in=pids) | Q(task_id__in=tids))
             .order_by("id").values_list("id", "project_id", "task_id", "title", "severity", "category")):
         alerts[("T", tid) if tid in tids else ("P", pid)].append({
@@ -208,6 +232,7 @@ def build_rows(scope, user=None, *, project_id=None, today=None, period=None) ->
     for pid, pk, title, tid in (
             through.objects.filter(meetingdecision__status=dm.MeetingDecision.Status.PENDING,
                                    meetingdecision__is_archived=False)
+            .filter(Q(meetingdecision__created_at__date__lte=until) if until else Q())
             .filter(Q(project_id__in=pids) | Q(meetingdecision__task_id__in=tids))
             .order_by("meetingdecision_id")
             .values_list("project_id", "meetingdecision_id", "meetingdecision__title", "meetingdecision__task_id")):
@@ -715,10 +740,11 @@ def _row_height(values) -> float:
     return float(min(409, max(32, 15 * lines + 6)))
 
 
-def export_xlsx(rows, *, user, scope_text, filter_lines, period=None, now=None) -> bytes:
+def export_xlsx(rows, *, user, scope_text, filter_lines, period=None, now=None, extra_info=None) -> bytes:
     """
     Classeur de suivi au format utilisé par la Direction : feuille ``PROJET``
     avec le bloc projets puis le bloc tâches, mêmes colonnes et intitulés.
+    ``extra_info`` : lignes (libellé, valeur) ajoutées à la feuille « Informations ».
     """
     from openpyxl import Workbook
     from openpyxl.formatting.rule import CellIsRule, ColorScaleRule
@@ -845,6 +871,7 @@ def export_xlsx(rows, *, user, scope_text, filter_lines, period=None, now=None) 
             ("Actions menées", f"Historique, tâches terminées et {period_text}" if period_text else "Historique et tâches terminées"),
             ("Projets", sum(1 for r in rows if r["kind"] == "project")),
             ("Tâches / activités", sum(1 for r in rows if r["kind"] == "task")),
+            *(extra_info or ()),
     ), start=1):
         info.cell(row=index, column=1, value=label).font = Font(name=font, bold=True)
         info.cell(row=index, column=2, value=value).alignment = Alignment(wrap_text=True, vertical="top")
@@ -852,6 +879,159 @@ def export_xlsx(rows, *, user, scope_text, filter_lines, period=None, now=None) 
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Export Excel configuré : projets cochés, période, mode (bouton des Projets)
+# ---------------------------------------------------------------------------
+EXPORT_MODES = {
+    "full": "Suivi complet des projets sélectionnés",
+    "period": "Activités réalisées pendant la période",
+}
+MAX_EXPORT_PROJECTS = 500
+MAX_EXPORT_YEARS = 5
+MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre",
+          "octobre", "novembre", "décembre")
+MAX_INFO_CHARS = 30000  # une cellule Excel accepte 32 767 caractères
+
+
+def _month_end(year, month) -> date:
+    return (date(year + month // 12, month % 12 + 1, 1)) - timedelta(days=1)
+
+
+def _export_period(raw) -> tuple[date, date, str]:
+    """Période demandée → (début, fin, libellé). Mois, trimestre, année ou dates libres."""
+    if not isinstance(raw, dict):
+        raise TrackingFilterError("Choisissez une période.")
+    kind = raw.get("kind")
+    if kind == "custom":
+        start = _day(raw.get("start") or "", "date de début")
+        end = _day(raw.get("end") or "", "date de fin")
+        if not (2000 <= start.year <= 2100 and 2000 <= end.year <= 2100):
+            raise TrackingFilterError("Les dates doivent être comprises entre 2000 et 2100.")
+        if end < start:
+            raise TrackingFilterError("La période se termine avant de commencer.")
+        if end > date(start.year + MAX_EXPORT_YEARS, start.month, 1):
+            raise TrackingFilterError(f"La période ne peut pas dépasser {MAX_EXPORT_YEARS} ans.")
+        return start, end, f"du {start:%d/%m/%Y} au {end:%d/%m/%Y}"
+    if kind not in ("month", "quarter", "year"):
+        raise TrackingFilterError("Type de période invalide.")
+    year = _int(raw.get("year"), "année", low=2000, high=2100)
+    if kind == "year":
+        return date(year, 1, 1), date(year, 12, 31), f"année {year}"
+    if kind == "quarter":
+        quarter = _int(raw.get("quarter"), "trimestre", low=1, high=4)
+        return date(year, 3 * quarter - 2, 1), _month_end(year, 3 * quarter), f"T{quarter} {year}"
+    month = _int(raw.get("month"), "mois", low=1, high=12)
+    return date(year, month, 1), _month_end(year, month), f"{MONTHS[month - 1]} {year}"
+
+
+def parse_export_request(data) -> dict:
+    """Corps JSON du bouton d'export → ``{projects, mode, start, end, label}`` validés."""
+    if not isinstance(data, dict):
+        raise TrackingFilterError("Requête d'export invalide.")
+    raw_ids = data.get("projects")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        raise TrackingFilterError("Sélectionnez au moins un projet.")
+    ids = []
+    for value in raw_ids:
+        text = str(value).strip() if isinstance(value, (int, str)) and not isinstance(value, bool) else ""
+        if not (text.isascii() and text.isdigit() and 0 < len(text) <= 12) or int(text) == 0:
+            raise TrackingFilterError("Identifiant de projet invalide.")
+        ids.append(int(text))
+    ids = list(dict.fromkeys(ids))
+    if len(ids) > MAX_EXPORT_PROJECTS:
+        raise TrackingFilterError(
+            f"{len(ids)} projets sélectionnés : {MAX_EXPORT_PROJECTS} au maximum par fichier. "
+            "Répartissez la sélection sur plusieurs exports.")
+    mode = data.get("mode")
+    if mode not in EXPORT_MODES:
+        raise TrackingFilterError("Mode d'export invalide.")
+    start, end, label = _export_period(data.get("period"))
+    return {"projects": ids, "mode": mode, "start": start, "end": end, "label": label}
+
+
+def exportable_projects(scope, user, workspace_id=None) -> list[dict]:
+    """
+    Projets que l'utilisateur peut cocher : exactement ceux qui produisent des lignes
+    dans le suivi (projets visibles, et projets d'accueil pour leurs activités visibles).
+    """
+    if not scope["full"] and not scope["assigned"]:
+        return []
+    p_filter, t_filter = _scope_filters(scope, user)
+    regular = set(dm.Project.objects.filter(p_filter, is_archived=False)
+                  .exclude(category__code=CONTAINER_CATEGORY).values_list("id", flat=True))
+    activities = dict(
+        dm.Task.objects.filter(t_filter, is_archived=False, parent__isnull=True, project__is_archived=False,
+                               project__category__code=CONTAINER_CATEGORY)
+        .order_by().values("project_id").annotate(n=Count("id", distinct=True)).values_list("project_id", "n"))
+    projects = dm.Project.objects.filter(id__in=regular | set(activities)).select_related("workspace")
+    if workspace_id is not None:
+        projects = projects.filter(workspace_id=workspace_id)
+    return [{
+        "id": p.pk, "name": p.name, "code": p.code or "",
+        "workspace": {"id": p.workspace_id, "name": p.workspace.name},
+        "status": p.status, "status_label": p.get_status_display(),
+        "start_date": p.start_date.isoformat() if p.start_date else None,
+        "target_date": p.target_date.isoformat() if p.target_date else None,
+        "progress": p.progress_percent or 0,
+        "is_activities": p.pk in activities, "activity_count": activities.get(p.pk, 0),
+    } for p in projects.order_by("workspace__name", "name", "id")]
+
+
+def _in_period(item, start, end) -> bool:
+    return bool(item.get("date")) and start <= date.fromisoformat(item["date"]) <= end
+
+
+def export_selection(scope, user, spec, projects, *, today=None, now=None) -> tuple[bytes, int]:
+    """
+    Classeur « Direction » (structure inchangée) pour les projets cochés.
+
+    * ``full`` : toutes les lignes des projets cochés, quel que soit leur âge ; état à la
+      date de fin (ou aujourd'hui si elle est à venir) ; saisies de temps de la période.
+    * ``period`` : seules les lignes ayant une action menée pendant la période, et leurs
+      actions menées limitées à la période.
+    Retourne le fichier et le nombre de lignes exportées.
+    """
+    today = today or timezone.localdate()
+    start, end, mode = spec["start"], spec["end"], spec["mode"]
+    as_of = min(end, today)
+    rows = build_rows(scope, user, selection=set(spec["projects"]), today=as_of, period=(start, end),
+                      until=end, milestones=True)
+    if mode == "period":
+        kept = []
+        for row in rows:
+            done = [i for i in row["done"] if _in_period(i, start, end)]
+            if done:
+                kept.append({**row, "done": done})
+        rows = kept
+    names = [p["name"] for p in projects]
+    shown = ", ".join(names[:3]) + (f", … (+ {len(names) - 3})" if len(names) > 3 else "")
+    filter_lines = [
+        f"Mode : {EXPORT_MODES[mode]}",
+        f"Période : {spec['label']} ({start:%d/%m/%Y} → {end:%d/%m/%Y})",
+        f"Indicateurs au {as_of:%d/%m/%Y}",
+        f"Sélection : {len(names)} projet(s) — {shown}",
+    ]
+    listing = "\n".join(f"{p['name']} ({p['workspace']['name']})" for p in projects)
+    if len(listing) > MAX_INFO_CHARS:
+        listing = listing[:MAX_INFO_CHARS].rsplit("\n", 1)[0] + "\n(liste tronquée)"
+    extra_info = [
+        ("Mode d'export", EXPORT_MODES[mode] + (
+            " : toutes les lignes des projets cochés, état à la date de fin."
+            if mode == "full" else " : lignes ayant au moins une action menée dans la période.")),
+        ("Période", f"{spec['label']} — du {start:%d/%m/%Y} au {end:%d/%m/%Y}"),
+        ("Indicateurs calculés au", f"{as_of:%d/%m/%Y}"),
+        ("Projets sélectionnés", len(names)),
+        ("Sélection", listing),
+        ("Lignes exportées", len(rows)),
+        ("À savoir", "Actions menées datées par leur réalisation (tâches, jalons, saisies de temps) ou par leur "
+                     "enregistrement dans DevFlow (historique importé). Avancement, statut, risques et décisions : "
+                     "valeurs connues à la date d'export."),
+    ]
+    content = export_xlsx(rows, user=user, scope_text=scope_label(scope), filter_lines=filter_lines,
+                          period=(start, end), now=now, extra_info=extra_info)
+    return content, len(rows)
 
 
 # ---------------------------------------------------------------------------

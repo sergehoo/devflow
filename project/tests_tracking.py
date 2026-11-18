@@ -1051,6 +1051,193 @@ class TrackingExportTests(TrackingFixture):
 # ---------------------------------------------------------------------------
 # Notifications
 # ---------------------------------------------------------------------------
+class TrackingSelectionExportTests(TrackingFixture):
+    """Fenêtre d'export des Projets : projets cochés, période, mode — modèle « Direction » inchangé."""
+
+    URL = "/api/v1/tracking/export/"
+    MARCH = {"kind": "month", "year": 2026, "month": 3}
+
+    def setUp(self):
+        super().setUp()
+        self.imported()
+        self.afflux = dm.Project.objects.get(workspace=self.ws, name="AFFLUX")
+        self.container = dm.Project.objects.get(workspace=self.ws, name=importer.DEFAULT_CONTAINER)
+
+    def selectable(self, user=None, **params):
+        response = self.api(user or self.pm).get(f"{self.URL}projects/", params)
+        self.assertEqual(response.status_code, 200, response.content)
+        return {p["name"]: p for p in response.json()["projects"]}
+
+    def post(self, projects, period=None, mode="full", user=None):
+        body = {"projects": projects, "period": period or self.MARCH, "mode": mode}
+        return self.api(user or self.pm).post(self.URL, body, format="json")
+
+    def workbook(self, *args, **kwargs):
+        response = self.post(*args, **kwargs)
+        self.assertEqual(response.status_code, 200, response.content)
+        return response, load_workbook(io.BytesIO(response.content))
+
+    @staticmethod
+    def lines(ws):
+        """{titre de ligne: valeurs} des deux blocs (hors titres, en-têtes et mentions)."""
+        skip = {None, "PROJET", "TACHE / ACTIVITE", board.EMPTY_MENTION}
+        return {ws.cell(r, 2).value: [c.value for c in ws[r]] for r in range(5, ws.max_row + 1)
+                if ws.cell(r, 2).value not in skip}
+
+    @staticmethod
+    def info(wb):
+        return {row[0].value: row[1].value for row in wb["Informations"].iter_rows(max_col=2) if row[0].value}
+
+    def test_selectable_projects_follow_the_scope(self):
+        mine = self.selectable()
+        self.assertEqual(set(mine), {"AFFLUX", "Portail", "Interne", "Projet Mystère", importer.DEFAULT_CONTAINER})
+        self.assertNotIn("Secret", mine)
+        self.assertEqual((mine[importer.DEFAULT_CONTAINER]["is_activities"], mine[importer.DEFAULT_CONTAINER]["activity_count"]),
+                         (True, 3))
+        self.assertFalse(mine["AFFLUX"]["is_activities"])
+        self.assertEqual(set(self.selectable(workspace=self.ws.pk)), set(mine))
+        self.assertEqual(self.api(self.pm).get(f"{self.URL}projects/", {"workspace": self.other.pk}).status_code, 404)
+        self.assertEqual(self.api(self.pm).get(f"{self.URL}projects/", {"workspace": "1 OR 1"}).status_code, 400)
+        # Périmètre restreint : seulement l'activité qui lui est confiée (via son projet d'accueil).
+        dev = self.selectable(self.dev)
+        self.assertEqual(set(dev), {importer.DEFAULT_CONTAINER})
+        self.assertEqual(dev[importer.DEFAULT_CONTAINER]["activity_count"], 1)
+        self.assertEqual(set(self.selectable(self.bob)), {"Secret"})
+        self.assertEqual(self.api(self.customer).get(f"{self.URL}projects/").status_code, 403)
+        self.assertEqual(self.post([self.afflux.pk], user=self.customer).status_code, 403)
+
+    def test_invalid_requests_are_rejected(self):
+        pk = self.afflux.pk
+        cases = [
+            ([], self.MARCH, "full", "Sélectionnez au moins un projet."),
+            (["x"], self.MARCH, "full", "Identifiant de projet invalide."),
+            ([True], self.MARCH, "full", "Identifiant de projet invalide."),
+            ([pk], self.MARCH, "everything", "Mode d'export invalide."),
+            ([pk], None, "full", None),
+            ([pk], {"kind": "week"}, "full", "Type de période invalide."),
+            ([pk], {"kind": "month", "year": 2026, "month": 13}, "full", "hors limites"),
+            ([pk], {"kind": "quarter", "year": 2026}, "full", "trimestre"),
+            ([pk], {"kind": "custom", "start": "2026-03-31", "end": "2026-03-01"}, "full",
+             "La période se termine avant de commencer."),
+            ([pk], {"kind": "custom", "start": "31/03/2026", "end": "2026-04-01"}, "full", "AAAA-MM-JJ"),
+            ([pk], {"kind": "custom", "start": "2026-01-01"}, "full", "date de fin"),
+            ([pk], {"kind": "custom", "start": "2020-01-01", "end": "2026-01-02"}, "full", "5 ans"),
+            ([pk], {"kind": "custom", "start": "1999-12-01", "end": "2000-01-31"}, "full", "2000 et 2100"),
+            (list(range(1, board.MAX_EXPORT_PROJECTS + 2)), self.MARCH, "full", "500 au maximum"),
+        ]
+        for projects, period, mode, message in cases:
+            body = {"projects": projects, "mode": mode, **({"period": period} if period is not None else {})}
+            response = self.api(self.pm).post(self.URL, body, format="json")
+            self.assertEqual(response.status_code, 400, (body, response.content))
+            if message:
+                self.assertIn(message, response.json()["detail"], body)
+        self.assertEqual(self.api(self.pm).post(self.URL, "[]", content_type="application/json").status_code, 400)
+
+    def test_inaccessible_projects_are_refused_without_detail(self):
+        secret = self.foreign_project.pk
+        response = self.post([self.afflux.pk, secret])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["inaccessible"], [secret])
+        self.assertNotIn("Secret", response.content.decode())
+        self.assertEqual(self.post([999999]).json()["inaccessible"], [999999])
+        self.assertEqual(self.post([self.afflux.pk], user=self.dev).json()["inaccessible"], [self.afflux.pk])
+        dm.Project.objects.filter(pk=self.afflux.pk).update(is_archived=True)
+        self.assertEqual(self.post([self.afflux.pk]).status_code, 400)
+
+    def test_full_mode_keeps_the_reference_workbook_for_checked_projects_only(self):
+        old = dm.Project.objects.create(workspace=self.ws, name="ERP historique", status="IN_PROGRESS",
+                                        start_date=date(2019, 1, 7), target_date=date(2020, 6, 30))
+        response, wb = self.workbook([self.afflux.pk, old.pk, self.container.pk],
+                                     period={"kind": "quarter", "year": 2026, "quarter": 4})
+        self.assertEqual(response["Content-Type"], XLSX)
+        self.assertEqual(response["Content-Disposition"],
+                         'attachment; filename="Suivi_Pole_Developpement_2026-10-01_2026-12-31.xlsx"')
+        self.assertEqual(response["Cache-Control"], "no-store")
+        # Structure identique à l'export de référence.
+        reference = self.sheet()
+        ws, ref = wb["PROJET"], reference["PROJET"]
+        self.assertEqual(wb.sheetnames, reference.sheetnames)
+        self.assertEqual([c.value for c in ws[2]][:1], [PROJECTS_TITLE])
+        self.assertEqual([c.value for c in ws[4]], PROJECT_HEADERS)
+        tasks_title = TrackingExportTests.find(ws, TASKS_TITLE)
+        self.assertEqual([c.value for c in ws[tasks_title + 2]], TASK_HEADERS)
+        for col in "ABCDEFGHIJK":
+            self.assertEqual(ws.column_dimensions[col].width, ref.column_dimensions[col].width)
+        self.assertEqual((ws.freeze_panes, ws.page_setup.orientation), (ref.freeze_panes, ref.page_setup.orientation))
+        line = TrackingExportTests.find(ws, "AFFLUX", column=2)
+        self.assertEqual(ws.cell(line, 10).number_format, '0"%"')
+        self.assertEqual(ws.cell(line, 11).fill.start_color.rgb, ref.cell(5, 11).fill.start_color.rgb)
+        # Seulement les projets cochés ; un projet ancien toujours actif n'est pas écarté par la période.
+        rows = self.lines(ws)
+        self.assertEqual(set(rows), {"AFFLUX", "ERP historique", "Maintenance serveurs · Sauvegardes",
+                                     "Veille techno", "Support utilisateurs"})
+        self.assertEqual(rows["ERP historique"][10], "En cours")
+        # Métadonnées de période et de sélection.
+        for expected in ("Mode : Suivi complet des projets sélectionnés", "Période : T4 2026 (01/10/2026 → 31/12/2026)",
+                         "Sélection : 3 projet(s) — AFFLUX, ERP historique"):
+            self.assertIn(expected, ws["A1"].value)
+        info = self.info(wb)
+        self.assertEqual(info["Période"], "T4 2026 — du 01/10/2026 au 31/12/2026")
+        self.assertEqual(info["Indicateurs calculés au"], f"{min(date(2026, 12, 31), timezone.localdate()):%d/%m/%Y}")
+        self.assertEqual(info["Projets sélectionnés"], 3)
+        self.assertIn("ERP historique (Alpha)", info["Sélection"])
+        self.assertEqual(info["Lignes exportées"], 5)
+        self.assertEqual(response["X-Export-Rows"], "5")
+
+    def test_period_filters_tasks_milestones_and_logged_time(self):
+        portail = dm.Project.objects.get(workspace=self.ws, name="Portail")
+        interne = dm.Project.objects.get(workspace=self.ws, name="Interne")
+
+        def done_task(project, title, day):
+            task = dm.Task.objects.create(workspace=self.ws, project=project, title=title, status="DONE")
+            dm.Task.objects.filter(pk=task.pk).update(
+                completed_at=timezone.make_aware(datetime(day.year, day.month, day.day, 10)))
+
+        done_task(self.afflux, "Livraison lot 1", date(2026, 3, 10))
+        done_task(self.afflux, "Livraison lot 2", date(2026, 6, 2))
+        dm.Milestone.objects.create(workspace=self.ws, project=self.afflux, name="Pilote en service",
+                                    due_date=date(2026, 3, 20), status="DONE", completed_at=date(2026, 3, 18))
+        dm.Milestone.objects.create(workspace=self.ws, project=self.afflux, name="Généralisation",
+                                    due_date=date(2026, 9, 30))
+        dm.TimesheetEntry.objects.create(user=self.dev, workspace=self.ws, project=interne, entry_date=date(2026, 3, 5),
+                                         hours=Decimal("2"), description="Atelier besoins")
+        dm.TimesheetEntry.objects.create(user=self.dev, workspace=self.ws, project=interne, entry_date=date(2026, 5, 5),
+                                         hours=Decimal("4"), description="Hors période")
+        checked = [self.afflux.pk, portail.pk, interne.pk]
+
+        # Activités de la période : lignes sans action en mars écartées, actions menées limitées à mars.
+        _response, wb = self.workbook(checked, mode="period")
+        rows = self.lines(wb["PROJET"])
+        self.assertEqual(set(rows), {"AFFLUX", "Interne"})
+        self.assertEqual(rows["AFFLUX"][4], "— Livraison lot 1\n— Jalon atteint : Pilote en service")
+        self.assertEqual(rows["Interne"][4], "— Atelier besoins — Awa Diallo, 2 h (05/03)")
+        self.assertIn("Mode : Activités réalisées pendant la période", wb["PROJET"]["A1"].value)
+        self.assertEqual(self.info(wb)["Indicateurs calculés au"], "31/03/2026")
+
+        # Suivi complet au 31/03 : rien de postérieur dans les actions menées ; le lot 2,
+        # terminé en juin, était encore à venir ; l'historique importé plus tard n'est pas daté de mars.
+        _response, wb = self.workbook(checked, mode="full")
+        rows = self.lines(wb["PROJET"])
+        self.assertEqual(set(rows), {"AFFLUX", "Portail", "Interne"})
+        self.assertEqual(rows["AFFLUX"][4], "— Livraison lot 1\n— Jalon atteint : Pilote en service")
+        self.assertIn("— Livraison lot 2", rows["AFFLUX"][5])
+        self.assertIn("— Jalon : Généralisation", rows["AFFLUX"][5])
+        self.assertNotIn("Hors période", rows["Interne"][4] or "")
+
+        # Période vide pour la sélection : fichier propre, blocs « aucun élément ».
+        _response, wb = self.workbook([portail.pk], mode="period")
+        self.assertEqual(self.lines(wb["PROJET"]), {})
+        self.assertEqual(wb["PROJET"]["A5"].value, board.EMPTY_MENTION)
+
+    def test_default_export_is_unchanged(self):
+        """L'export de l'écran Pilotage (GET, filtres) garde son comportement et ses jalons absents."""
+        dm.Milestone.objects.create(workspace=self.ws, project=self.afflux, name="Généralisation",
+                                    due_date=date(2026, 9, 30))
+        ws = self.sheet()["PROJET"]
+        self.assertNotIn("Jalon", str(self.lines(ws)))
+        self.assertEqual(len(self.lines(ws)), 7)
+
+
 class TrackingNotificationTests(TrackingFixture):
     def tracking(self, **filters):
         return dm.Notification.objects.filter(metadata__source=notifications.SOURCE, **filters)

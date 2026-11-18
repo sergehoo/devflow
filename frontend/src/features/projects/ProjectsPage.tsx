@@ -11,6 +11,8 @@ import { Input, Select } from "@/components/ui/input";
 import { Badge, Skeleton } from "@/components/ui/misc";
 import { ExportTrackingButton } from "@/features/pilotage/ExportTrackingButton";
 import { formatDate } from "@/lib/format";
+import { api } from "@/services/api";
+import type { Paginated } from "@/types/api";
 import { useDebouncedValue } from "@/lib/hooks";
 import { useProjects, type Project, type ProjectFilters } from "./api";
 import { HEALTH } from "./constants";
@@ -57,6 +59,13 @@ export function ProjectsPage() {
   );
   const set = (patch: Partial<ProjectFilters>) => setFilters((f) => ({ ...f, page: 1, ...patch }));
   const active = Object.entries(filters).some(([k, v]) => !["page", "ordering"].includes(k) && v);
+  // Filtres de la liste → présélection facultative dans la fenêtre d'export (jamais cochés d'office).
+  const preselect = active ? {
+    count: data?.count,
+    load: async () => (await api<Paginated<Project>>("projects/", {
+      params: { ...filters, search, ordering: undefined, page: 1, page_size: 500 },
+    })).results.map((p) => p.id),
+  } : undefined;
 
   return (
     <div className="space-y-6">
@@ -65,7 +74,7 @@ export function ProjectsPage() {
         title="Projets"
         description={data ? `${data.count} projet(s)` : undefined}
         actions={<>
-          <ExportTrackingButton gated />
+          <ExportTrackingButton gated preselect={preselect} />
           {/* --- ai --- */}
           <Button variant="outline" asChild><Link to="/imports?new=1"><FileUp />Importer un document</Link></Button>
           <Button variant="outline" asChild><Link to="/projects/genesis"><Sparkles />Créer avec l'IA</Link></Button>

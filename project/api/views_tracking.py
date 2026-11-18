@@ -95,10 +95,58 @@ class TrackingBoardView(APIView):
         })
 
 
-class TrackingExportView(APIView):
-    """``?fmt=xlsx`` (défaut) ou ``?fmt=pdf&variant=direction|weekly|monthly``, avec les filtres de l'écran."""
+class TrackingExportProjectsView(APIView):
+    """Projets que l'utilisateur peut cocher dans la fenêtre d'export (``?workspace=`` : un espace)."""
 
     permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        scope = _scope(request)
+        raw = request.query_params.get("workspace")
+        workspace_id = None
+        if raw:
+            if not _digits(raw):
+                raise ValidationError({"detail": "Paramètre « workspace » invalide."})
+            workspace_id = int(raw)
+            if workspace_id not in scope["full"] | scope["assigned"]:
+                raise NotFound("Espace de travail introuvable.")
+        return Response({
+            "projects": board.exportable_projects(scope, request.user, workspace_id),
+            "max": board.MAX_EXPORT_PROJECTS,
+            "scope": board.scope_label(scope),
+        })
+
+
+class TrackingExportView(APIView):
+    """
+    GET : ``?fmt=xlsx`` (défaut) ou ``?fmt=pdf&variant=direction|weekly|monthly``, avec les filtres de l'écran.
+    POST : classeur Excel des projets cochés, pour une période et un mode (fenêtre d'export).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        scope = _scope(request)
+        try:
+            spec = board.parse_export_request(request.data)
+        except board.TrackingFilterError as exc:
+            raise ValidationError({"detail": str(exc)}) from exc
+        allowed = {p["id"]: p for p in board.exportable_projects(scope, request.user)}
+        refused = [pk for pk in spec["projects"] if pk not in allowed]
+        if refused:
+            # Aucun nom ni détail : l'identifiant vient du client, on ne confirme rien de plus.
+            return Response({
+                "detail": f"{len(refused)} projet(s) coché(s) ne sont pas ou plus accessibles "
+                          "(archivés, supprimés ou hors de votre périmètre). Actualisez la sélection.",
+                "inaccessible": refused,
+            }, status=status.HTTP_400_BAD_REQUEST)
+        content, count = board.export_selection(scope, request.user, spec, [allowed[pk] for pk in spec["projects"]])
+        name = f"Suivi_Pole_Developpement_{spec['start'].isoformat()}_{spec['end'].isoformat()}.xlsx"
+        response = HttpResponse(content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f'attachment; filename="{name}"'
+        response["Cache-Control"] = "no-store"
+        response["X-Export-Rows"] = str(count)
+        return response
 
     def get(self, request):
         scope = _scope(request)
