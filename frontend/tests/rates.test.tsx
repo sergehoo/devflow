@@ -35,7 +35,11 @@ describe("TJM des collaborateurs", () => {
     const row = (await screen.findByText("Loïc Demanou")).closest("tr")!;
     expect(within(row).getByText("Senior")).toBeInTheDocument();
     expect(within(row).getByText(/^75\s000/)).toBeInTheDocument();
-    expect(within(row).getByText("133.3 %")).toBeInTheDocument();
+    expect(within(row).getByText("133,3 %")).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: /Afficher l'historique des tarifs de Loïc Demanou/ }));
+    const history = screen.getByRole("list", { name: "Tarifs de Loïc Demanou" });
+    expect(within(history).getByText(/^Coût 75\s000 XOF \/ jour$/)).toBeInTheDocument();
+    expect(within(history).getByText(/^Vente 175\s000 XOF \/ jour$/)).toBeInTheDocument();
     const missing = screen.getByText("Innocent Azo").closest("tr")!;
     expect(within(missing).getByText(/Aucun TJM : heures valorisées à 0/)).toBeInTheDocument();
     expect(within(missing).getByText("3 à 0")).toBeInTheDocument();
@@ -47,7 +51,7 @@ describe("TJM des collaborateurs", () => {
     const spy = mockApi({ "auth/me/": ME, "POST finance/rates/": { id: 6, revalued: { entries: 3, before: "0", after: "93750" } }, "finance/rates/": BOARD });
     renderPage(<RatesPage />);
     const missing = (await screen.findByText("Innocent Azo")).closest("tr")!;
-    await userEvent.click(within(missing).getByRole("button", { name: /Définir le TJM/ }));
+    await userEvent.click(within(missing).getByRole("button", { name: "Définir le TJM pour Innocent Azo" }));
     const dialog = await screen.findByRole("dialog");
     await userEvent.type(within(dialog).getByLabelText(/Coût interne/), "50000");
     await userEvent.type(within(dialog).getByLabelText(/Tarif de vente/), "120000");

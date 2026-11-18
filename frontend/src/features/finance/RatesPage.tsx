@@ -9,7 +9,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Badge, Skeleton } from "@/components/ui/misc";
 import { useMe } from "@/features/auth/api";
 import { StatCard } from "@/features/dashboard/widgets";
-import { formatDate, formatHours, formatMoney } from "@/lib/format";
+import { formatDate, formatHours, formatMoney, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useArchiveRate, useRates, useSaveRate, type Rate, type RateMember, type RatePayload, type RatesBoard } from "./rates";
 
@@ -18,6 +18,10 @@ const STATUS: Record<Rate["status"], { label: string; className: string }> = {
   future: { label: "À venir", className: "bg-info/15 text-info" },
   past: { label: "Terminé", className: "bg-muted text-muted-foreground" },
 };
+
+/** Unité du montant saisi : « 75 000 XOF / jour » plutôt que « / journalier ». */
+const PER: Record<string, string> = { HOURLY: "heure", DAILY: "jour", MONTHLY: "mois" };
+const per = (rate: Rate) => PER[rate.unit] ?? rate.unit_label.toLowerCase();
 
 /** Ce qui valorise réellement les heures d'un collaborateur sans TJM général en vigueur. */
 function missingLabel(m: RateMember, currency: string) {
@@ -110,9 +114,9 @@ export function RatesPage() {
                       {r ? (
                         <>
                           <td className="px-4 py-2.5">{r.worker_level_label}</td>
-                          <td className="px-4 py-2.5 font-semibold tabular-nums">{formatMoney(r.daily_cost, r.currency || c)}</td>
-                          <td className="px-4 py-2.5 tabular-nums">{Number(r.daily_sale) > 0 ? formatMoney(r.daily_sale, r.currency || c) : "—"}</td>
-                          <td className="px-4 py-2.5 tabular-nums">{r.margin_percent != null ? `${r.margin_percent} %` : "—"}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap font-semibold tabular-nums">{formatMoney(r.daily_cost, r.currency || c)}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap tabular-nums">{Number(r.daily_sale) > 0 ? formatMoney(r.daily_sale, r.currency || c) : "—"}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap tabular-nums">{r.margin_percent != null ? `${formatNumber(r.margin_percent)} %` : "—"}</td>
                           <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">{period(r)}</td>
                         </>
                       ) : (
@@ -122,16 +126,19 @@ export function RatesPage() {
                           </span>
                         </td>
                       )}
-                      <td className="px-4 py-2.5 tabular-nums">
+                      <td className="px-4 py-2.5 whitespace-nowrap tabular-nums">
                         {formatHours(m.hours_30d)}
                         {m.unvalued_entries > 0 && <Badge className="ml-2 bg-warning/15 text-warning">{m.unvalued_entries} à 0</Badge>}
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        {data.can_manage && (
-                          <Button size="sm" variant={r || !m.home ? "outline" : "default"} onClick={() => setEditing({ member: m })}>
-                            <Plus />{r ? "Nouveau tarif" : m.home ? "Définir le TJM" : "Tarif projet"}
-                          </Button>
-                        )}
+                        {data.can_manage && (() => {
+                          const label = r ? "Nouveau tarif" : m.home ? "Définir le TJM" : "Tarif projet";
+                          return (
+                            <Button size="sm" variant={r || !m.home ? "outline" : "default"} onClick={() => setEditing({ member: m })} aria-label={`${label} pour ${m.name}`}>
+                              <Plus />{label}
+                            </Button>
+                          );
+                        })()}
                       </td>
                     </tr>
                     {expanded && (
@@ -144,8 +151,8 @@ export function RatesPage() {
                                 <Badge className={STATUS[rate.status].className}>{STATUS[rate.status].label}</Badge>
                                 <span className="whitespace-nowrap">{period(rate)}</span>
                                 <span className="text-muted-foreground">{rate.project ? `Projet ${rate.project.name}` : "Tous les projets"}</span>
-                                <span className="tabular-nums">Coût {formatMoney(rate.cost_rate_amount, rate.currency)} / {rate.unit_label.toLowerCase()}</span>
-                                <span className="tabular-nums">Vente {Number(rate.sale_rate_amount) > 0 ? formatMoney(rate.sale_rate_amount, rate.currency) : "—"}</span>
+                                <span className="whitespace-nowrap tabular-nums">Coût {formatMoney(rate.cost_rate_amount, rate.currency)} / {per(rate)}</span>
+                                <span className="whitespace-nowrap tabular-nums">Vente {Number(rate.sale_rate_amount) > 0 ? `${formatMoney(rate.sale_rate_amount, rate.currency)} / ${per(rate)}` : "—"}</span>
                                 {data.can_manage && (
                                   <span className="ml-auto flex gap-1">
                                     <Button size="sm" variant="ghost" onClick={() => setEditing({ member: m, rate })} aria-label={`Modifier le tarif du ${formatDate(rate.valid_from)} de ${m.name}`}><Pencil />Modifier</Button>
