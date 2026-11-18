@@ -1667,6 +1667,8 @@ class TeamDeleteView(DevflowDeleteView):
 class TeamArchiveView(ArchiveObjectView):
     model = dm.Team
     success_list_url_name = "team_list"
+    # Comme la suppression : l'équipe disparaît des formulaires, réservé à l'administration.
+    rbac_action = "team.archive"
 
 
 class TeamMembershipListView(DevflowListView):

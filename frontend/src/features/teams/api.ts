@@ -6,6 +6,10 @@ export interface Team {
   id: number; name: string; team_type: string; team_type_label: string; description: string; color: string;
   is_active: boolean; is_archived: boolean; velocity_target: number; velocity_current: number;
   lead_name: string; members_count: number | null; projects_count: number | null;
+  /** Description nettoyée par Django (`safe_html` : bleach, XSS bloqué) — à afficher telle quelle. */
+  description_html: string;
+  /** Description en texte brut (balises retirées, entités décodées) pour les aperçus. */
+  description_text: string;
 }
 export interface TeamOverview {
   members: { id: number; user_id: number; name: string; role_label: string; status_label: string; job_title: string; current_load_percent: number }[];

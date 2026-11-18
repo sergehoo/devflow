@@ -68,6 +68,9 @@ function FieldInput({ f, form, error }: { f: FormFieldSchema; form: ReturnType<t
       <Input type="file" className="pt-2" {...aria}
         onChange={(e) => form.setValue(f.name as Path<FieldValues>, e.target.files?.[0] ?? null)} />
     );
+  } else if (f.type === "color") {
+    // Sélecteur de couleur : sans valeur initiale explicite, le navigateur affiche (et renvoie) #000000.
+    control = <Input type="color" className="h-11 w-24 cursor-pointer p-1.5" defaultValue={String(f.value ?? "")} {...aria} {...reg} />;
   } else {
     control = <Input type={f.type} step={f.type === "number" ? "any" : undefined} min={f.min ?? undefined} max={f.max ?? undefined} {...aria} {...reg} />;
   }

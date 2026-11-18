@@ -17,6 +17,7 @@ CSRF : imposé par ``SessionAuthentication`` (DRF) sur le POST.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, datetime, time
 from decimal import Decimal
 
@@ -136,8 +137,23 @@ def _label(name: str, field) -> str:
     return label
 
 
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _model_default(form, name):
+    """Valeur par défaut du champ de modèle (couleur valide), sinon ``None``."""
+    try:
+        default = form._meta.model._meta.get_field(name).get_default()
+    except Exception:  # champ hors modèle
+        return None
+    return default if isinstance(default, str) and _HEX_COLOR.match(default) else None
+
+
 def describe_form(form) -> dict:
+    from project.templatetags.devflow_extras import has_markup, plain_text
+
     sections = getattr(form, "field_sections", {}) or {}
+    as_text = set(getattr(form, "plain_text_fields", ()))
     fields = []
     for name, field in form.fields.items():
         kind = _widget_type(field)
@@ -154,6 +170,11 @@ def describe_form(form) -> dict:
             "min": getattr(field, "min_value", None),
             "max": getattr(field, "max_value", None),
         }
+        if name in as_text and isinstance(item["value"], str) and has_markup(item["value"]):
+            item["value"] = plain_text(item["value"])
+        if kind == "color" and not _HEX_COLOR.match(str(item["value"] or "")):
+            # Un sélecteur de couleur sans valeur valide afficherait (et enregistrerait) du noir.
+            item["value"] = _model_default(form, name)
         if kind in ("select", "multiselect"):
             item["choices"] = [
                 {"value": "" if value in (None, "") else str(getattr(value, "value", value)), "label": str(label)}

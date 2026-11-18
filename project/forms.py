@@ -463,6 +463,10 @@ class WorkspaceForm(BaseStyledModelForm):
 
 
 class TeamForm(BaseStyledModelForm):
+    # Formulaire React (zone de texte simple) : une description saisie dans l'éditeur riche
+    # de l'ancienne interface est présentée en texte lisible, pas en HTML brut.
+    plain_text_fields = ("description",)
+
     class Meta:
         model = Team
         fields = [
@@ -478,6 +482,11 @@ class TeamForm(BaseStyledModelForm):
         ]
         widgets = {
             "color": forms.TextInput(attrs={"type": "color"}),
+        }
+        labels = {
+            "team_type": "Type d'équipe",
+            "velocity_target": "Vélocité cible",
+            "velocity_current": "Vélocité actuelle",
         }
 
     def __init__(self, *args, **kwargs):

@@ -19,7 +19,7 @@ User = get_user_model()
 
 
 @override_settings(STATICFILES_STORAGE="django.contrib.staticfiles.storage.StaticFilesStorage")
-class TeamPagesTests(TestCase):
+class TeamPagesFixture(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.owner = User.objects.create_user("owner", "owner@a.test", "pw", first_name="Olga", last_name="Owner")
@@ -57,6 +57,9 @@ class TeamPagesTests(TestCase):
             user=cls.dev, workspace=cls.ws, project=cls.project, entry_date=monday, hours=Decimal("8"),
         )
 
+
+
+class TeamPagesTests(TeamPagesFixture):
     def test_member_page_for_manager(self):
         self.client.force_login(self.owner)
         resp = self.client.get(reverse("team_membership_detail", args=[self.dev_m.pk]))
@@ -93,3 +96,71 @@ class TeamPagesTests(TestCase):
         self.assertEqual(resp.context["open_tasks"], 1)
         self.assertEqual(resp.context["overdue_tasks"], 1)
         self.assertEqual(resp.context["active_count"], 3)
+
+
+class TeamDescriptionFormattingTests(TeamPagesFixture):
+    """Descriptions saisies en texte riche (HTML + entités) : jamais affichées en HTML brut."""
+
+    def api(self, user):
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user)
+        return client
+
+    def test_plain_text_filter(self):
+        from project.templatetags.devflow_extras import has_markup, plain_text
+
+        self.assertEqual(plain_text('<p class="p1">&Eacute;quipe charg&eacute;e</p><p>R&amp;D</p>'), "Équipe chargée\nR&D")
+        self.assertEqual(plain_text("<p><br>Intro</p><ul><li>Un</li><li>Deux</li></ul>"), "Intro\n\n• Un\n• Deux")
+        self.assertEqual(plain_text("&lt;p&gt;Double &amp;eacute;&lt;/p&gt;"), "Double é")  # HTML doublement encodé
+        self.assertEqual(plain_text("<p>ok</p><script>alert(1)</script><style>p{}</style>"), "ok")
+        self.assertEqual(plain_text("a < b et c > d"), "a < b et c > d")
+        self.assertEqual(plain_text("Texte\nsur deux lignes"), "Texte\nsur deux lignes")
+        self.assertEqual(plain_text(None), "")
+        self.assertTrue(has_markup("&Eacute;quipe"))
+        self.assertFalse(has_markup("R&D sans balise"))
+
+    def test_api_returns_sanitized_html_and_plain_text(self):
+        data = self.api(self.peer).get(f"/api/v1/teams/{self.team.pk}/").json()
+        self.assertIn("Équipe chargée du backend.", data["description_html"])
+        self.assertIn("<p", data["description_html"])
+        self.assertNotIn("<script", data["description_html"])
+        self.assertEqual(data["description_text"], "Équipe chargée du backend.")
+        listing = self.api(self.peer).get("/api/v1/teams/").json()
+        rows = listing.get("results", listing)
+        self.assertEqual(next(t for t in rows if t["id"] == self.team.pk)["description_text"], "Équipe chargée du backend.")
+
+    def test_react_form_shows_readable_description(self):
+        response = self.api(self.owner).get(f"/api/v1/forms/team/{self.team.pk}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        fields = {f["name"]: f for f in response.json()["fields"]}
+        self.assertEqual(fields["description"]["value"], "Équipe chargée du backend.")
+
+    def test_django_team_list_shows_plain_excerpt(self):
+        self.client.force_login(self.owner)
+        html = self.client.get(reverse("team_list")).content.decode()
+        self.assertIn("Équipe chargée du backend.", html)
+        self.assertNotIn("&lt;p", html)
+        self.assertNotIn("&amp;Eacute;", html)
+
+    def test_archive_is_reserved_to_team_administration(self):
+        response = self.api(self.peer).post(f"/api/v1/actions/team-archive/{self.team.pk}/")
+        self.assertEqual(response.status_code, 403)
+        self.client.force_login(self.lead)
+        self.assertEqual(self.client.post(reverse("team_archive", args=[self.team.pk])).status_code, 403)
+        self.team.refresh_from_db()
+        self.assertFalse(self.team.is_archived)
+        self.assertEqual(self.api(self.owner).post(f"/api/v1/actions/team-archive/{self.team.pk}/").status_code, 200)
+        self.team.refresh_from_db()
+        self.assertTrue(self.team.is_archived)
+        # Hors workspace : introuvable.
+        self.assertEqual(self.api(self.outsider).post(f"/api/v1/actions/team-archive/{self.team.pk}/").status_code, 404)
+
+    def test_react_form_never_turns_an_empty_color_black(self):
+        dm.Team.objects.filter(pk=self.team.pk).update(color="")
+        fields = {f["name"]: f for f in self.api(self.owner).get(f"/api/v1/forms/team/{self.team.pk}/").json()["fields"]}
+        self.assertEqual((fields["color"]["type"], fields["color"]["value"]), ("color", "#7C6FF7"))
+        dm.Team.objects.filter(pk=self.team.pk).update(color="#0EA5E9")
+        fields = {f["name"]: f for f in self.api(self.owner).get(f"/api/v1/forms/team/{self.team.pk}/").json()["fields"]}
+        self.assertEqual(fields["color"]["value"], "#0EA5E9")

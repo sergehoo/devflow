@@ -204,6 +204,39 @@ def safe_html(value):
     return mark_safe(cleaned)
 
 
+_BLOCK_END_RE = re.compile(r"(?i)<\s*(?:br\s*/?|/\s*(?:p|div|h[1-6]|tr|blockquote|pre))\s*>")
+_LIST_ITEM_RE = re.compile(r"(?i)<\s*li\b[^>]*>")
+_DROPPED_BLOCK_RE = re.compile(r"(?is)<\s*(script|style|head|title)\b.*?<\s*/\s*\1\s*>")
+_ANY_TAG_RE = re.compile(r"</?[a-zA-Z!][^<>]*>")  # « a < b » n’est pas une balise
+
+
+@register.filter(name="plain_text")
+def plain_text(value) -> str:
+    """
+    HTML saisi (éditeur riche, texte copié depuis Word / Pages) → texte brut lisible :
+    balises retirées, entités décodées (« &Eacute;quipe » → « Équipe »), paragraphes
+    et puces conservés. Pour les aperçus (cartes, listes) et les champs texte.
+    """
+    text = str(value or "")
+    if not text.strip():
+        return ""
+    for _ in range(2):  # un second passage traite le HTML doublement encodé (&lt;p&gt;…)
+        text = _DROPPED_BLOCK_RE.sub(" ", text)
+        text = _LIST_ITEM_RE.sub("\n• ", text)
+        text = _BLOCK_END_RE.sub("\n", text)
+        text = html.unescape(_ANY_TAG_RE.sub("", text))
+        if not _HTML_TAG_RE.search(text):
+            break
+    lines = [re.sub(r"[ \t\xa0]+", " ", line).strip() for line in text.replace("\r", "").split("\n")]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def has_markup(value) -> bool:
+    """Le texte contient-il des balises ou des entités HTML ?"""
+    text = str(value or "")
+    return bool(_HTML_TAG_RE.search(text)) or html.unescape(text) != text
+
+
 @register.filter
 def full_amount(value):
     """

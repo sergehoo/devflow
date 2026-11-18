@@ -61,17 +61,28 @@ class TeamSerializer(serializers.ModelSerializer):
     lead_name = serializers.SerializerMethodField()
     members_count = serializers.IntegerField(read_only=True, default=None)
     projects_count = serializers.IntegerField(read_only=True, default=None)
+    # Description saisie en texte riche (HTML, entités) : rendu nettoyé et texte brut pour les aperçus.
+    description_html = serializers.SerializerMethodField()
+    description_text = serializers.SerializerMethodField()
 
     class Meta:
         model = dm.Team
         fields = ["id", "name", "team_type", "workspace", "created_at", "description", "color", "is_active",
                   "is_archived", "velocity_target", "velocity_current", "team_type_label", "lead_name",
-                  "members_count", "projects_count"]
+                  "members_count", "projects_count", "description_html", "description_text"]
         read_only_fields = ["created_at", "description", "color", "is_active", "is_archived",
                             "velocity_target", "velocity_current"]
 
     def get_lead_name(self, obj):
         return (obj.lead.get_full_name() or obj.lead.get_username()) if obj.lead_id else ""
+
+    def get_description_html(self, obj):
+        from project.templatetags.devflow_extras import safe_html
+        return str(safe_html(obj.description))
+
+    def get_description_text(self, obj):
+        from project.templatetags.devflow_extras import plain_text
+        return plain_text(obj.description)
 
 
 # =========================================================================
