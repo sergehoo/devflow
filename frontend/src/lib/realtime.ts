@@ -6,11 +6,17 @@
  * - Authentification par le cookie de session HttpOnly envoyé au handshake (même origine) :
  *   aucun jeton côté client.
  * - Reconnexion avec backoff exponentiel + jitter (1 s → 30 s), relancée immédiatement
- *   au retour du réseau ou de l'onglet ; abandon sur 4401 / 4403 (non authentifié / interdit).
+ *   au retour du réseau ou de l'onglet, et dès qu'un autre flux du même serveur se rouvre ;
+ *   abandon sur 4401 / 4403 (non authentifié / interdit).
+ * - Socket jamais ouvert depuis 2 min (WebSocket bloqué par un proxy, poignée de main
+ *   refusée…) : tentatives espacées jusqu'à 5 min. Un redéploiement (coupure plus courte)
+ *   garde le rythme normal. En attendant, les écrans (notifications, liste et fil Messenger)
+ *   se rafraîchissent périodiquement tant que leur flux n'est pas « open ».
  * - Heartbeat ping/pong optionnel pour détecter les connexions mortes.
  * - Nettoyage : le dernier désabonnement ferme le socket et annule les timers.
- * Chaque (ré)ouverture émet `{ type: "socket.open", reconnected }` pour que les abonnés
- * resynchronisent leurs caches (événements manqués pendant la coupure).
+ * Chaque ouverture émet `{ type: "socket.open", reconnected }` ; `reconnected` est vrai
+ * après une coupure ou des tentatives échouées, pour que les abonnés resynchronisent leurs
+ * caches (événements manqués entre-temps).
  */
 import { create } from "zustand";
 
@@ -28,9 +34,15 @@ export interface SubscribeOptions {
 const FATAL_CLOSE_CODES = new Set([4401, 4403]);
 const HEARTBEAT_MS = 25_000;
 const PONG_TIMEOUT_MS = 10_000;
+/** Plafond des reconnexions d'un socket qui a déjà fonctionné (coupure, redéploiement). */
+export const RETRY_MAX_MS = 30_000;
+/** Plafond une fois le flux jugé injoignable : jamais ouvert depuis `UNREACHABLE_AFTER_MS`. */
+export const UNREACHABLE_RETRY_MAX_MS = 5 * 60_000;
+/** Plus long qu'un redémarrage du serveur (collectstatic + démarrage de gunicorn). */
+export const UNREACHABLE_AFTER_MS = 2 * 60_000;
 
-export function backoffDelay(attempt: number, random: () => number = Math.random): number {
-  const ceiling = Math.min(30_000, 1_000 * 2 ** attempt);
+export function backoffDelay(attempt: number, random: () => number = Math.random, max = RETRY_MAX_MS): number {
+  const ceiling = Math.min(max, 1_000 * 2 ** attempt);
   return Math.round(ceiling / 2 + (random() * ceiling) / 2);
 }
 
@@ -48,6 +60,9 @@ class ManagedSocket {
   private handlers = new Set<RealtimeHandler>();
   private attempt = 0;
   private everOpened = false;
+  /** Début de la série d'échecs en cours (socket jamais ouvert). */
+  private failingSince: number | null = null;
+  private warnedUnreachable = false;
   private stopped = false;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
@@ -107,12 +122,15 @@ class ManagedSocket {
     const ws = new this.hub.WebSocketImpl(this.hub.url(this.path));
     this.ws = ws;
     ws.onopen = () => {
-      const reconnected = this.everOpened;
+      // Tentatives échouées avant cette ouverture : des événements ont pu être manqués.
+      const reconnected = this.everOpened || this.attempt > 0;
       this.everOpened = true;
       this.attempt = 0;
+      this.failingSince = null;
       this.setStatus("open");
       this.startHeartbeat();
       this.emit({ type: "socket.open", reconnected });
+      this.hub.wakeAll(); // serveur de nouveau joignable : les autres flux en attente réessaient
     };
     ws.onmessage = (event: MessageEvent) => {
       let message: RealtimeMessage;
@@ -138,10 +156,17 @@ class ManagedSocket {
         return;
       }
       this.setStatus("reconnecting");
+      this.failingSince ??= Date.now();
+      const unreachable = !this.everOpened && Date.now() - this.failingSince >= UNREACHABLE_AFTER_MS;
+      if (unreachable && !this.warnedUnreachable) {
+        this.warnedUnreachable = true;
+        console.warn(`[realtime] ${this.path} injoignable : nouvelles tentatives espacées, rafraîchissement périodique en attendant.`);
+      }
+      const max = unreachable ? UNREACHABLE_RETRY_MAX_MS : RETRY_MAX_MS;
       this.retryTimer = setTimeout(() => {
         this.retryTimer = undefined;
         this.open();
-      }, backoffDelay(this.attempt++, this.hub.random));
+      }, backoffDelay(this.attempt++, this.hub.random, max));
     };
   }
 

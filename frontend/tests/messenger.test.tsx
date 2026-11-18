@@ -63,6 +63,34 @@ describe("Messenger", () => {
     expect(await screen.findByRole("button", { name: "👍 1" })).toBeInTheDocument();
   });
 
+  it("polls the thread while its socket is down, then relies on the socket once live", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let fetches = 0;
+      const spy = mockApi({
+        "auth/me/": ME,
+        "POST me/chat/channels/9/mark-read/": { unread_count: 0 },
+        "me/chat/channels/9/messages/": () => (++fetches === 1 ? PAGE
+          : { ...PAGE, messages: [...PAGE.messages, MSG(4, 2, "Pendant la coupure")] }),
+      });
+      const threadFetches = () => spy.mock.calls.filter(([u, i]) => String(u).includes("channels/9/messages/") && !i?.method).length;
+      renderPage(<Conversation channelId={9} title="Bob" />);
+      expect(await screen.findByText("Salut Alice")).toBeInTheDocument();
+      expect(screen.getByText("· reconnexion…")).toBeInTheDocument(); // WebSocket du fil jamais ouvert
+      await act(async () => { vi.advanceTimersByTime(20_000); });
+      expect(await screen.findByText("Pendant la coupure")).toBeInTheDocument();
+
+      const ws = FakeWebSocket.instances.find((s) => s.url.endsWith("/ws/channels/9/"))!;
+      act(() => ws.open());
+      await waitFor(() => expect(screen.queryByText("· reconnexion…")).not.toBeInTheDocument());
+      const before = threadFetches();
+      await act(async () => { vi.advanceTimersByTime(60_000); });
+      expect(threadFetches()).toBe(before); // flux ouvert : plus de rafraîchissement périodique
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("refreshes the notification bell when opening a conversation reads its notifications", async () => {
     function Bell() {
       const { data } = useNotificationSummary();

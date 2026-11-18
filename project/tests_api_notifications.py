@@ -140,6 +140,15 @@ class UserEventsWebSocketTests(NotificationFixture):
         out = async_to_sync(scenario)()
         self.assertEqual((out["type"], out.get("code")), ("websocket.close", 4401))
 
+    def test_unknown_path_is_refused_without_server_error(self):
+        async def scenario():
+            ws = WebsocketCommunicator(self.app, "/ws/inexistant/")
+            ws.scope["user"] = self.alice
+            connected, _ = await ws.connect()  # sans route de repli : ValueError « No route found » → 500
+            return connected
+
+        self.assertFalse(async_to_sync(scenario)())
+
     def test_events_reach_only_their_recipient(self):
         async def scenario():
             alice, bob = self.connect(self.alice), self.connect(self.bob)

@@ -1,11 +1,30 @@
-import { createBrowserRouter } from "react-router";
+import type { ComponentType } from "react";
+import { createBrowserRouter, type RouteObject } from "react-router";
 import { AppLayout } from "@/app/layouts/AppLayout";
-import { NotFound, RouteError } from "./RouteViews";
+import { NotFound, PageFallback, RouteError, SplashFallback } from "./RouteViews";
+
+/**
+ * Écran d'attente du premier chargement (`HydrateFallback`) sur chaque route `lazy` qui n'en
+ * déclare pas : sans lui, React Router n'affiche rien tant que le code de l'écran n'est pas
+ * chargé (page blanche) et le signale en console (« No `HydrateFallback` element provided »).
+ * Il doit être statique : un `lazy` ne peut pas le fournir.
+ */
+export function withHydrateFallback(routes: RouteObject[], Fallback: ComponentType): RouteObject[] {
+  return routes.map((route) => {
+    const withFallback = route.lazy && !route.HydrateFallback && !route.hydrateFallbackElement
+      ? { ...route, HydrateFallback: Fallback }
+      : route;
+    return withFallback.children
+      ? { ...withFallback, children: withHydrateFallback(withFallback.children, Fallback) }
+      : withFallback;
+  });
+}
 
 export const router = createBrowserRouter(
-  [
+  withHydrateFallback([
     {
       path: "/login",
+      HydrateFallback: SplashFallback,
       lazy: async () => ({ Component: (await import("@/features/auth/LoginPage")).LoginPage }),
     },
     {
@@ -206,6 +225,6 @@ export const router = createBrowserRouter(
         { path: "*", element: <NotFound /> },
       ],
     },
-  ],
+  ], PageFallback),
   { basename: "/app" },
 );

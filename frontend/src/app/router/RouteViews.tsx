@@ -1,6 +1,21 @@
 import { isRouteErrorResponse, Link, useRouteError } from "react-router";
 import { DevFlowLogo } from "@/components/brand/DevFlowLogo";
+import { PageSkeleton } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
+
+/** Premier chargement d'un écran découpé (`lazy`) dans la coque : squelette de page, jamais de page blanche. */
+export function PageFallback() {
+  return <PageSkeleton />;
+}
+
+/** Premier chargement hors coque (connexion) : logo centré. */
+export function SplashFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background" role="status" aria-label="Chargement">
+      <DevFlowLogo variant="symbol" size={56} title={null} className="animate-pulse" />
+    </div>
+  );
+}
 
 export function RouteError() {
   const error = useRouteError();

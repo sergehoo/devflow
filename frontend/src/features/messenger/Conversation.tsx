@@ -24,11 +24,13 @@ const dayLabel = (iso?: string) => {
 };
 const sizeLabel = (bytes: number) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} Mo` : `${Math.max(1, Math.round(bytes / 1024))} Ko`);
 
+const channelPath = (channelId: number) => `/ws/channels/${channelId}/`;
+
 /** Abonnement au WebSocket de la conversation : messages, réactions, accusés de lecture, saisie. */
 function useChannelSocket(channelId: number, meId: number | undefined, onIncoming: () => void) {
   const qc = useQueryClient();
   const [typing, setTyping] = useState("");
-  const path = `/ws/channels/${channelId}/`;
+  const path = channelPath(channelId);
   const status = useRealtimeStatus(path);
   // Refs : changer d'utilisateur courant ou de callback ne doit pas rouvrir le socket.
   const incoming = useRef(onIncoming);
@@ -163,7 +165,7 @@ export interface ConversationProps {
 /** Fil de discussion : historique paginé, temps réel, pièces jointes, réactions, accusés de lecture. */
 export function Conversation({ channelId, title, subtitle, compact, onBack, onClose }: ConversationProps) {
   const { data: me } = useMe();
-  const messages = useMessages(channelId);
+  const messages = useMessages(channelId, useRealtimeStatus(channelPath(channelId)) === "open");
   const send = useSendMessage(channelId);
   const react = useToggleReaction(channelId);
   const markRead = useMarkRead();

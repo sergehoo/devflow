@@ -97,15 +97,18 @@ export function useContacts(q: string, enabled = true) {
   });
 }
 
-export function useMessages(channelId: number) {
+/** `live` : socket du fil ouvert. Sinon (coupure, WebSocket bloqué), rafraîchissement toutes les 20 s. */
+export function useMessages(channelId: number, live = true) {
   return useInfiniteQuery({
     queryKey: messagesKey(channelId),
     queryFn: ({ pageParam }) =>
       api<MessagesPage>(`me/chat/channels/${channelId}/messages/`, { params: { limit: PAGE_SIZE, before: pageParam } }),
     initialPageParam: undefined as number | undefined,
     // Pages : [récents, plus anciens, …] ; la suivante charge l'historique avant le plus ancien message.
+    // (Au rafraîchissement, TanStack recalcule chaque curseur depuis la page précédente : pas de trou.)
     getNextPageParam: (last) => (last.messages.length < PAGE_SIZE ? undefined : last.messages[0]?.id),
     staleTime: Infinity,
+    refetchInterval: live ? false : 20_000,
   });
 }
 
