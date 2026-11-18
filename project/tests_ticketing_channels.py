@@ -490,13 +490,19 @@ class InboundWebhookTests(ChannelFixture):
                                 content_type="message/rfc822", HTTP_X_DEVFLOW_TIMESTAMP=ts, HTTP_X_DEVFLOW_SIGNATURE=f"sha256={sig}")
 
     def test_signed_raw_message_is_accepted_once(self):
+        # Horodatage figé : relu à chaque envoi, il pouvait changer de seconde entre deux
+        # appels (rejeu non détecté, ou nouvelle signature identique à la première).
+        now = int(time.time())
         body = raw_email(message_id="<hook-1@acme.test>")
-        res = self.post(body)
+        res = self.post(body, ts=now)
         self.assertEqual(res.status_code, 202, res.content)
         self.assertFalse(res.json()["duplicate"])
         self.assertEqual(M.objects.filter(mailbox=self.mailbox, message_id="<hook-1@acme.test>").count(), 1)
-        self.assertEqual(self.post(body).status_code, 401)  # même signature : rejeu
-        self.assertTrue(self.post(body, ts=int(time.time()) - 1).json()["duplicate"])
+        self.assertEqual(self.post(body, ts=now).status_code, 401)  # même signature : rejeu
+        resent = self.post(body, ts=now - 1)  # nouvelle signature, même message : doublon reconnu
+        self.assertEqual(resent.status_code, 202, resent.content)
+        self.assertTrue(resent.json()["duplicate"])
+        self.assertEqual(M.objects.filter(mailbox=self.mailbox, message_id="<hook-1@acme.test>").count(), 1)
 
     def test_invalid_signature_stale_timestamp_and_unknown_key(self):
         body = raw_email()
