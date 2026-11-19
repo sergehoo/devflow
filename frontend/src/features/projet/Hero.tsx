@@ -156,8 +156,7 @@ export function ProjectHero({ detail, onTab, openForm }: { detail: ProjectDetail
                 <DropdownMenuItem onSelect={() => openForm({ name: "sprint", title: "Nouveau sprint", query: { project: String(id) }, hidden: ["project"], submitLabel: "Créer" })}><Flag />Nouveau sprint</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => openForm({ name: "project-import", title: "Importer un document", query: { project: String(id) }, hidden: ["project", "status"], submitLabel: "Importer" })}><FileUp />Importer un document IA</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem disabled={generating} onSelect={generate}><Wand2 />Générer suggestions IA</DropdownMenuItem>
-                <DropdownMenuItem asChild><Link to={`/projects/${id}/ai-proposals`}><History />Historique des propositions IA</Link></DropdownMenuItem>
+                {/* Génération IA et propositions : boutons dédiés de l'en-tête, pas de doublon ici. */}
                 <DropdownMenuItem onSelect={() => onTab("documents")}><FolderOpen />Voir les documents</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => onTab("taches")}><ListChecks />Voir les tâches</DropdownMenuItem>
                 <DropdownMenuSeparator />

@@ -250,6 +250,17 @@ describe("Fiche projet complète", () => {
     expect(await screen.findByText("Génération terminée", { selector: "p.text-sm" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "voir la proposition" })).toHaveAttribute("href", "/projects/7/ai-proposals");
   });
+
+  it("ne duplique pas dans le menu Actions les boutons IA de l'en-tête", async () => {
+    mockDetail();
+    renderPage(<ProjectDetailPage />, "/projects/7", "/projects/:id");
+    expect(await screen.findByRole("button", { name: /Générer suggestions IA/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Propositions IA" })).toHaveAttribute("href", "/projects/7/ai-proposals");
+    await userEvent.click(screen.getByRole("button", { name: /Actions/ }));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByRole("menuitem", { name: /Voir les documents/ })).toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: /suggestions IA|propositions IA/i })).not.toBeInTheDocument();
+  });
 });
 
 describe("Fiche projet : droits et workspace du projet", () => {
