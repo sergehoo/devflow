@@ -44,6 +44,17 @@ class ResetSequencesTests(TestCase):
             with connection.cursor() as cursor:
                 cursor.execute("SELECT setval(pg_get_serial_sequence(%s, 'id'), 1, false)", [TABLE])
 
+    def test_production_container_realigns_sequences_before_serving(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        command = [line.strip() for line in (Path(settings.BASE_DIR) / "docker-compose.yml").read_text().splitlines()
+                   if not line.lstrip().startswith("#")]
+        start = command.index("python manage.py reset_sequences")
+        self.assertTrue(command[start + 1].startswith("||"))  # un échec n'empêche pas le démarrage
+        self.assertLess(start, next(i for i, line in enumerate(command) if line.startswith("exec gunicorn")))
+
     def test_unknown_application_is_rejected(self):
         with self.assertRaises(CommandError):
             run("inconnue")

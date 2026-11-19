@@ -6,12 +6,16 @@ services:
     container_name: devflowweb
     # collectstatic à chaque démarrage (frontend React compilé dans l'image, cf. Dockerfile).
     # En cas d'échec, les statiques précédents du volume sont conservés et le site démarre.
+    # reset_sequences : recale les compteurs d'identifiants PostgreSQL restés en retard après une
+    # restauration (« duplicate key … _pkey ») ; ne touche qu'aux tables en retard, jamais en arrière.
     # ensure_recordings_bucket : crée le bucket MinIO des enregistrements s'il manque (idempotent).
     # Worker DevFlow : accepte jusqu'à 32 Kio de cookies à la poignée de main WebSocket
     # (8 Kio avec le worker Uvicorn standard → /ws/me/ refusé en 400, cf. ProjectFlow/uvicorn_worker.py).
     command: >
       sh -c "python manage.py collectstatic --noinput
       || echo 'WARN: collectstatic failed, previous static files kept';
+      python manage.py reset_sequences
+      || echo 'WARN: reset_sequences failed (database unreachable?)';
       python manage.py ensure_recordings_bucket
       || echo 'WARN: recordings bucket check failed (MinIO unreachable?)';
       exec gunicorn ProjectFlow.asgi:application
