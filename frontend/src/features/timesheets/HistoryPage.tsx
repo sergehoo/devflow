@@ -12,9 +12,10 @@ import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Input, Select } from "@/components/ui/input";
 import { Badge, Skeleton } from "@/components/ui/misc";
 import { DownloadButton } from "@/features/meetings/DownloadButton";
+import { invalidateTaskViews } from "@/features/tasks/sync";
 import { formatDate, formatHours } from "@/lib/format";
 import { useDebouncedValue } from "@/lib/hooks";
-import { TS_KEY, timesheetExportUrl, useDeleteEntry, useEntries, weekPath, type Breakdown } from "./api";
+import { timesheetExportUrl, useDeleteEntry, useEntries, weekPath, type Breakdown } from "./api";
 import { APPROVAL_STATUSES, STATUS_TONE, statusLabel } from "./constants";
 import { TimesheetTabs } from "./TimesheetNav";
 
@@ -134,7 +135,7 @@ export function HistoryPage() {
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)} title="Modifier la saisie" className="sm:max-w-2xl">
         {editing !== null && (
           <LegacyForm name="timesheet-entry" id={editing} onCancel={() => setEditing(null)}
-            onSuccess={() => { toast.success("Saisie mise à jour."); setEditing(null); void qc.invalidateQueries({ queryKey: TS_KEY }); }} />
+            onSuccess={() => { toast.success("Saisie mise à jour."); setEditing(null); void invalidateTaskViews(qc); }} />
         )}
       </Dialog>
       <ConfirmDialog open={deleting !== null} onOpenChange={(o) => !o && setDeleting(null)} destructive pending={del.isPending}

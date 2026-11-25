@@ -1,6 +1,7 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { api, actionBody } from "@/services/api";
 import type { Paginated } from "@/types/api";
+import { useInvalidateTaskViews } from "./sync";
 
 export interface Task {
   id: number;
@@ -82,15 +83,8 @@ export const useTask = (id: number) =>
 export const useTaskOverview = (id: number) =>
   useQuery({ queryKey: [...TASKS_KEY, id, "overview"], queryFn: ({ signal }) => api<TaskOverview>(`tasks/${id}/overview/`, { signal }) });
 
-export function useInvalidateTasks() {
-  const qc = useQueryClient();
-  return () => Promise.all([
-    qc.invalidateQueries({ queryKey: TASKS_KEY }),
-    qc.invalidateQueries({ queryKey: ["dashboard"] }),
-    qc.invalidateQueries({ queryKey: ["projects"] }),
-    qc.invalidateQueries({ queryKey: ["timesheet"] }),
-  ]);
-}
+/** Tâches, timesheet, fiche projet, Suivi… : tous les écrans qui lisent la même tâche (voir `sync.ts`). */
+export const useInvalidateTasks = useInvalidateTaskViews;
 
 /** Mise à jour rapide (assigné uniquement) : statut, avancement, temps du jour, commentaire. */
 export function useQuickUpdate(id: number) {

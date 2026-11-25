@@ -614,16 +614,25 @@ class TaskViewSet(WorkspaceScopedViewSetMixin, viewsets.ModelViewSet):
 
     # SECURITY — mêmes règles métier que l'interface Django (voir project/api/guards.py).
     def perform_create(self, serializer):
+        from project.services.task_sync import sync_assignee
+
         task = serializer.save(**guards.prepare_task_create(self.request.user, serializer.validated_data))
-        # TaskCreateView : l'assigné reçoit aussi son TaskAssignment.
-        if task.assignee_id and not dm.TaskAssignment.objects.filter(task=task, user_id=task.assignee_id).exists():
-            dm.TaskAssignment.objects.create(task=task, user_id=task.assignee_id, assigned_by=self.request.user,
-                                             allocation_percent=100)
+        # TaskCreateView : l'assigné reçoit aussi son affectation active (timesheet, Suivi).
+        sync_assignee(task, None, actor=self.request.user)
 
     def perform_update(self, serializer):
-        guards.check_task_update(self.request.user, serializer.instance, serializer.validated_data)
-        serializer.instance._updated_by = self.request.user  # auteur transmis aux notifications
-        serializer.save()
+        from project.services.task_sync import apply_status, sync_assignee
+
+        task = serializer.instance
+        guards.check_task_update(self.request.user, task, serializer.validated_data)
+        task._updated_by = self.request.user  # auteur transmis aux notifications
+        previous_assignee_id = task.assignee_id
+        status = serializer.validated_data.pop("status", None)
+        if status:
+            apply_status(task, status)  # mêmes dates de démarrage / clôture que les actions rapides
+        task = serializer.save()
+        # Réaffectation : l'ancien assigné perd la tâche de son timesheet et du Suivi.
+        sync_assignee(task, previous_assignee_id, actor=self.request.user)
 
     def perform_destroy(self, instance):
         guards.check_task_destroy(self.request.user, instance)

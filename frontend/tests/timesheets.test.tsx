@@ -140,3 +140,60 @@ describe("Feuilles de temps des collaborateurs", () => {
     expect([url.searchParams.get("user"), url.searchParams.get("approval_status"), url.searchParams.has("page")]).toEqual(["2", "APPROVED", false]);
   });
 });
+
+describe("Timesheet ↔ tâches du projet", () => {
+  const TASK = { id: 5, title: "API", status: "IN_PROGRESS", status_label: "En cours", progress_percent: 40, start_date: null,
+    due_date: "2026-10-01", is_late: true, can_update: true };
+  const ACTIVITY = { kind: "activity", row_id: "activity-7-1", label: "Réunion client", task: null, project: { id: 7, name: "Portail" },
+    description: "Réunion client", cells: cells([0, 1]), total: 1 };
+  const LIVE_WEEK = { ...WEEK, rows: [{ ...WEEK.rows[0], task: TASK }, ACTIVITY] };
+  const posted = (spy: ReturnType<typeof mockApi>, path: string) =>
+    JSON.parse(String(spy.mock.calls.find(([u, i]) => String(u).includes(path) && i?.method === "POST")![1]!.body));
+
+  it("creates a real project task (not a timesheet-only line) with the day's hours", async () => {
+    const spy = mockApi({ "timesheet/week/": LIVE_WEEK, "POST timesheet/tasks/": {
+      task: { ...TASK, id: 9, title: "Recette API", status: "IN_PROGRESS", progress_percent: 0, is_late: false }, project: { id: 7, name: "Portail" }, hours: 2 } });
+    renderPage(<WeekPage />, "/timesheets?date=2026-10-06", "/timesheets");
+    await userEvent.click(await screen.findByRole("button", { name: "Tâche" }));
+    await userEvent.selectOptions(screen.getByLabelText("Projet *"), "7");
+    await userEvent.type(screen.getByLabelText("Intitulé *"), "Recette API");
+    await userEvent.type(screen.getByLabelText("Heures"), "2");
+    await userEvent.click(screen.getByRole("button", { name: "Créer la tâche" }));
+    await waitFor(() => expect(spy.mock.calls.some(([u]) => String(u).includes("timesheet/tasks/"))).toBe(true));
+    expect(posted(spy, "timesheet/tasks/")).toEqual({ project_id: 7, title: "Recette API", date: "2026-10-06", hours: "2" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Créer la tâche" })).not.toBeInTheDocument());
+  });
+
+  it("shows the task's live state and updates it with the same quick update as /tasks", async () => {
+    const state = { id: 5, title: "API", status: "IN_PROGRESS", status_label: "En cours", progress_percent: 40, spent_hours: "3", estimate_hours: null,
+      assignee_id: 1, assignee_name: "Alice", can_update: true, statuses: [{ value: "IN_PROGRESS", label: "En cours" }, { value: "DONE", label: "Terminé" }] };
+    const spy = mockApi({ "timesheet/week/": LIVE_WEEK, "tasks/5/overview/": { state }, "POST tasks/5/quick-update/": { ...state, status: "DONE", progress_percent: 100 } });
+    renderPage(<WeekPage />, "/timesheets?date=2026-10-06", "/timesheets");
+    expect(await screen.findByText("40 %")).toBeInTheDocument();
+    expect(screen.getByText(/^éch\./)).toHaveClass("text-destructive");
+    await userEvent.click(screen.getByRole("button", { name: "Mettre à jour la tâche API" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Terminer/ }));
+    await waitFor(() => expect(posted(spy, "tasks/5/quick-update/")).toEqual({ status: "DONE" }));
+  });
+
+  it("converts a free activity into a project task", async () => {
+    const spy = mockApi({ "timesheet/week/": LIVE_WEEK, "POST timesheet/activities/convert/": {
+      task: { ...TASK, id: 11, title: "Réunion client" }, linked_entries: 1, created: true } });
+    renderPage(<WeekPage />, "/timesheets?date=2026-10-06", "/timesheets");
+    expect(await screen.findByText(/activité hors tâche/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Convertir en tâche/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Convertir" }));
+    await waitFor(() => expect(posted(spy, "timesheet/activities/convert/")).toEqual({ project_id: 7, description: "Réunion client" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Convertir" })).not.toBeInTheDocument());
+  });
+
+  it("keeps a collaborator's week read-only: no task creation, conversion or quick update", async () => {
+    mockApi({ "timesheet/week/": { ...LIVE_WEEK, is_self: false, is_locked: true, user: { id: 2, name: "Dan" },
+      rows: [{ ...LIVE_WEEK.rows[0], task: { ...TASK, can_update: false } }, ACTIVITY] } });
+    renderPage(<WeekPage />, "/timesheets?user=2&date=2026-10-06", "/timesheets");
+    expect(await screen.findByText("40 %")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tâche" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Convertir en tâche/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mettre à jour la tâche/ })).not.toBeInTheDocument();
+  });
+});

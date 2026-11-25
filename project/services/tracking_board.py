@@ -261,14 +261,45 @@ def build_rows(scope, user=None, *, project_id=None, selection=None, today=None,
     for tid, hours, last in (entries.filter(task__parent_id__in=tids).values("task__parent_id")
                              .annotate(h=Sum("hours"), last=Max("updated_at")).values_list("task__parent_id", "h", "last")):
         add_logged(("T", tid), hours, last)
+    # Activités libres du timesheet (libellé sans tâche) sur le projet d'accueil : le
+    # projet d'accueil n'a pas de ligne, elles vont à l'activité de même intitulé
+    # (« ARTFLOW » saisi en activité = l'activité ARTFLOW du suivi). Sans ce
+    # rapprochement, ce temps disparaissait du suivi.
+    activity_by_label = {(a.project_id, key(a.title)): a.pk for a in activities}
+    containers = {a.project_id for a in activities}
+
+    def free_activity_ref(pid, description):
+        tid = activity_by_label.get((pid, key(description or "")))
+        return ("T", tid) if tid else None
+
+    for pid, description, hours, last in (
+            entries.filter(project_id__in=containers, task__isnull=True).values("project_id", "description")
+            .annotate(h=Sum("hours"), last=Max("updated_at")).values_list("project_id", "description", "h", "last")):
+        ref = free_activity_ref(pid, description)
+        if ref:
+            add_logged(ref, hours, last)
+
+    # Dernière modification d'une tâche du projet ou d'une sous-tâche de l'activité :
+    # une mise à jour faite depuis le timesheet, la liste des tâches ou la fiche projet
+    # compte comme une mise à jour de la ligne (indicateur « sans mise à jour »).
+    touched: dict[tuple, datetime] = {}
+    live_tasks = dm.Task.objects.order_by().filter(is_archived=False)
+    for pid, last in (live_tasks.filter(project_id__in=pids).values("project_id")
+                      .annotate(last=Max("updated_at")).values_list("project_id", "last")):
+        touched[("P", pid)] = last
+    for tid, last in (live_tasks.filter(parent_id__in=tids).values("parent_id")
+                      .annotate(last=Max("updated_at")).values_list("parent_id", "last")):
+        touched[("T", tid)] = last
 
     # Saisies de temps de la période → actions menées, regroupées par libellé et personne
     # (« Correction DQE — Loïc D., 2 h (13/11) »). Projet : ses tâches et ses activités
-    # hors tâche ; activité du suivi : la tâche et ses sous-tâches.
+    # hors tâche ; activité du suivi : la tâche, ses sous-tâches et les activités libres
+    # de même intitulé sur le projet d'accueil.
     worked: dict[tuple, dict] = {}
     period_entries = (dm.TimesheetEntry.objects.order_by()
                       .filter(entry_date__gte=period[0], entry_date__lte=period[1], hours__gt=0)
-                      .filter(Q(project_id__in=pids) | Q(task_id__in=tids) | Q(task__parent_id__in=tids)))
+                      .filter(Q(project_id__in=pids) | Q(task_id__in=tids) | Q(task__parent_id__in=tids)
+                              | Q(project_id__in=containers, task__isnull=True)))
     for pid, tid, parent_id, task_title, description, uid, first, last, hours, last_day in (
             period_entries
             .values("project_id", "task_id", "task__parent_id", "task__title", "description", "user_id",
@@ -283,7 +314,9 @@ def build_rows(scope, user=None, *, project_id=None, selection=None, today=None,
         elif pid in pids:
             ref = ("P", pid)
         else:
-            continue
+            ref = free_activity_ref(pid, description) if tid is None else None
+            if ref is None:
+                continue
         label = (task_title or description or "Activité").strip()
         item = worked.setdefault((ref, key(label), uid), {
             "ref": ref, "label": label, "person": f"{first or ''} {last or ''}".strip() or "Collaborateur",
@@ -319,7 +352,7 @@ def build_rows(scope, user=None, *, project_id=None, selection=None, today=None,
         is_open = status_key not in CLOSED
         late = bool(end and end < today and is_open)
         logged_hours, last_logged = logged[ref] if ref in logged else (ZERO_HOURS, None)
-        last_update = max(filter(None, (obj.updated_at, last_logged)), default=None)
+        last_update = max(filter(None, (obj.updated_at, last_logged, touched.get(ref))), default=None)
         return {
             "id": f"{ref[0]}{obj.pk}", "kind": kind, "pk": obj.pk,
             "workspace": {"id": obj.workspace_id, "name": obj.workspace.name},

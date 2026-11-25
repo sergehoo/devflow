@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { CHAT_KEY, CONVERSATIONS_KEY } from "@/features/messenger/api";
 import { NOTIF_KEY, SUMMARY_KEY, type AppNotification, type NotificationSummary } from "@/features/notifications/api";
+import { invalidateTaskViews } from "@/features/tasks/sync";
 import { resolveLegacyLink } from "@/lib/links";
 import { realtime, type RealtimeMessage } from "@/lib/realtime";
 import { api } from "@/services/api";
@@ -26,6 +27,7 @@ export function RealtimeBridge() {
           if (msg.reconnected) {
             void qc.invalidateQueries({ queryKey: NOTIF_KEY });
             void qc.invalidateQueries({ queryKey: CHAT_KEY });
+            void invalidateTaskViews(qc); // événements « task.changed » manqués pendant la coupure
           }
           break;
         case "notification": {
@@ -60,6 +62,11 @@ export function RealtimeBridge() {
           break;
         case "ticket.changed":
           void qc.invalidateQueries({ queryKey: ["tickets"] });
+          break;
+        case "task.changed":
+          // Une tâche, une affectation ou une saisie de temps a changé (timesheet, /tasks, fiche
+          // projet, import du suivi…) : chaque écran qui la montre relit l'API.
+          void invalidateTaskViews(qc);
           break;
       }
     }, { heartbeat: true });

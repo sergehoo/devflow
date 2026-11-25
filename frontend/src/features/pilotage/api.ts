@@ -5,6 +5,7 @@
  * (`project/api/views_tracking.py`). Ce module ne fait que lire et transmettre.
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidateTaskViews } from "@/features/tasks/sync";
 import { api, ApiError, getCookie } from "@/services/api";
 
 export interface Ref { id: number; name: string }
@@ -473,6 +474,8 @@ export function useImportAction(id: number, action: "analyze" | "apply" | "rollb
         queryKey: KEY,
         predicate: (q) => !(q.queryKey[1] === "imports" && q.queryKey[2] === id && q.queryKey.length === 3),
       });
+      // L'import écrit les tâches elles-mêmes : /tasks, le timesheet et les fiches projet suivent.
+      if (action !== "analyze") void invalidateTaskViews(client);
     },
   });
 }

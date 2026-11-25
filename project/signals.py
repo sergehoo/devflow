@@ -665,3 +665,31 @@ def tracking_notify_owner_change(sender, instance, created, **kwargs):
         from project.services.tracking_notifications import notify_owner_change
 
         notify_owner_change(instance, previous)
+
+
+# ---------------------------------------------------------------------------
+# Temps réel : tâches, affectations et saisies de temps → « task.changed »
+# (tâches, timesheet, fiche projet et Suivi se rechargent chez les personnes
+# concernées). Un seul message par destinataire et par transaction.
+# ---------------------------------------------------------------------------
+@receiver(post_save, sender=dm.Task)
+def realtime_task_saved(sender, instance, **kwargs):
+    from project.services.realtime import tasks_changed
+
+    tasks_changed(task_ids=[instance.pk], user_ids=[getattr(instance, "_previous_assignee_id", None)])
+
+
+@receiver(post_save, sender=dm.TaskAssignment)
+@receiver(post_delete, sender=dm.TaskAssignment)
+def realtime_task_assignment_changed(sender, instance, **kwargs):
+    from project.services.realtime import tasks_changed
+
+    tasks_changed(task_ids=[instance.task_id], user_ids=[instance.user_id])
+
+
+@receiver(post_save, sender=dm.TimesheetEntry)
+@receiver(post_delete, sender=dm.TimesheetEntry)
+def realtime_timesheet_entry_changed(sender, instance, **kwargs):
+    from project.services.realtime import tasks_changed
+
+    tasks_changed(task_ids=[instance.task_id], project_ids=[instance.project_id], user_ids=[instance.user_id])
