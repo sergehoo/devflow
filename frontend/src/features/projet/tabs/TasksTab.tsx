@@ -2,29 +2,14 @@ import { KanbanSquare, List, Plus, UserRoundCog, Zap } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/misc";
-import { useTaskOverview } from "@/features/tasks/api";
 import { STATUS_BADGE, isOverdue } from "@/features/tasks/constants";
-import { QuickUpdatePanel } from "@/features/tasks/QuickUpdatePanel";
+import { QuickUpdateDialog } from "@/features/tasks/QuickUpdateDialog";
 import { ReassignDialog } from "@/features/tasks/TaskDetailPage";
 import { formatDate, formatHours } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useInvalidateProject, type TasksTab as Data } from "../api";
 import { ActionBar, EmptyLine, Pill, Section, Stat, StatGrid, Table, Td } from "../ui";
 import { DependencyList } from "./PlanningTab";
-
-/** Mise à jour rapide (même panneau et mêmes règles que la fiche tâche : assigné uniquement). */
-function QuickUpdateDialog({ taskId, title, onClose }: { taskId: number; title: string; onClose: () => void }) {
-  const overview = useTaskOverview(taskId);
-  const o = overview.data;
-  return (
-    <Dialog open onOpenChange={(v) => !v && onClose()} title="Mise à jour rapide" description={title}>
-      {o ? <QuickUpdatePanel key={`${o.state.status}-${o.state.progress_percent}-${o.state.spent_hours}`} taskId={taskId} state={o.state} />
-        : overview.isError ? <p className="text-sm text-destructive">{overview.error.message}</p> : <Skeleton className="h-40" />}
-    </Dialog>
-  );
-}
 
 /** Board Kanban du projet (colonnes configurées) : section « Board Kanban » de l'ancienne fiche. */
 function ProjectBoard({ data }: { data: Data }) {

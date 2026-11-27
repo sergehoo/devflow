@@ -1,12 +1,27 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, actionBody } from "@/services/api";
 import type { Paginated } from "@/types/api";
+import { invalidateTaskViews } from "@/features/tasks/sync";
+
+export interface WeekTask {
+  id: number;
+  title: string;
+  status: string;
+  status_label: string;
+  progress_percent: number;
+  start_date: string | null;
+  due_date: string | null;
+  is_late: boolean;
+  /** Assigné(e) : mise à jour rapide possible (statut, avancement, temps, commentaire). */
+  can_update: boolean;
+}
 
 export interface WeekRow {
   kind: "task" | "activity";
   row_id: string;
   label: string;
-  task: { id: number; title: string; status_label: string } | null;
+  /** La tâche du projet elle-même (lue en direct sur `dm.Task`, comme dans /tasks et le Suivi). */
+  task: WeekTask | null;
   project: { id: number; name: string } | null;
   description: string;
   cells: { date: string; hours: number }[];
@@ -119,12 +134,10 @@ function postAction(name: string, data: Record<string, string | number>, id?: nu
   return api<{ messages?: string[]; day_total?: number; week_total?: number }>(id ? `actions/${name}/${id}/` : `actions/${name}/`, { method: "POST", body: fd });
 }
 
+/** Une saisie, une tâche créée ou une activité convertie change aussi /tasks, la fiche projet et le Suivi. */
 function useTsMutation<V, R>(fn: (v: V) => Promise<R>) {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: fn,
-    onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: TS_KEY }), qc.invalidateQueries({ queryKey: ["tasks"] })]),
-  });
+  return useMutation({ mutationFn: fn, onSettled: () => invalidateTaskViews(qc) });
 }
 
 /** Saisie d'une cellule — vue Django TimesheetCalendarSaveView (0 h supprime la ligne du jour). */
@@ -138,3 +151,13 @@ export const useWeekAction = () =>
     postAction("timesheet-week", { user: v.user, monday: v.monday, action: v.action, comment: v.comment ?? "" }));
 
 export const useDeleteEntry = () => useTsMutation((id: number) => postAction("timesheet-entry-delete", {}, id));
+
+/** Nouvelle tâche du projet créée depuis le timesheet (assignée à soi), avec les heures éventuelles du jour. */
+export const useCreateTimesheetTask = () =>
+  useTsMutation((v: { project_id: number; title: string; date: string; hours?: string; due_date?: string; description?: string }) =>
+    api<{ task: WeekTask; project: { id: number; name: string }; hours: number }>("timesheet/tasks/", { method: "POST", body: v }));
+
+/** Activité libre (libellé sans tâche) → tâche du projet ; ses saisies modifiables y sont rattachées. */
+export const useConvertActivity = () =>
+  useTsMutation((v: { project_id: number; description: string }) =>
+    api<{ task: WeekTask; linked_entries: number; created: boolean }>("timesheet/activities/convert/", { method: "POST", body: v }));

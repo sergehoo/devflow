@@ -23,6 +23,7 @@ from rest_framework.views import APIView
 
 from project import models as dm
 from project.services.my_day import MyDayService
+from project.services.task_sync import apply_status
 from project.utils.workspaces import get_user_workspace_ids
 
 
@@ -123,19 +124,10 @@ class TaskToggleCompleteView(APIView):
             _record_optional_time(task, request.user, request.data)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        now = timezone.now()
-
-        if task.status == dm.Task.Status.DONE:
-            task.status = dm.Task.Status.TODO
-            task.completed_at = None
-        else:
-            task.status = dm.Task.Status.DONE
-            task.completed_at = now
-            if not task.started_at:
-                task.started_at = now
-
-        task.save(update_fields=["status", "completed_at", "started_at",
-                                 "updated_at"])
+        target = dm.Task.Status.TODO if task.status == dm.Task.Status.DONE else dm.Task.Status.DONE
+        changed = apply_status(task, target)
+        task._updated_by = request.user
+        task.save(update_fields=sorted(set(changed)) + ["updated_at"])
         _maybe_log(
             task, request.user, dm.ActivityLog.ActivityType.TASK_MOVED,
             f"Tâche basculée → {task.get_status_display()}",
@@ -170,18 +162,10 @@ class TaskUpdateStatusView(APIView):
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         previous = task.status
-        task.status = new_status
-        now = timezone.now()
-
-        if new_status == dm.Task.Status.IN_PROGRESS and not task.started_at:
-            task.started_at = now
-        if new_status == dm.Task.Status.DONE and not task.completed_at:
-            task.completed_at = now
-        if new_status != dm.Task.Status.DONE:
-            task.completed_at = None
-
-        task.save(update_fields=["status", "started_at", "completed_at",
-                                 "updated_at"])
+        changed = apply_status(task, new_status)
+        if changed:
+            task._updated_by = request.user
+            task.save(update_fields=sorted(set(changed)) + ["updated_at"])
         _maybe_log(
             task, request.user, dm.ActivityLog.ActivityType.TASK_MOVED,
             f"Statut {previous} → {new_status}",
@@ -323,13 +307,7 @@ class TaskMoveKanbanJSONView(APIView):
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        if new_status:
-            task.status = new_status
-            now = timezone.now()
-            if new_status == dm.Task.Status.IN_PROGRESS and not task.started_at:
-                task.started_at = now
-            if new_status == dm.Task.Status.DONE and not task.completed_at:
-                task.completed_at = now
+        changed = apply_status(task, new_status) if new_status else []
 
         try:
             new_position = int(data.get("position", task.position))
@@ -337,8 +315,8 @@ class TaskMoveKanbanJSONView(APIView):
             new_position = task.position
         task.position = max(new_position, 0)
 
-        task.save(update_fields=["status", "position", "started_at",
-                                 "completed_at", "updated_at"])
+        task._updated_by = request.user
+        task.save(update_fields=sorted(set(changed) | {"position"}) + ["updated_at"])
         return Response(_task_payload(task))
 
 

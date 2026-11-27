@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { patchThroughForm, useResourceMutation } from "@/features/resources/api";
-import { TASKS_KEY, type TaskOverview } from "./api";
+import { type TaskOverview } from "./api";
+import { invalidateTaskViews } from "./sync";
 
 type Adding = { name: string; title: string; query: Record<string, string>; hidden: string[]; exclude?: string[] } | null;
 
@@ -20,7 +21,8 @@ export function TaskStructure({ taskId, o }: { taskId: number; o: TaskOverview }
   const qc = useQueryClient();
   const [adding, setAdding] = useState<Adding>(null);
   const [busy, setBusy] = useState(false);
-  const refresh = () => qc.invalidateQueries({ queryKey: [...TASKS_KEY, taskId] });
+  // Sous-tâches et labels apparaissent aussi au timesheet, sur la fiche projet et dans le Suivi.
+  const refresh = () => invalidateTaskViews(qc);
   const delChecklist = useResourceMutation("task-checklist");
   const delItem = useResourceMutation("checklist-item");
   const delDep = useResourceMutation("task-dependency");

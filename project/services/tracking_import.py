@@ -914,13 +914,32 @@ class _Applier:
         self.labels[company["key"]] = label
 
     def _update(self, row, field, obj, changes, raw_text):
-        """Applique ``changes`` sur un objet existant en mémorisant les anciennes valeurs."""
+        """
+        Applique ``changes`` sur un objet existant en mémorisant les anciennes valeurs.
+
+        Tâche : le statut suit les mêmes règles que partout ailleurs (``task_sync.apply_status`` :
+        dates de démarrage / clôture), l'avancement du classeur est conservé ; un porteur
+        connu devient l'assigné d'une tâche qui n'en a pas (sinon /tasks l'affiche « non
+        assignée » alors que le timesheet et le suivi la lui attribuent).
+        """
+        from project.services.task_sync import apply_status
+
+        def plain(value):
+            return value.isoformat() if isinstance(value, (date, datetime)) else value
+
         previous = {}
+        changes = dict(changes)
+        status = changes.pop("status", None) if field == "task" else None
+        assignee_id = changes.pop("assignee_id", None) if field == "task" else None
         for name, value in changes.items():
             old = getattr(obj, name)
             if value is not None and _text(old) != _text(value):
-                previous[name] = old.isoformat() if isinstance(old, (date, datetime)) else old
+                previous[name] = plain(old)
                 setattr(obj, name, date.fromisoformat(value) if name.endswith("_date") else value)
+        if status is not None:
+            before = {name: getattr(obj, name) for name in ("status", "started_at", "completed_at")}
+            for name in apply_status(obj, status, complete_progress=False):
+                previous.setdefault(name, plain(before[name]))
         if obj.is_archived:
             previous["is_archived"] = True
             obj.is_archived, obj.archived_at = False, None
@@ -929,6 +948,12 @@ class _Applier:
                 obj._skip_budget_refresh = True
             obj._skip_tracking_notification = True
             obj.save()
+        if assignee_id and obj.assignee_id is None:
+            # Sans notification par tâche : les porteurs reçoivent la synthèse de fin d'import.
+            type(obj).objects.filter(pk=obj.pk).update(assignee_id=assignee_id)
+            obj.assignee_id = assignee_id
+            previous["assignee_id"] = None
+            self.assigned[assignee_id] += 1
         self.rec(row, field, Action.UPDATED if previous else Action.LINKED, obj, raw_text, previous=previous)
 
     def apply_project(self, row, decision, raw_text):
@@ -1002,19 +1027,23 @@ class _Applier:
         elif action == "update":
             self._update(row, "task", task, {
                 "status": values["status"], "progress_percent": values["progress"],
-                "start_date": values["start"], "due_date": values["end"]}, raw_text)
+                "start_date": values["start"], "due_date": values["end"],
+                "assignee_id": owners[0].pk if owners else None}, raw_text)
         else:
             self.rec(row, "task", Action.LINKED, task, raw_text)
         return project, task
 
     def create_task(self, project, title, *, description="", status, progress=0, start=None, due=None,
                     owners=(), parent=None):
+        from project.services.task_sync import apply_status
+
         task = dm.Task(
             workspace=self.ws, project=project, parent=parent, title=title, description=description,
-            status=status, progress_percent=progress, reporter=self.user,
+            progress_percent=progress, reporter=self.user,
             start_date=date.fromisoformat(start) if start else None,
             due_date=date.fromisoformat(due) if due else None,
         )
+        apply_status(task, status, complete_progress=False)
         task._skip_budget_refresh = True
         task.save()
         if owners:

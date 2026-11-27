@@ -9,7 +9,12 @@ Enveloppes fines des vues et services existants — aucune règle nouvelle :
 * ``GET timesheet/export/`` → mêmes saisies et mêmes filtres, en classeur Excel ;
 * ``GET timesheet/week/export/?date=&user=`` → feuille de temps d'une semaine (soi ou subordonné visible) en Excel ;
 * écritures : ponts ``actions/timesheet-cell``, ``actions/timesheet-week``,
-  ``actions/timesheet-entry-delete`` et ``forms/timesheet-entry/<pk>/`` (vues Django).
+  ``actions/timesheet-entry-delete`` et ``forms/timesheet-entry/<pk>/`` (vues Django) ;
+* ``POST timesheet/tasks/`` → crée une vraie tâche du projet (``timesheet_tasks.create_task``) ;
+* ``POST timesheet/activities/convert/`` → activité libre → tâche (``timesheet_tasks.convert_activity``).
+
+Une ligne « tâche » de la grille est la ``dm.Task`` elle-même (statut, avancement,
+échéance lus en direct) : la même que dans /tasks, la fiche projet et le Suivi.
 """
 
 from __future__ import annotations
@@ -73,6 +78,22 @@ def _summary(s) -> dict | None:
             "action": log.action, "action_label": log.get_action_display(), "actor": _name(log.actor),
             "comment": getattr(log, "comment", "") or "", "created_at": log.created_at.isoformat(),
         } if log else None,
+    }
+
+
+def _task_ref(task, user) -> dict:
+    """État de la tâche tel que /tasks et le Suivi l'affichent (lu sur ``dm.Task``, aucune copie)."""
+    from django.utils import timezone
+
+    closed = task.status in (dm.Task.Status.DONE, dm.Task.Status.CANCELLED)
+    return {
+        "id": task.pk, "title": task.title,
+        "status": task.status, "status_label": task.get_status_display(),
+        "progress_percent": task.progress_percent or 0,
+        "start_date": task.start_date.isoformat() if task.start_date else None,
+        "due_date": task.due_date.isoformat() if task.due_date else None,
+        "is_late": bool(task.due_date and not closed and task.due_date < timezone.localdate()),
+        "can_update": bool(user and task.assignee_id == user.pk),
     }
 
 
@@ -191,7 +212,7 @@ class TimesheetWeekView(APIView):
                 "kind": row["kind"],
                 "row_id": row["row_id"],
                 "label": row["label"],
-                "task": {"id": task.pk, "title": task.title, "status_label": task.get_status_display()} if task else None,
+                "task": _task_ref(task, request.user) if task else None,
                 "project": {"id": project.pk, "name": project.name} if project else None,
                 "description": row.get("description") or "",
                 "cells": [{"date": c["date"].isoformat(), "hours": c["hours"]} for c in row["cells"]],
@@ -247,7 +268,7 @@ class TimesheetWeekView(APIView):
             row = grid.setdefault(key, {
                 "kind": key[0], "row_id": "-".join(str(k) for k in key),
                 "label": e.task.title if e.task_id else (e.description or "Activité").strip(),
-                "task": {"id": e.task_id, "title": e.task.title, "status_label": e.task.get_status_display()} if e.task_id else None,
+                "task": _task_ref(e.task, request.user) if e.task_id else None,
                 "project": {"id": e.project_id, "name": e.project.name} if e.project_id else None,
                 "description": "" if e.task_id else (e.description or ""),
                 "cells": {d.isoformat(): 0.0 for d in days}, "total": 0.0,
@@ -419,3 +440,67 @@ class TimesheetWeekExportView(APIView):
             summary=tw.week_summary(employee, ws, monday), history=history, exporter=request.user,
         )
         return _xlsx_response(content, tx.filename("Timesheet", _name(employee), tx.week_label(monday)))
+
+
+def _current_workspace(request):
+    from project.views import TimesheetCalendarView
+
+    view, _ = _django_view(TimesheetCalendarView, request)
+    return view.get_current_workspace()  # espaces du user uniquement (404 sinon)
+
+
+class TimesheetTaskCreateView(APIView):
+    """
+    ``POST timesheet/tasks/`` {project_id, title, start_date?, due_date?, description?, date?, hours?}
+
+    Crée une vraie tâche dans un projet de l'espace courant, assignée au collaborateur
+    (elle apparaît aussitôt dans /tasks, la fiche projet et le Suivi), puis saisit les
+    heures éventuelles au jour ``date``.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from project.services import timesheet_tasks as tt
+
+        data = request.data
+        try:
+            task, entry = tt.create_task(
+                request.user, _current_workspace(request),
+                project_id=data.get("project_id"), title=data.get("title"),
+                start_date=data.get("start_date"), due_date=data.get("due_date"),
+                description=data.get("description") or "", hours=data.get("hours"), entry_date=data.get("date"),
+            )
+        except tt.TimesheetTaskError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response({
+            "task": _task_ref(task, request.user),
+            "project": {"id": task.project_id, "name": task.project.name},
+            "hours": _f(entry.hours) if entry else 0.0,
+        }, status=201)
+
+
+class TimesheetActivityConvertView(APIView):
+    """
+    ``POST timesheet/activities/convert/`` {project_id, description}
+
+    Activité libre (libellé sans tâche) → tâche du projet : réutilise la tâche ouverte de
+    même intitulé déjà affectée au collaborateur, sinon en crée une ; ses saisies encore
+    modifiables y sont rattachées.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from project.services import timesheet_tasks as tt
+
+        data = request.data
+        try:
+            task, linked, created = tt.convert_activity(
+                request.user, _current_workspace(request),
+                project_id=data.get("project_id"), description=data.get("description"),
+            )
+        except tt.TimesheetTaskError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response({"task": _task_ref(task, request.user), "linked_entries": linked, "created": created},
+                        status=201 if created else 200)

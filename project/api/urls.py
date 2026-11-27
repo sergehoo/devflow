@@ -20,7 +20,8 @@ from project.api.form_bridge import LegacyActionView, LegacyFormView
 from project.api.views_dashboard import DashboardInsightsView, DashboardSummaryView
 from project.api.views_teams import TeamMembersView
 from project.api.views_timesheets import (
-    TimesheetEntriesView, TimesheetExportView, TimesheetWeekExportView, TimesheetWeeksView, TimesheetWeekView,
+    TimesheetActivityConvertView, TimesheetEntriesView, TimesheetExportView, TimesheetTaskCreateView,
+    TimesheetWeekExportView, TimesheetWeeksView, TimesheetWeekView,
 )
 from project.api.views_auth import (
     CsrfView,
@@ -170,6 +171,9 @@ urlpatterns = [
     path("timesheet/export/", TimesheetExportView.as_view(), name="api-timesheet-export"),
     path("timesheet/weeks/", TimesheetWeeksView.as_view(), name="api-timesheet-weeks"),
     path("timesheet/entries/", TimesheetEntriesView.as_view(), name="api-timesheet-entries"),
+    path("timesheet/tasks/", TimesheetTaskCreateView.as_view(), name="api-timesheet-task-create"),
+    path("timesheet/activities/convert/", TimesheetActivityConvertView.as_view(),
+         name="api-timesheet-activity-convert"),
     path("actions/<slug:name>/", LegacyActionView.as_view(), name="api-action"),
     path("actions/<slug:name>/<int:pk>/", LegacyActionView.as_view(), name="api-action-instance"),
     path("auth/csrf/", CsrfView.as_view(), name="api-auth-csrf"),

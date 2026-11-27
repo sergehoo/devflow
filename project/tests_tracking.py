@@ -765,10 +765,17 @@ class TrackingBoardTests(TrackingFixture):
         self.assertFalse(rows["AFFLUX"]["stale"])
         self.assertIsNotNone(rows["AFFLUX"]["last_logged_at"])
         self.assertEqual(rows["Maintenance serveurs · Sauvegardes"]["logged_hours"], 3.5)  # sous-tâches comprises
-        # Sans saisie récente, l'alerte réapparaît.
+        # Sans saisie ni mise à jour de tâche récente, l'alerte réapparaît.
         dm.TimesheetEntry.objects.filter(project=afflux).update(updated_at=old)
+        dm.Task.objects.filter(project=afflux).update(updated_at=old)
         rows = {r["title"]: r for r in self.board().json()["rows"]}
         self.assertTrue(rows["AFFLUX"]["stale"])
+        # Une tâche du projet mise à jour (timesheet, /tasks, fiche projet) compte comme une mise à jour.
+        task = dm.Task.objects.filter(project=afflux).first()
+        task.progress_percent = 40
+        task.save()
+        rows = {r["title"]: r for r in self.board().json()["rows"]}
+        self.assertFalse(rows["AFFLUX"]["stale"])
 
     def test_kpis_and_charts(self):
         body = self.board().json()

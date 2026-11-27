@@ -9,9 +9,9 @@ les autres actions rapides opérationnelles.
 from __future__ import annotations
 
 from django.db import transaction
-from django.utils import timezone
 
 from project import models as dm
+from project.services.task_sync import apply_status
 
 Status = dm.Task.Status
 QUICK_STATUSES = [Status.TODO, Status.IN_PROGRESS, Status.REVIEW, Status.BLOCKED, Status.DONE]
@@ -66,18 +66,8 @@ def apply_quick_update(task, user, data) -> dict:
         if new_status == Status.BLOCKED and new_status != task.status and not comment:
             raise QuickUpdateError("Indiquez la raison du blocage dans le commentaire.")
 
-    if new_status is not None and new_status != task.status:
-        now = timezone.now()
-        task.status = new_status
-        if new_status == Status.IN_PROGRESS and not task.started_at:
-            task.started_at = now
-        if new_status == Status.DONE:
-            task.completed_at = task.completed_at or now
-            task.started_at = task.started_at or now
-            task.progress_percent = 100
-        else:
-            task.completed_at = None
-        changed += ["status", "started_at", "completed_at", "progress_percent"]
+    if new_status is not None:
+        changed += apply_status(task, new_status)  # règle commune (task_sync)
 
     if progress not in (None, ""):
         task.progress_percent = 100 if task.status == Status.DONE else _parse_progress(progress)

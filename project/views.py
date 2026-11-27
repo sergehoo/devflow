@@ -5405,18 +5405,11 @@ class TaskCreateView(DevflowCreateView):
         obj.save()
         form.save_m2m()
 
-        # Si l'utilisateur a aussi rempli l'assignee, on crée le
-        # TaskAssignment correspondant pour garder la cohérence (sinon il
-        # n'y a que le FK assignee, pas la M2M assignments).
-        if obj.assignee_id and not dm.TaskAssignment.objects.filter(
-            task=obj, user=obj.assignee
-        ).exists():
-            dm.TaskAssignment.objects.create(
-                task=obj,
-                user=obj.assignee,
-                assigned_by=self.request.user if self.request.user.is_authenticated else None,
-                allocation_percent=100,
-            )
+        # L'assigné reçoit aussi son affectation active (timesheet, Suivi) — règle
+        # commune à tous les chemins d'écriture (``task_sync.sync_assignee``).
+        from project.services.task_sync import sync_assignee
+
+        sync_assignee(obj, None, actor=self.request.user)
 
         messages.success(self.request, "Tâche créée avec succès.")
         self.object = obj
@@ -5442,8 +5435,20 @@ class TaskUpdateView(TaskRightsMixin, DevflowUpdateView):
             if not task_right_allowed(self.request.user, current, "reassign"):
                 form.add_error("assignee", "Vous ne pouvez pas réaffecter cette tâche.")
                 return self.form_invalid(form)
+        from project.services.task_sync import apply_status, sync_assignee
+
+        previous_assignee_id = form.initial.get("assignee")
+        form.instance._updated_by = self.request.user
+        if "status" in form.changed_data:
+            # Même règle que les actions rapides et le kanban (dates de démarrage / clôture).
+            new_status, form.instance.status = form.instance.status, form.initial.get("status")
+            apply_status(form.instance, new_status)
         messages.success(self.request, "Tâche modifiée avec succès.")
-        return super().form_valid(form)
+        response = super().form_valid(form)
+        # Réaffectation : l'ancien assigné perd la tâche de son timesheet et du Suivi.
+        sync_assignee(self.object, getattr(previous_assignee_id, "pk", previous_assignee_id),
+                      actor=self.request.user)
+        return response
 
     def form_invalid(self, form):
         messages.error(self.request, "Veuillez corriger les erreurs du formulaire.")
@@ -5475,12 +5480,15 @@ class TaskMoveView(DevflowBaseMixin, View):
         task = get_object_or_404(self.filter_by_workspace(dm.Task.objects.all()), pk=pk)
         if not task_right_allowed(request.user, task, "edit"):
             raise PermissionDenied(TASK_RIGHT_DENIED)
+        from project.services.task_sync import apply_status
+
         status = request.POST.get("status")
         position = request.POST.get("position")
         if status in dict(dm.Task.Status.choices):
-            task.status = status
+            apply_status(task, status)
         if position:
             task.position = int(position)
+        task._updated_by = request.user
         task.save()
         messages.success(request, "Tâche déplacée avec succès.")
         return redirect("task_detail", pk=task.pk)
